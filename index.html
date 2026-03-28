@@ -816,7 +816,7 @@ function renderTop() {
   const fg = var_fg();
 
   const tabLen = 35;
-  const PAD_SIDES = 50, PAD_TOP = tabLen + 40, PAD_BOT = 40;
+  const PAD_SIDES = 50, PAD_TOP = tabLen + 40, PAD_BOT = tabLen + 40;
   const sc = Math.min((W - PAD_SIDES*2) / (outerR*2), (H - PAD_TOP - PAD_BOT) / (outerR*2));
   const cx = W / 2;
   const cy = PAD_TOP + outerR * sc;
