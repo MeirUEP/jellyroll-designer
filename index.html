@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jellyroll Battery Cell Designer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root {
+  --bg: #111827; --bg2: #1f2937; --bg3: #374151; --fg: #f3f4f6; --fg2: #9ca3af;
+  --accent: #3b82f6; --accent2: #2563eb; --green: #16a34a; --red: #ef4444;
+  --border: #4b5563; --input-bg: #1f2937; --card-bg: #1f2937;
+  --canvas-bg: #111827;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f9fafb; --bg2: #ffffff; --bg3: #e5e7eb; --fg: #111827; --fg2: #6b7280;
+    --accent: #3b82f6; --accent2: #2563eb; --green: #16a34a; --red: #ef4444;
+    --border: #d1d5db; --input-bg: #ffffff; --card-bg: #ffffff;
+    --canvas-bg: #ffffff;
+  }
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: sans-serif; font-size: 12px; color: var(--fg); background: var(--bg); overflow: hidden; height: 100vh; }
+.app { display: grid; grid-template-columns: 228px 1fr; height: 100vh; }
+.left { background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.right { display: flex; flex-direction: column; overflow: hidden; }
+.panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.panel h3 { font-size: 11px; text-transform: uppercase; color: var(--fg2); margin-bottom: 6px; letter-spacing: 0.5px; }
+.param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.param-item { display: flex; flex-direction: column; gap: 2px; }
+.param-item label { font-size: 10px; color: var(--fg2); }
+.param-item input { width: 100%; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: 11px; }
+.param-item input:focus { outline: none; border-color: var(--accent); }
+button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; padding: 5px 10px; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary.needs-run { background: #eab308; color: #000; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.8; } }
+.btn-sm { padding: 2px 6px; font-size: 10px; background: var(--bg3); color: var(--fg); }
+.btn-sm:hover { background: var(--border); }
+.btn-danger { background: var(--red); color: #fff; padding: 2px 6px; font-size: 10px; }
+.run-bar { display: flex; gap: 6px; align-items: center; }
+.run-bar .ts { font-size: 10px; color: var(--fg2); }
+.layer-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; margin-bottom: 4px; }
+.layer-header { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.layer-header input[type="color"] { width: 22px; height: 22px; border: none; padding: 0; cursor: pointer; border-radius: 3px; }
+.layer-header input[type="text"] { flex: 1; padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); font-size: 11px; font-weight: bold; }
+.layer-header select { padding: 2px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); font-size: 10px; }
+.layer-props { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3px; margin-top: 4px; }
+.layer-props .param-item input { font-size: 10px; padding: 2px 3px; }
+.layer-actions { display: flex; gap: 2px; }
+.badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: var(--accent); color: #fff; }
+.info-bar { display: flex; gap: 8px; padding: 6px 10px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 11px; flex-wrap: wrap; align-items: center; }
+.info-bar span { color: var(--fg2); }
+.info-bar strong { color: var(--fg); }
+.view-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.view-tab { padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--fg2); background: none; border-radius: 0; }
+.view-tab:hover { color: var(--fg); }
+.view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.canvas-wrap { flex: 1; position: relative; overflow: auto; background: var(--canvas-bg); }
+.canvas-wrap canvas { display: block; }
+.view-controls { display: flex; gap: 8px; padding: 6px 10px; background: var(--bg2); border-top: 1px solid var(--border); flex-wrap: wrap; align-items: center; font-size: 11px; }
+.view-controls label { color: var(--fg2); display: flex; align-items: center; gap: 4px; }
+.view-controls input[type="range"] { width: 80px; accent-color: var(--accent); }
+.view-controls input[type="number"] { width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); font-size: 11px; }
+.summary-cards { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg2); border-top: 1px solid var(--border); }
+.summary-card { flex: 1; text-align: center; padding: 6px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+.summary-card .val { font-size: 16px; font-weight: bold; }
+.summary-card .lbl { font-size: 10px; color: var(--fg2); }
+.results-area { background: var(--bg2); border-top: 1px solid var(--border); max-height: 200px; overflow-y: auto; }
+.results-area table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.results-area th { background: var(--bg3); padding: 4px 6px; text-align: left; position: sticky; top: 0; }
+.results-area td { padding: 3px 6px; border-bottom: 1px solid var(--border); }
+.results-bar { display: flex; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); align-items: center; }
+.file-actions { display: flex; gap: 4px; padding: 4px 0; }
+#threeContainer { width: 100%; height: 100%; }
+.legend { position: absolute; bottom: 10px; right: 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 10px; max-height: 200px; overflow-y: auto; }
+.legend-item { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 2px 0; }
+.legend-item .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
+.legend-item.hidden { opacity: 0.4; }
+.legend-btns { display: flex; gap: 4px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="left">
+    <div class="panel">
+      <h3>Cell Parameters</h3>
+      <div class="param-grid">
+        <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
+        <div class="param-item"><label>Target OD (mm)</label><input type="number" id="p_target_od" step="0.1" value="94"></div>
+        <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
+        <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
+        <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
+        <div class="param-item"><label>Skip turns</label><input type="number" id="p_skip_turns" step="1" value="2"></div>
+        <div class="param-item"><label>Cathode angle (&deg;)</label><input type="number" id="p_cath_angle" step="1" value="90"></div>
+        <div class="param-item"><label>Anode angle (&deg;)</label><input type="number" id="p_anod_angle" step="1" value="270"></div>
+      </div>
+    </div>
+    <div class="panel" id="panel3d" style="display:none">
+      <h3>3D Display</h3>
+      <div class="param-item"><label>Cutaway (&deg;)</label><input type="range" id="p_cut" min="10" max="360" value="270" style="width:100%"><span id="p_cut_val">270</span></div>
+      <div class="param-item"><label>Layer scale</label><input type="range" id="p_rscale" min="1" max="20" value="8" style="width:100%"><span id="p_rscale_val">8</span></div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button class="btn-sm" id="btnSpin">Auto-spin</button>
+        <button class="btn-sm" id="btnResetCam">Reset view</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Layer Stack</h3>
+      <div id="layerList"></div>
+      <button class="btn-sm" id="btnAddLayer" style="margin-top:4px;width:100%">+ Add Layer</button>
+    </div>
+    <div class="run-bar">
+      <button class="btn-primary" id="btnRun" style="flex:1">Run Simulation</button>
+      <span class="ts" id="runTs"></span>
+    </div>
+    <div class="file-actions">
+      <button class="btn-sm" id="btnSave">Save JSON</button>
+      <button class="btn-sm" id="btnLoad">Load JSON</button>
+      <input type="file" id="fileLoad" accept=".json" style="display:none">
+      <button class="btn-sm" id="btnExport">Export CSV</button>
+    </div>
+  </div>
+  <div class="right">
+    <div class="info-bar" id="infoBar"></div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="side">Side</button>
+      <button class="view-tab" data-view="top">Top</button>
+      <button class="view-tab" data-view="unroll">Unroll</button>
+      <button class="view-tab" data-view="3d">3D</button>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="mainCanvas"></canvas>
+      <div id="threeContainer" style="display:none"></div>
+    </div>
+    <div class="summary-cards" id="summaryCards"></div>
+    <div class="results-bar">
+      <strong style="font-size:11px">Tab Positions</strong>
+    </div>
+    <div class="results-area" id="resultsArea"></div>
+  </div>
+</div>
+<script>
+// ========== STATE ==========
+const LAYER_TYPES = ['mandrel','anode','cathode','separator','collector','tape','other'];
+let layers = [
+  {name:'Mandrel',type:'mandrel',t:5.375,w:230,len:0,off:0,color:'#888899'},
+  {name:'Anode',type:'anode',t:1.0,w:222,len:1800,off:30,color:'#16a34a'},
+  {name:'Kraft paper',type:'separator',t:0.15,w:228,len:2600,off:0,color:'#b45309'},
+  {name:'Cellophane A',type:'separator',t:0.05,w:226,len:2440,off:0,color:'#38bdf8'},
+  {name:'Cellophane B',type:'separator',t:0.05,w:226,len:2440,off:0,color:'#7dd3fc'},
+  {name:'Cathode',type:'cathode',t:2.0,w:188,len:1920,off:0,color:'#3b82f6'},
+  {name:'Cellophane C',type:'separator',t:0.05,w:226,len:2590,off:0,color:'#38bdf8'},
+  {name:'Cellophane D',type:'separator',t:0.05,w:226,len:2590,off:0,color:'#7dd3fc'},
+  {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,off:0,color:'#d97706'},
+  {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,off:0,color:'#a855f7'},
+];
+
+let params = {
+  mandrel_d: 10.75, target_od: 94, cell_h: 222,
+  tab_w: 10, tab_h: 15, skip_turns: 2,
+  cath_angle: 90, anod_angle: 270
+};
+
+let simResult = null;
+let currentView = 'side';
+let needsRun = false;
+
+// 3D state
+let threeScene, threeCamera, threeRenderer, threeControls;
+let autoSpin = false;
+let threeInited = false;
+
+// Legend visibility
+let layerVisibility = {};
+
+// ========== SIMULATION ENGINE ==========
+function runSimulation() {
+  const r0 = params.mandrel_d / 2;
+  let r = r0;
+  let arc = 0;
+  const turns = [];
+  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
+  let n = 0;
+
+  while (r < params.target_od / 2 && n < 500) {
+    let pitch = 0;
+    for (const l of nonMandrel) {
+      if (arc >= l.off && arc < l.off + l.len) {
+        pitch += l.t;
+      }
+    }
+    if (pitch < 0.001) pitch = 0.001;
+    if (r + pitch > params.target_od / 2) break;
+
+    const circ = 2 * Math.PI * (r + pitch / 2);
+    n++;
+    const arcStart = arc;
+    arc += circ;
+    r += pitch;
+
+    const active = nonMandrel.filter(l => arcStart >= l.off && arcStart < l.off + l.len);
+    turns.push({ turn: n, r, arc, pitch, circ, arcStart, active });
+  }
+
+  // Tab placement
+  const cathode = layers.find(l => l.type === 'cathode');
+  const anode = layers.find(l => l.type === 'anode');
+  const cTabs = [], aTabs = [];
+
+  if (cathode) {
+    for (let ti = 0; ti < turns.length; ti++) {
+      if (ti < params.skip_turns) continue;
+      const t = turns[ti];
+      const tS = t.arc - t.circ;
+      if (tS >= cathode.off && tS < cathode.off + cathode.len && t.arc <= cathode.off + cathode.len) {
+        cTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: t.arc, idx: cTabs.length + 1, circ: t.circ });
+      }
+    }
+  }
+
+  if (anode) {
+    for (let ti = 0; ti < turns.length; ti++) {
+      if (ti < params.skip_turns) continue;
+      const t = turns[ti];
+      const tS = t.arc - t.circ;
+      const half = Math.PI * t.r;
+      const aArc = t.arc + half;
+      if (tS >= anode.off && tS < anode.off + anode.len && aArc <= anode.off + anode.len) {
+        aTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: aArc, idx: aTabs.length + 1, circ: t.circ });
+      }
+    }
+  }
+
+  // Compute spacings
+  for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
+  for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
+
+  const outerR = turns.length > 0 ? turns[turns.length - 1].r : r0;
+  const pitches = turns.map(t => t.pitch);
+
+  simResult = {
+    turns, cTabs, aTabs, outerR,
+    minPitch: Math.min(...pitches),
+    maxPitch: Math.max(...pitches),
+  };
+
+  needsRun = false;
+  document.getElementById('btnRun').classList.remove('needs-run');
+  document.getElementById('runTs').textContent = new Date().toLocaleTimeString();
+  updateInfoBar();
+  updateSummary();
+  updateTable();
+  renderView();
+}
+
+// ========== UI UPDATES ==========
+function updateInfoBar() {
+  if (!simResult) return;
+  const s = simResult;
+  document.getElementById('infoBar').innerHTML =
+    `<span>Turns: <strong>${s.turns.length}</strong></span>` +
+    `<span>OD: <strong>${(s.outerR*2).toFixed(1)}mm</strong></span>` +
+    `<span>Pitch: <strong>${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm</strong></span>` +
+    `<span>Cathode tabs: <strong style="color:#3b82f6">${s.cTabs.length}</strong></span>` +
+    `<span>Anode tabs: <strong style="color:#16a34a">${s.aTabs.length}</strong></span>`;
+}
+
+function updateSummary() {
+  if (!simResult) return;
+  const s = simResult;
+  const odExceeds = s.outerR * 2 > params.target_od;
+  document.getElementById('summaryCards').innerHTML = [
+    { lbl: 'Computed OD', val: `${(s.outerR*2).toFixed(1)}mm`, cls: odExceeds ? 'color:var(--red)' : '' },
+    { lbl: 'Total turns', val: s.turns.length },
+    { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
+    { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
+    { lbl: 'Anode tabs', val: s.aTabs.length, cls: 'color:#16a34a' },
+  ].map(c => `<div class="summary-card"><div class="val" style="${c.cls||''}">${c.val}</div><div class="lbl">${c.lbl}</div></div>`).join('');
+}
+
+function updateTable() {
+  if (!simResult) return;
+  const s = simResult;
+  let rows = '';
+  const maxLen = Math.max(s.cTabs.length, s.aTabs.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < s.cTabs.length) {
+      const t = s.cTabs[i];
+      rows += `<tr><td style="color:#3b82f6">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.cath_angle}&deg;</td></tr>`;
+    }
+    if (i < s.aTabs.length) {
+      const t = s.aTabs[i];
+      rows += `<tr><td style="color:#16a34a">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.anod_angle}&deg;</td></tr>`;
+    }
+  }
+  document.getElementById('resultsArea').innerHTML =
+    `<table><thead><tr><th>Electrode</th><th>Tab#</th><th>Turn</th><th>Radius (mm)</th><th>Pitch (mm)</th><th>Arc Length (mm)</th><th>Spacing (mm)</th><th>Angle</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ========== LAYER EDITOR ==========
+function buildLayerUI() {
+  const list = document.getElementById('layerList');
+  list.innerHTML = '';
+  layers.forEach((l, i) => {
+    const card = document.createElement('div');
+    card.className = 'layer-card';
+    card.innerHTML = `
+      <div class="layer-header">
+        <input type="color" value="${l.color}" data-i="${i}" data-f="color">
+        <input type="text" value="${l.name}" data-i="${i}" data-f="name">
+        <select data-i="${i}" data-f="type">${LAYER_TYPES.map(t=>`<option value="${t}"${t===l.type?' selected':''}>${t}</option>`).join('')}</select>
+        ${l.type==='cathode'?`<span class="badge">${params.cath_angle}&deg;</span>`:l.type==='anode'?`<span class="badge">${params.anod_angle}&deg;</span>`:''}
+        <div class="layer-actions">
+          <button class="btn-sm" data-move="${i}" data-dir="-1" ${i===0?'disabled':''}>&#9650;</button>
+          <button class="btn-sm" data-move="${i}" data-dir="1" ${i===layers.length-1?'disabled':''}>&#9660;</button>
+          <button class="btn-danger" data-del="${i}">&times;</button>
+        </div>
+      </div>
+      <div class="layer-props">
+        <div class="param-item"><label>Thick</label><input type="number" step="0.01" value="${l.t}" data-i="${i}" data-f="t"></div>
+        <div class="param-item"><label>Width</label><input type="number" step="0.1" value="${l.w}" data-i="${i}" data-f="w"></div>
+        <div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len}" data-i="${i}" data-f="len"></div>
+        <div class="param-item"><label>Offset</label><input type="number" step="1" value="${l.off}" data-i="${i}" data-f="off"></div>
+      </div>`;
+    list.appendChild(card);
+  });
+
+  // Event delegation
+  list.querySelectorAll('input,select').forEach(el => {
+    el.addEventListener('change', e => {
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      if (f === 'name' || f === 'color' || f === 'type') layers[i][f] = e.target.value;
+      else layers[i][f] = +e.target.value;
+      markDirty();
+      if (f === 'type') buildLayerUI();
+    });
+  });
+  list.querySelectorAll('[data-move]').forEach(el => {
+    el.addEventListener('click', e => {
+      const i = +e.target.dataset.move, d = +e.target.dataset.dir;
+      const j = i + d;
+      if (j < 0 || j >= layers.length) return;
+      [layers[i], layers[j]] = [layers[j], layers[i]];
+      buildLayerUI(); markDirty();
+    });
+  });
+  list.querySelectorAll('[data-del]').forEach(el => {
+    el.addEventListener('click', e => {
+      layers.splice(+e.target.dataset.del, 1);
+      buildLayerUI(); markDirty();
+    });
+  });
+}
+
+function markDirty() {
+  needsRun = true;
+  document.getElementById('btnRun').classList.add('needs-run');
+}
+
+document.getElementById('btnAddLayer').addEventListener('click', () => {
+  layers.push({name:'New Layer',type:'separator',t:0.1,w:220,len:1000,off:0,color:'#888888'});
+  buildLayerUI(); markDirty();
+});
+
+// Param inputs
+document.querySelectorAll('.param-grid input').forEach(el => {
+  el.addEventListener('change', e => {
+    const key = e.target.id.replace('p_','');
+    params[key] = +e.target.value;
+    markDirty();
+  });
+});
+
+// ========== VIEW SWITCHING ==========
+document.querySelectorAll('.view-tab').forEach(btn => {
+  btn.addEventListener('click', e => {
+    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    document.getElementById('panel3d').style.display = currentView === '3d' ? '' : 'none';
+    document.getElementById('mainCanvas').style.display = currentView === '3d' ? 'none' : '';
+    document.getElementById('threeContainer').style.display = currentView === '3d' ? '' : 'none';
+    renderView();
+  });
+});
+
+// ========== RENDER DISPATCHER ==========
+function renderView() {
+  if (!simResult) return;
+  if (currentView === 'side') renderSide();
+  else if (currentView === 'top') renderTop();
+  else if (currentView === 'unroll') renderUnroll();
+  else if (currentView === '3d') render3D();
+}
+
+// ========== SIDE VIEW ==========
+function renderSide() {
+  const canvas = document.getElementById('mainCanvas');
+  const wrap = document.getElementById('canvasWrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const s = simResult;
+  const outerR = s.outerR;
+  const cellH = params.cell_h;
+  const tabH = params.tab_h;
+  const mandrelR = params.mandrel_d / 2;
+
+  const PAD_L = 60, PAD_R = 60, PAD_TOP = 30, PAD_BOT = 50;
+  const availW = W - PAD_L - PAD_R;
+  const availH = H - PAD_TOP - PAD_BOT - tabH * 1.5;
+  const sc = Math.min(availW / (outerR * 2), availH / cellH);
+
+  const cx = PAD_L + (outerR * 2 * sc) / 2;
+  const cellTop = PAD_TOP + tabH * 1.5;
+  const cellBot = cellTop + cellH * sc;
+
+  // Cell rectangle
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+  ctx.strokeRect(cx - outerR * sc, cellTop, outerR * 2 * sc, cellH * sc);
+
+  // Mandrel
+  ctx.fillStyle = 'rgba(136,136,153,0.3)';
+  ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
+
+  // Turn rings
+  const avgPitch = s.turns.length > 1 ? (s.turns.map(t=>t.r).reduce((a,b)=>a+b,0)/s.turns.length - mandrelR) / s.turns.length * sc : 10;
+  ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 0.5;
+  s.turns.forEach(t => {
+    const x1 = cx - t.r * sc, x2 = cx + t.r * sc;
+    ctx.beginPath(); ctx.moveTo(x1, cellTop); ctx.lineTo(x1, cellBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2, cellTop); ctx.lineTo(x2, cellBot); ctx.stroke();
+  });
+
+  // Tab sizing
+  const pitchPx = s.turns.length > 1 ? Math.abs(s.turns[1].r - s.turns[0].r) * sc : 10;
+  const tabWpx = Math.max(3, pitchPx * 0.6);
+  const tabHpx = tabH * sc * 0.5;
+
+  // Cathode tabs (blue, left of center, pointing up)
+  ctx.fillStyle = '#3b82f6';
+  s.cTabs.forEach(tab => {
+    const x = cx - tab.r * sc;
+    ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
+    ctx.fillStyle = '#3b82f6';
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`C${tab.idx}`, x, cellTop - tabHpx - 3);
+    ctx.fillStyle = '#3b82f6';
+  });
+
+  // Anode tabs (green, right of center, pointing up)
+  ctx.fillStyle = '#16a34a';
+  s.aTabs.forEach(tab => {
+    const x = cx + tab.r * sc;
+    ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
+    ctx.fillStyle = '#16a34a';
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`A${tab.idx}`, x, cellTop - tabHpx - 3);
+    ctx.fillStyle = '#16a34a';
+  });
+
+  // Dimension annotations
+  ctx.fillStyle = var_fg(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  // Cell height (right)
+  const dimX = cx + outerR * sc + 30;
+  ctx.beginPath(); ctx.moveTo(dimX, cellTop); ctx.lineTo(dimX, cellBot); ctx.strokeStyle = var_fg(); ctx.lineWidth = 0.5; ctx.stroke();
+  ctx.fillText(`${cellH}mm`, dimX + 5, (cellTop + cellBot) / 2);
+  // OD (bottom)
+  ctx.fillText(`OD ${(outerR*2).toFixed(1)}mm`, cx, cellBot + 20);
+  // Mandrel (bottom inner)
+  ctx.fillText(`${params.mandrel_d}mm`, cx, cellBot + 35);
+}
+
+function var_fg() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
+}
+
+// ========== TOP VIEW ==========
+function renderTop() {
+  const canvas = document.getElementById('mainCanvas');
+  const wrap = document.getElementById('canvasWrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const s = simResult;
+  const outerR = s.outerR;
+  const mandrelR = params.mandrel_d / 2;
+  const tabLen = 30;
+
+  const PAD_SIDES = 40, PAD_TOP = tabLen + 30, PAD_BOT = 30;
+  const sc = Math.min((W - PAD_SIDES*2) / (outerR*2), (H - PAD_TOP - PAD_BOT) / (outerR*2));
+  const cx = W / 2;
+  const cy = PAD_TOP + outerR * sc;
+
+  // Mandrel circle
+  ctx.beginPath(); ctx.arc(cx, cy, mandrelR * sc, 0, Math.PI * 2);
+  ctx.fillStyle = '#888899'; ctx.fill();
+
+  // Layer arcs per turn
+  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
+  const arcThickMult = 0.85;
+
+  s.turns.forEach((turn, ti) => {
+    const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
+    const innerR = prevR;
+    const bandW = turn.r - innerR;
+    const nActive = turn.active.length;
+    if (nActive === 0) return;
+
+    turn.active.forEach((layer, li) => {
+      const vis = layerVisibility[layer.name] !== false;
+      if (!vis) return;
+      const rMid = innerR + (bandW / nActive) * (li + 0.5);
+      const lw = bandW / nActive * arcThickMult;
+
+      // Compute start/end angles for this layer in this turn
+      const layerArcStart = Math.max(turn.arcStart, layer.off);
+      const layerArcEnd = Math.min(turn.arc, layer.off + layer.len);
+      const turnArcLen = turn.circ;
+      const fracStart = (layerArcStart - turn.arcStart) / turnArcLen;
+      const fracEnd = (layerArcEnd - turn.arcStart) / turnArcLen;
+
+      const angStart = -Math.PI/2 + fracStart * Math.PI * 2;
+      const angEnd = -Math.PI/2 + fracEnd * Math.PI * 2;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, rMid * sc, angStart, angEnd);
+      ctx.strokeStyle = layer.color;
+      ctx.lineWidth = Math.max(1, lw * sc);
+      ctx.globalAlpha = 0.85;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Endpoint markers
+      const sx = cx + rMid * sc * Math.cos(angStart);
+      const sy = cy + rMid * sc * Math.sin(angStart);
+      const ex = cx + rMid * sc * Math.cos(angEnd);
+      const ey = cy + rMid * sc * Math.sin(angEnd);
+      ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI*2); ctx.fillStyle=layer.color; ctx.fill();
+    });
+  });
+
+  // Outer boundary
+  ctx.beginPath(); ctx.arc(cx, cy, outerR * sc, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(100,100,100,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Tab lines (both point up)
+  function drawTabLine(tab, color, label, side) {
+    const x = side === 'left' ? cx - tab.r * sc : cx + tab.r * sc;
+    const y1 = cy, y2 = cy - tabLen;
+    // White outline
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+    // Colored stroke
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    // Arrow tip
+    ctx.beginPath(); ctx.moveTo(x, y2); ctx.lineTo(x-3, y2+6); ctx.lineTo(x+3, y2+6); ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+    // Label
+    ctx.fillStyle = color; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x, y2 - 4);
+  }
+
+  s.cTabs.forEach(tab => drawTabLine(tab, '#3b82f6', `C${tab.idx}`, 'left'));
+  s.aTabs.forEach(tab => drawTabLine(tab, '#16a34a', `A${tab.idx}`, 'right'));
+
+  // Legend
+  renderLegend();
+}
+
+function renderLegend() {
+  let legend = document.getElementById('topLegend');
+  if (!legend) {
+    legend = document.createElement('div');
+    legend.id = 'topLegend';
+    legend.className = 'legend';
+    document.getElementById('canvasWrap').appendChild(legend);
+  }
+  legend.style.display = currentView === 'top' ? '' : 'none';
+  if (currentView !== 'top') return;
+
+  // Group cellophanes
+  const groups = {};
+  layers.filter(l => l.type !== 'mandrel').forEach(l => {
+    const key = l.name.startsWith('Cellophane') ? 'Cellophane' : l.name;
+    if (!groups[key]) groups[key] = { color: l.color, layers: [] };
+    groups[key].layers.push(l);
+  });
+
+  let html = '<div class="legend-btns"><button class="btn-sm" id="legendAll">All</button><button class="btn-sm" id="legendNone">None</button></div>';
+  for (const [key, g] of Object.entries(groups)) {
+    const anyVisible = g.layers.some(l => layerVisibility[l.name] !== false);
+    html += `<div class="legend-item${anyVisible?'':' hidden'}" data-group="${key}"><div class="swatch" style="background:${g.color}"></div><span>${key}</span></div>`;
+  }
+  legend.innerHTML = html;
+
+  legend.querySelectorAll('.legend-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.group;
+      const g = groups[key];
+      const anyVisible = g.layers.some(l => layerVisibility[l.name] !== false);
+      g.layers.forEach(l => layerVisibility[l.name] = !anyVisible);
+      renderView();
+    });
+  });
+  document.getElementById('legendAll')?.addEventListener('click', () => {
+    layers.forEach(l => layerVisibility[l.name] = true);
+    renderView();
+  });
+  document.getElementById('legendNone')?.addEventListener('click', () => {
+    layers.forEach(l => layerVisibility[l.name] = false);
+    renderView();
+  });
+}
+
+// ========== UNROLL VIEW ==========
+function renderUnroll() {
+  const canvas = document.getElementById('mainCanvas');
+  const wrap = document.getElementById('canvasWrap');
+  const W = wrap.clientWidth;
+  const ctx = canvas.getContext('2d');
+
+  const s = simResult;
+  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
+  const maxLen = Math.max(...nonMandrel.map(l => l.off + l.len));
+
+  const PAD_L = 112, PAD_R = 20;
+  const RULER_H = 36;
+  const stripH = 20;
+  const stripGap = 8;
+  const tabZone = 50;
+  const sc = (W - PAD_L - PAD_R) / maxLen;
+
+  // Compute total height
+  let totalH = RULER_H + 10;
+  nonMandrel.forEach(l => {
+    if (l.type === 'cathode' || l.type === 'anode') totalH += tabZone;
+    totalH += stripH + stripGap;
+  });
+  totalH += 40;
+
+  canvas.width = W;
+  canvas.height = Math.max(totalH, wrap.clientHeight);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const fg = var_fg();
+
+  // Ruler
+  ctx.fillStyle = 'rgba(50,50,60,0.5)';
+  ctx.fillRect(0, 0, W, RULER_H);
+
+  // mm scale (bottom of ruler)
+  ctx.fillStyle = fg; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  const mmStep = Math.pow(10, Math.floor(Math.log10(maxLen / 10)));
+  for (let mm = 0; mm <= maxLen; mm += mmStep) {
+    const x = PAD_L + mm * sc;
+    if (x > W - PAD_R) break;
+    ctx.fillText(`${mm}`, x, RULER_H - 4);
+    ctx.beginPath(); ctx.moveTo(x, RULER_H - 14); ctx.lineTo(x, RULER_H - 8);
+    ctx.strokeStyle = 'rgba(150,150,150,0.5)'; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+
+  // Turn markers (top of ruler)
+  ctx.font = '8px sans-serif';
+  s.turns.forEach(t => {
+    const x = PAD_L + t.arc * sc;
+    if (x > W - PAD_R) return;
+    ctx.fillStyle = 'rgba(150,150,150,0.6)';
+    ctx.fillText(`T${t.turn}`, x, 10);
+    // Faint vertical line spanning full height
+    ctx.beginPath(); ctx.moveTo(x, RULER_H); ctx.lineTo(x, canvas.height);
+    ctx.strokeStyle = 'rgba(100,100,100,0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
+  });
+
+  // Strips
+  let y = RULER_H + 10;
+  nonMandrel.forEach(l => {
+    const isElectrode = l.type === 'cathode' || l.type === 'anode';
+    if (isElectrode) {
+      // Tab zone
+      const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
+      const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
+      const prefix = l.type === 'cathode' ? 'C' : 'A';
+      tabs.forEach(tab => {
+        const tx = PAD_L + tab.arcLen * sc;
+        // Tab line pointing down
+        ctx.beginPath(); ctx.moveTo(tx, y + 10); ctx.lineTo(tx, y + tabZone - 4);
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+        // Arrow tip pointing down
+        ctx.beginPath(); ctx.moveTo(tx, y + tabZone - 4); ctx.lineTo(tx - 3, y + tabZone - 10); ctx.lineTo(tx + 3, y + tabZone - 10); ctx.closePath();
+        ctx.fillStyle = color; ctx.fill();
+        // Label at top
+        ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${prefix}${tab.idx}`, tx, y + 8);
+        // Arc length below strip (will draw after strip)
+      });
+      y += tabZone;
+    }
+
+    const stripY = y;
+    const x0 = PAD_L + l.off * sc;
+    const w = l.len * sc;
+
+    // Faint background
+    ctx.fillStyle = 'rgba(100,100,100,0.1)';
+    ctx.fillRect(PAD_L, stripY, (W - PAD_L - PAD_R), stripH);
+
+    // Strip
+    ctx.fillStyle = l.color;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(x0, stripY, w, stripH);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = l.color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0, stripY, w, stripH);
+
+    // Label on left
+    ctx.fillStyle = fg;
+    ctx.font = isElectrode ? 'bold 11px sans-serif' : '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(l.name, PAD_L - 6, stripY + stripH / 2 + 4);
+
+    // Length label inside strip
+    if (w > 40) {
+      ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${l.len}mm`, x0 + w / 2, stripY + stripH / 2 + 3);
+    }
+
+    // Start marker
+    if (l.off > 0) {
+      ctx.beginPath(); ctx.moveTo(x0, stripY); ctx.lineTo(x0 + 5, stripY + stripH/2); ctx.lineTo(x0, stripY + stripH);
+      ctx.fillStyle = l.color; ctx.fill();
+    }
+
+    // End marker
+    ctx.beginPath();
+    ctx.moveTo(x0 + w, stripY); ctx.lineTo(x0 + w - 5, stripY + stripH/2); ctx.lineTo(x0 + w, stripY + stripH);
+    ctx.fillStyle = l.color; ctx.fill();
+
+    // Arc length annotations for tabs
+    if (isElectrode) {
+      const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
+      const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
+      tabs.forEach(tab => {
+        const tx = PAD_L + tab.arcLen * sc;
+        ctx.fillStyle = color; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${tab.arcLen.toFixed(0)}`, tx, stripY + stripH + 10);
+      });
+    }
+
+    y += stripH + stripGap;
+  });
+}
+
+// ========== 3D VIEW ==========
+function render3D() {
+  if (!threeInited) init3D();
+  update3DScene();
+}
+
+function init3D() {
+  const container = document.getElementById('threeContainer');
+  threeScene = new THREE.Scene();
+  threeScene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#111827');
+
+  threeCamera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 10000);
+  threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+  threeRenderer.setSize(container.clientWidth, container.clientHeight);
+  container.innerHTML = '';
+  container.appendChild(threeRenderer.domElement);
+
+  // Lights
+  threeScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const d1 = new THREE.DirectionalLight(0xffffff, 0.6); d1.position.set(200, 300, 200); threeScene.add(d1);
+  const d2 = new THREE.DirectionalLight(0xffffff, 0.3); d2.position.set(-200, 100, -200); threeScene.add(d2);
+
+  // Simple orbit controls
+  let isDragging = false, prevX = 0, prevY = 0;
+  let azimuth = Math.PI / 4, elevation = Math.PI / 6, dist = 500;
+
+  function updateCamera() {
+    threeCamera.position.set(
+      dist * Math.cos(elevation) * Math.sin(azimuth),
+      dist * Math.sin(elevation),
+      dist * Math.cos(elevation) * Math.cos(azimuth)
+    );
+    threeCamera.lookAt(0, params.cell_h / 2, 0);
+  }
+
+  threeRenderer.domElement.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+  window.addEventListener('mouseup', () => isDragging = false);
+  threeRenderer.domElement.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    azimuth += (e.clientX - prevX) * 0.005;
+    elevation += (e.clientY - prevY) * 0.005;
+    elevation = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, elevation));
+    prevX = e.clientX; prevY = e.clientY;
+    updateCamera();
+  });
+  threeRenderer.domElement.addEventListener('wheel', e => {
+    dist *= e.deltaY > 0 ? 1.1 : 0.9;
+    dist = Math.max(50, Math.min(5000, dist));
+    updateCamera();
+    e.preventDefault();
+  }, { passive: false });
+
+  threeControls = { updateCamera, setDist: d => { dist = d; updateCamera(); }, getAzimuth: () => azimuth };
+  updateCamera();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (autoSpin) { azimuth += 0.005; updateCamera(); }
+    threeRenderer.render(threeScene, threeCamera);
+  }
+  animate();
+  threeInited = true;
+
+  // Resize
+  const ro = new ResizeObserver(() => {
+    threeCamera.aspect = container.clientWidth / container.clientHeight;
+    threeCamera.updateProjectionMatrix();
+    threeRenderer.setSize(container.clientWidth, container.clientHeight);
+  });
+  ro.observe(container);
+}
+
+function update3DScene() {
+  if (!threeScene || !simResult) return;
+
+  // Clear existing meshes
+  while (threeScene.children.length > 3) threeScene.remove(threeScene.children[threeScene.children.length - 1]);
+
+  const s = simResult;
+  const rScale = +document.getElementById('p_rscale').value;
+  const cutDeg = +document.getElementById('p_cut').value;
+  const cutRad = cutDeg * Math.PI / 180;
+  const startAngle = 0;
+  const cellH = params.cell_h;
+  const mandrelR = params.mandrel_d / 2;
+
+  // Build radii for each layer within each turn
+  const radii3d = [];
+  let cathodeOuterR = 0, anodeOuterR = 0;
+
+  s.turns.forEach((turn, ti) => {
+    const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
+    const innerR = prevR;
+    const bandW = turn.r - innerR;
+    const nActive = turn.active.length;
+    if (nActive === 0) return;
+
+    turn.active.forEach((layer, li) => {
+      const rInner = innerR + (bandW / nActive) * li;
+      const rOuter = innerR + (bandW / nActive) * (li + 1);
+
+      const mat = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(layer.color),
+        transparent: true, opacity: 0.85,
+        side: THREE.DoubleSide
+      });
+
+      // Cylinder arc
+      const geo = new THREE.CylinderGeometry(
+        rOuter * rScale, rOuter * rScale,
+        cellH, 64, 1, true,
+        startAngle, cutRad
+      );
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.y = cellH / 2;
+      threeScene.add(mesh);
+
+      // Inner cylinder
+      const geoI = new THREE.CylinderGeometry(
+        rInner * rScale, rInner * rScale,
+        cellH, 64, 1, true,
+        startAngle, cutRad
+      );
+      const meshI = new THREE.Mesh(geoI, mat.clone());
+      meshI.position.y = cellH / 2;
+      threeScene.add(meshI);
+
+      // Top and bottom rings
+      [0, cellH].forEach(yy => {
+        const ring = new THREE.RingGeometry(rInner * rScale, rOuter * rScale, 64, 1, startAngle, cutRad);
+        const ringMesh = new THREE.Mesh(ring, mat.clone());
+        ringMesh.rotation.x = -Math.PI / 2;
+        ringMesh.position.y = yy;
+        threeScene.add(ringMesh);
+      });
+
+      // Track electrode radii
+      if (layer.type === 'cathode') cathodeOuterR = Math.max(cathodeOuterR, rOuter);
+      if (layer.type === 'anode') anodeOuterR = Math.max(anodeOuterR, rOuter);
+    });
+  });
+
+  // Tabs
+  const cAngRad = params.cath_angle * Math.PI / 180;
+  const aAngRad = params.anod_angle * Math.PI / 180;
+  const tabH = params.tab_h;
+  const tabW = params.tab_w;
+
+  // Cathode tabs
+  s.cTabs.forEach(tab => {
+    const r = tab.r * rScale;
+    const geo = new THREE.BoxGeometry(tabW * 0.3, tabH, 0.5);
+    const mat = new THREE.MeshPhongMaterial({ color: 0x3b82f6 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(
+      r * Math.cos(cAngRad),
+      cellH + tabH / 2,
+      r * Math.sin(cAngRad)
+    );
+    mesh.rotation.y = -cAngRad;
+    threeScene.add(mesh);
+  });
+
+  // Anode tabs
+  s.aTabs.forEach(tab => {
+    const r = tab.r * rScale;
+    const geo = new THREE.BoxGeometry(tabW * 0.3, tabH, 0.5);
+    const mat = new THREE.MeshPhongMaterial({ color: 0x16a34a });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(
+      r * Math.cos(aAngRad),
+      cellH + tabH / 2,
+      r * Math.sin(aAngRad)
+    );
+    mesh.rotation.y = -aAngRad;
+    threeScene.add(mesh);
+  });
+
+  // Camera distance
+  const outerScaledR = s.outerR * rScale;
+  const camDist = Math.max(outerScaledR * 2.5, cellH * 1.2);
+  threeControls.setDist(camDist);
+}
+
+// 3D controls
+document.getElementById('p_cut').addEventListener('input', e => {
+  document.getElementById('p_cut_val').textContent = e.target.value;
+  if (currentView === '3d') update3DScene();
+});
+document.getElementById('p_rscale').addEventListener('input', e => {
+  document.getElementById('p_rscale_val').textContent = e.target.value;
+  if (currentView === '3d') update3DScene();
+});
+document.getElementById('btnSpin').addEventListener('click', () => {
+  autoSpin = !autoSpin;
+  document.getElementById('btnSpin').textContent = autoSpin ? 'Stop spin' : 'Auto-spin';
+});
+document.getElementById('btnResetCam').addEventListener('click', () => {
+  if (threeControls) threeControls.setDist(500);
+});
+
+// ========== CSV EXPORT ==========
+document.getElementById('btnExport').addEventListener('click', () => {
+  if (!simResult) return;
+  const s = simResult;
+  let csv = 'Type,Tab#,Turn,Radius_mm,Pitch_mm,ArcLen_mm,Spacing_mm,Angle_deg\n';
+  s.cTabs.forEach(t => {
+    csv += `Cathode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${params.cath_angle}\n`;
+  });
+  s.aTabs.forEach(t => {
+    csv += `Anode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${params.anod_angle}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `jellyroll-tabs-${Date.now()}.csv`;
+  a.click();
+});
+
+// ========== SAVE/LOAD ==========
+document.getElementById('btnSave').addEventListener('click', () => {
+  const data = { version: '1.0', params, layers };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `jellyroll-config-${Date.now()}.json`;
+  a.click();
+});
+
+document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('fileLoad').click());
+document.getElementById('fileLoad').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.version && data.params && data.layers) {
+        params = data.params;
+        layers = data.layers;
+        // Update param inputs
+        for (const [k, v] of Object.entries(params)) {
+          const el = document.getElementById('p_' + k);
+          if (el) el.value = v;
+        }
+        buildLayerUI();
+        runSimulation();
+      }
+    } catch (err) { alert('Invalid config file'); }
+  };
+  reader.readAsText(file);
+});
+
+// ========== RESIZE ==========
+window.addEventListener('resize', () => {
+  if (simResult && currentView !== '3d') renderView();
+});
+
+// ========== RUN BUTTON ==========
+document.getElementById('btnRun').addEventListener('click', runSimulation);
+
+// ========== INIT ==========
+buildLayerUI();
+runSimulation();
+</script>
+</body>
+</html>
