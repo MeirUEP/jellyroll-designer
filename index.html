@@ -417,6 +417,8 @@ function computeCapacity() {
     cellEnergy1e, totalDryMass,
     cathVolCm3, anodVolCm3,
     utilTable,
+    // Store source layer values for transparency
+    cathThickMm, anodThickMm, cathWidthMm, anodWidthMm, cathLenMm, anodLenMm,
   };
 }
 
@@ -481,16 +483,20 @@ function updateTable() {
     const c = capResult;
     tableHtml += `<div style="padding:6px 10px;border-top:1px solid var(--border)">
       <strong style="font-size:11px">Mass &amp; Capacity</strong>
-      <table style="margin-top:4px"><thead><tr><th></th><th>Cathode</th><th>Anode</th><th>Unit</th></tr></thead><tbody>
-      <tr><td>Total mass (w/ mesh)</td><td>${c.cathTotalMass.toFixed(1)}</td><td>${c.anodTotalMass.toFixed(1)}</td><td>g</td></tr>
-      <tr><td>Mesh mass</td><td>${c.cathMeshMass.toFixed(1)}</td><td>${c.anodMeshMass.toFixed(1)}</td><td>g</td></tr>
-      <tr><td>Paste mass</td><td>${c.cathPasteMass.toFixed(1)}</td><td>${c.anodPasteMass.toFixed(1)}</td><td>g</td></tr>
-      <tr><td>Volume</td><td>${c.cathVolCm3.toFixed(1)}</td><td>${c.anodVolCm3.toFixed(1)}</td><td>cm&sup3;</td></tr>
-      <tr><td style="font-weight:bold">Capacity</td><td style="color:#3b82f6;font-weight:bold">${c.cathCapAh.toFixed(1)}</td><td style="color:#16a34a;font-weight:bold">${c.anodCapAh.toFixed(1)}</td><td>Ah</td></tr>
-      <tr><td>N:P ratio</td><td colspan="2" style="text-align:center;font-weight:bold">${c.npRatio.toFixed(3)}</td><td></td></tr>
-      <tr><td>Cell capacity (1e&minus;)</td><td colspan="2" style="text-align:center;font-weight:bold">${c.cellCapAh.toFixed(1)}</td><td>Ah</td></tr>
-      <tr><td>Cell energy (1e&minus; @ 1.2V)</td><td colspan="2" style="text-align:center">${c.cellEnergy1e.toFixed(1)}</td><td>Wh</td></tr>
-      <tr><td>Total dry mass</td><td colspan="2" style="text-align:center">${c.totalDryMass.toFixed(1)}</td><td>g</td></tr>
+      <div style="font-size:10px;color:var(--fg2);margin:2px 0">Geometry from layer stack &bull; Material properties from panels above</div>
+      <table style="margin-top:4px"><thead><tr><th></th><th>Cathode</th><th>Anode</th><th>Unit</th><th style="color:var(--fg2)">Source</th></tr></thead><tbody>
+      <tr style="color:var(--fg2)"><td>Thickness</td><td>${c.cathThickMm.toFixed(3)}</td><td>${c.anodThickMm.toFixed(3)}</td><td>mm</td><td>Layer stack</td></tr>
+      <tr style="color:var(--fg2)"><td>Width</td><td>${c.cathWidthMm.toFixed(1)}</td><td>${c.anodWidthMm.toFixed(1)}</td><td>mm</td><td>Layer stack</td></tr>
+      <tr style="color:var(--fg2)"><td>Length</td><td>${c.cathLenMm.toFixed(0)}</td><td>${c.anodLenMm.toFixed(0)}</td><td>mm</td><td>Layer stack</td></tr>
+      <tr><td>Volume</td><td>${c.cathVolCm3.toFixed(1)}</td><td>${c.anodVolCm3.toFixed(1)}</td><td>cm&sup3;</td><td></td></tr>
+      <tr><td>Total mass (w/ mesh)</td><td>${c.cathTotalMass.toFixed(1)}</td><td>${c.anodTotalMass.toFixed(1)}</td><td>g</td><td></td></tr>
+      <tr><td>Mesh mass</td><td>${c.cathMeshMass.toFixed(1)}</td><td>${c.anodMeshMass.toFixed(1)}</td><td>g</td><td></td></tr>
+      <tr><td>Paste mass</td><td>${c.cathPasteMass.toFixed(1)}</td><td>${c.anodPasteMass.toFixed(1)}</td><td>g</td><td></td></tr>
+      <tr><td style="font-weight:bold">Capacity</td><td style="color:#3b82f6;font-weight:bold">${c.cathCapAh.toFixed(1)}</td><td style="color:#16a34a;font-weight:bold">${c.anodCapAh.toFixed(1)}</td><td>Ah</td><td></td></tr>
+      <tr><td>N:P ratio</td><td colspan="2" style="text-align:center;font-weight:bold">${c.npRatio.toFixed(3)}</td><td></td><td></td></tr>
+      <tr><td>Cell capacity (1e&minus;)</td><td colspan="2" style="text-align:center;font-weight:bold">${c.cellCapAh.toFixed(1)}</td><td>Ah</td><td></td></tr>
+      <tr><td>Cell energy (1e&minus; @ 1.2V)</td><td colspan="2" style="text-align:center">${c.cellEnergy1e.toFixed(1)}</td><td>Wh</td><td></td></tr>
+      <tr><td>Total dry mass</td><td colspan="2" style="text-align:center">${c.totalDryMass.toFixed(1)}</td><td>g</td><td></td></tr>
       </tbody></table>
     </div>`;
 
