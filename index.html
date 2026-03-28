@@ -141,6 +141,17 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <!-- TAB 1: Formulation -->
     <div class="left-tab-content active" id="ltab-formulation">
       <div class="panel">
+        <h3>Formulation Preset</h3>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="formulationPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:11px">
+            <option value="">-- Select preset --</option>
+          </select>
+          <button class="btn-sm" id="btnLoadPreset" title="Load">Load</button>
+          <button class="btn-sm" id="btnSavePreset" title="Save current as preset" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm" id="btnDeletePreset" title="Delete selected preset" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+      </div>
+      <div class="panel">
         <h3>Cathode Mix</h3>
         <table class="comp-table" id="cathMixTable">
           <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th></tr></thead>
@@ -441,7 +452,133 @@ function updateFormulation(components, totalId, solidDensId, compCapId, electrod
 function initFormulation() {
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
+  loadFormulationPresetList();
 }
+
+// ========== FORMULATION PRESETS (localStorage) ==========
+const PRESETS_KEY = 'jr_formulation_presets';
+const DEFAULT_PRESETS = {
+  'Rev 3 Can (Cathode Mix-1 / Anode B2)': {
+    cathComponents: [
+      { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
+      { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
+      { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
+      { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+      { name: 'Bi2O3', wt: 4, density: 8.9, cap: 0 },
+      { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
+      { name: 'Other', wt: 0, density: 3, cap: 0 },
+    ],
+    anodComponents: [
+      { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
+      { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
+      { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
+      { name: 'Bi2O3', wt: 2, density: 8.9, cap: 0 },
+      { name: 'Laponite', wt: 0.01, density: 2.53, cap: 0 },
+      { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+      { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
+      { name: 'Other', wt: 0, density: 3, cap: 0 },
+    ],
+    elecProps: {
+      cath_bulk_density: 2.41, cath_mesh_dens: 0.16,
+      anod_bulk_density: 4.062, anod_mesh_dens: 0.149,
+    }
+  }
+};
+
+function getFormulationPresets() {
+  const stored = localStorage.getItem(PRESETS_KEY);
+  if (stored) {
+    try { return JSON.parse(stored); } catch(e) {}
+  }
+  // First time: seed with defaults
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS));
+  return { ...DEFAULT_PRESETS };
+}
+
+function saveFormulationPresets(presets) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+function loadFormulationPresetList() {
+  const sel = document.getElementById('formulationPreset');
+  const presets = getFormulationPresets();
+  // Keep first option, remove rest
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(presets).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function getCurrentFormulation() {
+  return {
+    cathComponents: cathComponents.map(c => ({ ...c })),
+    anodComponents: anodComponents.map(c => ({ ...c })),
+    elecProps: {
+      cath_bulk_density: elecProps.cath_bulk_density,
+      cath_mesh_dens: elecProps.cath_mesh_dens,
+      anod_bulk_density: elecProps.anod_bulk_density,
+      anod_mesh_dens: elecProps.anod_mesh_dens,
+    }
+  };
+}
+
+function applyFormulation(preset) {
+  // Apply cathode components
+  cathComponents.length = 0;
+  preset.cathComponents.forEach(c => cathComponents.push({ ...c }));
+  // Apply anode components
+  anodComponents.length = 0;
+  preset.anodComponents.forEach(c => anodComponents.push({ ...c }));
+  // Apply electrode properties
+  if (preset.elecProps) {
+    elecProps.cath_bulk_density = preset.elecProps.cath_bulk_density;
+    elecProps.cath_mesh_dens = preset.elecProps.cath_mesh_dens;
+    elecProps.anod_bulk_density = preset.elecProps.anod_bulk_density;
+    elecProps.anod_mesh_dens = preset.elecProps.anod_mesh_dens;
+    document.getElementById('ep_cath_bulk_density').value = elecProps.cath_bulk_density;
+    document.getElementById('ep_cath_mesh_dens').value = elecProps.cath_mesh_dens;
+    document.getElementById('ep_anod_bulk_density').value = elecProps.anod_bulk_density;
+    document.getElementById('ep_anod_mesh_dens').value = elecProps.anod_mesh_dens;
+  }
+  // Rebuild tables
+  buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
+  buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
+  markDirty();
+}
+
+document.getElementById('btnLoadPreset').addEventListener('click', () => {
+  const name = document.getElementById('formulationPreset').value;
+  if (!name) { showToast('Select a preset first', true); return; }
+  const presets = getFormulationPresets();
+  if (presets[name]) {
+    applyFormulation(presets[name]);
+    showToast(`Loaded: ${name}`);
+  }
+});
+
+document.getElementById('btnSavePreset').addEventListener('click', () => {
+  const name = prompt('Preset name:', document.getElementById('formulationPreset').value || 'My Formulation');
+  if (!name) return;
+  const presets = getFormulationPresets();
+  presets[name] = getCurrentFormulation();
+  saveFormulationPresets(presets);
+  loadFormulationPresetList();
+  document.getElementById('formulationPreset').value = name;
+  showToast(`Saved: ${name}`);
+});
+
+document.getElementById('btnDeletePreset').addEventListener('click', () => {
+  const name = document.getElementById('formulationPreset').value;
+  if (!name) { showToast('Select a preset first', true); return; }
+  if (!confirm(`Delete preset "${name}"?`)) return;
+  const presets = getFormulationPresets();
+  delete presets[name];
+  saveFormulationPresets(presets);
+  loadFormulationPresetList();
+  showToast(`Deleted: ${name}`);
+});
 
 // Bottom section toggle
 document.getElementById('bottomToggle').addEventListener('click', () => {
