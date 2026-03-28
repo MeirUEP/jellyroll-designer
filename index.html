@@ -72,8 +72,9 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .canvas-wrap canvas { display: block; }
 #threeContainer { width: 100%; height: 100%; }
 /* Bottom section: collapsible summary + table */
-.bottom-section { display: flex; flex-direction: column; max-height: 250px; overflow: hidden; flex-shrink: 0; }
+.bottom-section { display: flex; flex-direction: column; max-height: 160px; overflow: hidden; flex-shrink: 0; }
 .bottom-section.collapsed { max-height: 28px; }
+.bottom-section.expanded { max-height: 350px; }
 .bottom-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); cursor: pointer; font-size: 11px; color: var(--fg2); user-select: none; }
 .bottom-toggle:hover { color: var(--fg); }
 .summary-cards { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg2); }
@@ -203,10 +204,17 @@ if (sessionStorage.getItem('jr_auth') === '1') {
 // Bottom section toggle
 document.getElementById('bottomToggle').addEventListener('click', () => {
   const bs = document.getElementById('bottomSection');
-  bs.classList.toggle('collapsed');
-  document.getElementById('bottomToggle').innerHTML = bs.classList.contains('collapsed')
-    ? '&#9650; Summary &amp; Tab Positions'
-    : '&#9660; Summary &amp; Tab Positions';
+  if (bs.classList.contains('collapsed')) {
+    bs.classList.remove('collapsed');
+    bs.classList.remove('expanded');
+  } else if (bs.classList.contains('expanded')) {
+    bs.classList.add('collapsed');
+    bs.classList.remove('expanded');
+  } else {
+    bs.classList.add('expanded');
+  }
+  const icon = bs.classList.contains('collapsed') ? '&#9650;' : '&#9660;';
+  document.getElementById('bottomToggle').innerHTML = icon + ' Summary &amp; Tab Positions';
   setTimeout(() => renderView(), 50);
 });
 
@@ -883,51 +891,46 @@ function renderTop() {
   // Tab lines at correct drill angles, radiating outward from circle
   // Canvas convention: 0° = 3 o'clock, 90° = 12 o'clock (top)
   // Canvas angle: -PI/2 for 90° (12 o'clock), PI/2 for 270° (6 o'clock)
-  function drawTabsRadial(tabs, color, prefix, cellAngleDeg) {
+  // Tab labels laid out in a horizontal row above/below the circle
+  // with leader lines to dots at the actual ring positions
+  function drawTabsWithLabels(tabs, color, prefix, cellAngleDeg) {
     const canvasAng = -cellAngleDeg * Math.PI / 180;
+    const dx0 = Math.cos(canvasAng);
+    const dy0 = Math.sin(canvasAng);
     const count = tabs.length;
-    // Fan labels across a wide angular spread to prevent overlap
-    // With 9 tabs, need ~2 radians (~115°) spread for readable labels
-    const fanSpread = Math.min(2.0, count * 0.22); // radians total spread
-    const fanStep = count > 1 ? fanSpread / (count - 1) : 0;
-    const fanStart = -fanSpread / 2;
+    if (count === 0) return;
+
+    // Place labels in a horizontal row
+    // Cathode at 90° (top) → labels go above; Anode at 270° (bottom) → labels also above
+    const labelRowY = 12;
+    const minSpacing = 18;
+    const totalWidth = count * minSpacing;
+    const startX = cx - totalWidth / 2;
 
     tabs.forEach((tab, i) => {
       const r1 = tab.r * sc;
-      const r2 = outerR * sc + 18 + tabLen;
-
-      // Dot at exact ring position along the drill angle
-      const dx0 = Math.cos(canvasAng);
-      const dy0 = Math.sin(canvasAng);
+      // Dot at ring position along drill angle
       const x1 = cx + r1 * dx0;
       const y1 = cy + r1 * dy0;
       ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
 
-      // Fan out label angle
-      const labelAng = canvasAng + fanStart + i * fanStep;
-      const ldx = Math.cos(labelAng);
-      const ldy = Math.sin(labelAng);
-      const x2 = cx + r2 * ldx;
-      const y2 = cy + r2 * ldy;
+      // Label position in horizontal row
+      const labelX = startX + i * minSpacing + minSpacing / 2;
 
-      // Leader line from dot to fanned label position
-      ctx.strokeStyle = color; ctx.lineWidth = 0.8; ctx.globalAlpha = 0.5;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // Leader line
+      ctx.strokeStyle = color; ctx.lineWidth = 0.6; ctx.globalAlpha = 0.4;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(labelX, labelRowY + 5); ctx.stroke();
       ctx.globalAlpha = 1;
 
       // Label
-      const lx = cx + (r2 + 8) * ldx;
-      const ly = cy + (r2 + 8) * ldy;
-      ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${prefix}${tab.idx}`, lx, ly);
+      ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelRowY);
     });
   }
 
-  drawTabsRadial(s.cTabs, '#3b82f6', 'C', params.cath_angle);
-  drawTabsRadial(s.aTabs, '#16a34a', 'A', params.anod_angle);
-  ctx.textBaseline = 'alphabetic'; // reset
+  drawTabsWithLabels(s.cTabs, '#3b82f6', 'C', params.cath_angle);
+  drawTabsWithLabels(s.aTabs, '#16a34a', 'A', params.anod_angle);
 
   // Angle labels at the drill positions
   const cCanvAng = -params.cath_angle * Math.PI / 180;
