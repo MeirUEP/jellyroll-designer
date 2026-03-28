@@ -887,7 +887,7 @@ function renderTop() {
     const canvasAng = -cellAngleDeg * Math.PI / 180;
     const count = tabs.length;
     // Fan labels across a wider angular spread to prevent overlap
-    const fanSpread = Math.min(0.6, count * 0.06); // radians total spread
+    const fanSpread = Math.min(1.2, count * 0.12); // radians total spread
     const fanStep = count > 1 ? fanSpread / (count - 1) : 0;
     const fanStart = -fanSpread / 2;
 
