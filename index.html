@@ -535,22 +535,23 @@ function renderSide() {
   // Cathode tabs (blue, left of center, pointing up)
   s.cTabs.forEach((tab, i) => {
     const x = cx - tab.r * sc;
+    const stagger = (i % 3) * 10;
+    const tH = tabHpx + stagger;
     ctx.fillStyle = '#3b82f6';
-    ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
+    ctx.fillRect(x - tabWpx/2, cellTop - tH, tabWpx, tH);
     ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    // Stagger label heights
-    const labelY = cellTop - tabHpx - 3 - (i % 2) * 10;
-    ctx.fillText(`C${tab.idx}`, x, labelY);
+    ctx.fillText(`C${tab.idx}`, x, cellTop - tH - 3);
   });
 
   // Anode tabs (green, right of center, pointing up)
   s.aTabs.forEach((tab, i) => {
     const x = cx + tab.r * sc;
+    const stagger = (i % 3) * 10;
+    const tH = tabHpx + stagger;
     ctx.fillStyle = '#16a34a';
-    ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
+    ctx.fillRect(x - tabWpx/2, cellTop - tH, tabWpx, tH);
     ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    const labelY = cellTop - tabHpx - 3 - (i % 2) * 10;
-    ctx.fillText(`A${tab.idx}`, x, labelY);
+    ctx.fillText(`A${tab.idx}`, x, cellTop - tH - 3);
   });
 
   // Dimension annotations with bracket lines
@@ -1028,7 +1029,6 @@ function update3DScene() {
 
       // Outer cylinder surface
       const geoO = new THREE.CylinderGeometry(rOuter, rOuter, cellH, 64, 1, true, 0, cutRad);
-      threeScene.add(Object.assign(new THREE.Mesh(geoO, mat), { position: { x:0, y: cellH/2, z:0 } }));
       const meshO = new THREE.Mesh(geoO, mat);
       meshO.position.y = cellH / 2;
       threeScene.add(meshO);
