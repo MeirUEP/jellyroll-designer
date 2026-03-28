@@ -122,7 +122,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <div class="panel" id="panel3d" style="display:none">
       <h3>3D Display</h3>
       <div class="param-item"><label>Cutaway (&deg;)</label><input type="range" id="p_cut" min="10" max="360" value="270" style="width:100%"><span id="p_cut_val">270</span></div>
-      <div class="param-item"><label>Layer scale</label><input type="range" id="p_rscale" min="1" max="20" value="8" style="width:100%"><span id="p_rscale_val">8</span></div>
+      <div class="param-item"><label>Layer scale</label><input type="range" id="p_rscale" min="1" max="20" value="3" style="width:100%"><span id="p_rscale_val">3</span></div>
       <div style="display:flex;gap:4px;margin-top:4px">
         <button class="btn-sm" id="btnSpin">Auto-spin</button>
         <button class="btn-sm" id="btnResetCam">Reset view</button>
@@ -1210,7 +1210,17 @@ function update3DScene() {
   toRemove.forEach(c => threeScene.remove(c));
 
   const s = simResult;
-  const rScale = +document.getElementById('p_rscale').value;
+  // Auto-compute rScale to maintain correct proportions
+  // Target: diameter should be proportional to height (real aspect ratio)
+  // Real: OD ~88mm, height 222mm → ratio ~0.4
+  // With rScale=1 layers are too thin to see, so use minimum rScale that keeps
+  // the cylinder looking tall (not a disc)
+  const userScale = +document.getElementById('p_rscale').value;
+  // proportional rScale = height / (2 * outerR) to make OD = height
+  const proportionalScale = params.cell_h / (s.outerR * 2);
+  // Blend: user slider 1-20 maps from proportional (correct shape) to exaggerated
+  // At slider=1: use proportional. At slider=20: use 4x proportional
+  const rScale = proportionalScale * (0.8 + userScale * 0.15);
   const cutDeg = +document.getElementById('p_cut').value;
   const cutRad = cutDeg * Math.PI / 180;
   const cellH = params.cell_h;
