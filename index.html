@@ -699,28 +699,38 @@ function renderSide() {
   ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
 
   // Tabs as uniform thin lines with fanned-out leader labels
-  const tabLineH = 20; // all tabs same height
+  // Spread labels across full canvas halves to prevent overlap
+  const tabLineH = 20;
   function drawSideTabs(tabs, color, prefix, side) {
     const count = tabs.length;
-    // Compute evenly spaced label positions across available width
-    const areaStart = side === 'left' ? cellLeft - 10 : cx + mandrelR * sc;
-    const areaEnd = side === 'left' ? cx - mandrelR * sc : cellRight + 10;
-    const areaW = areaEnd - areaStart;
-    const labelSpacing = count > 1 ? areaW / (count - 1) : 0;
+    if (count === 0) return;
+    // Use full canvas half for label spread (with padding)
+    const pad = 20;
+    const minLabelSpacing = 18; // minimum px between labels
+    const neededWidth = count * minLabelSpacing;
+    let areaStart, areaEnd;
+    if (side === 'left') {
+      areaEnd = cx - 10;
+      areaStart = Math.max(pad, areaEnd - neededWidth);
+    } else {
+      areaStart = cx + 10;
+      areaEnd = Math.min(W - pad, areaStart + neededWidth);
+    }
+    const labelSpacing = count > 1 ? (areaEnd - areaStart) / (count - 1) : 0;
 
     tabs.forEach((tab, i) => {
       const x = side === 'left' ? cx - tab.r * sc : cx + tab.r * sc;
-      // Uniform vertical line from cell top upward
+      // Vertical line from cell top upward
       ctx.strokeStyle = color; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(x, cellTop); ctx.lineTo(x, cellTop - tabLineH); ctx.stroke();
       // Dot at cell top
       ctx.fillStyle = color;
       ctx.beginPath(); ctx.arc(x, cellTop, 2, 0, Math.PI * 2); ctx.fill();
-      // Fan out label positions evenly
+      // Fan out label positions evenly across available space
       const labelX = count > 1 ? areaStart + i * labelSpacing : (areaStart + areaEnd) / 2;
-      const labelY = 12;
-      // Leader line from tab top to label
-      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.5;
+      const labelY = 14;
+      // Leader line
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
       ctx.beginPath(); ctx.moveTo(x, cellTop - tabLineH); ctx.lineTo(labelX, labelY + 4); ctx.stroke();
       ctx.globalAlpha = 1;
       // Label
@@ -874,33 +884,40 @@ function renderTop() {
   // Canvas convention: 0° = 3 o'clock, 90° = 12 o'clock (top)
   // Canvas angle: -PI/2 for 90° (12 o'clock), PI/2 for 270° (6 o'clock)
   function drawTabsRadial(tabs, color, prefix, cellAngleDeg) {
-    // Convert cell angle to canvas angle: 0° cell = 0 canvas (3 o'clock)
-    // 90° cell = -PI/2 canvas (12 o'clock), 270° cell = PI/2 (6 o'clock)
     const canvasAng = -cellAngleDeg * Math.PI / 180;
-    const dx = Math.cos(canvasAng);
-    const dy = Math.sin(canvasAng);
+    const count = tabs.length;
+    // Fan labels across a wider angular spread to prevent overlap
+    const fanSpread = Math.min(0.6, count * 0.06); // radians total spread
+    const fanStep = count > 1 ? fanSpread / (count - 1) : 0;
+    const fanStart = -fanSpread / 2;
 
     tabs.forEach((tab, i) => {
-      const r1 = tab.r * sc; // start at ring
-      const r2 = outerR * sc + 10 + tabLen; // end beyond outer ring (uniform height)
+      const r1 = tab.r * sc;
+      const r2 = outerR * sc + 12 + tabLen;
 
-      const x1 = cx + r1 * dx;
-      const y1 = cy + r1 * dy;
-      const x2 = cx + r2 * dx;
-      const y2 = cy + r2 * dy;
-
-      // White outline
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
-      // Colored line
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-      // Dot at ring intersection
-      ctx.beginPath(); ctx.arc(x1, y1, 2.5, 0, Math.PI * 2);
+      // Dot at exact ring position along the drill angle
+      const dx0 = Math.cos(canvasAng);
+      const dy0 = Math.sin(canvasAng);
+      const x1 = cx + r1 * dx0;
+      const y1 = cy + r1 * dy0;
+      ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      // Label at end
-      const lx = cx + (r2 + 10) * dx;
-      const ly = cy + (r2 + 10) * dy;
+
+      // Fan out label angle
+      const labelAng = canvasAng + fanStart + i * fanStep;
+      const ldx = Math.cos(labelAng);
+      const ldy = Math.sin(labelAng);
+      const x2 = cx + r2 * ldx;
+      const y2 = cy + r2 * ldy;
+
+      // Leader line from dot to fanned label position
+      ctx.strokeStyle = color; ctx.lineWidth = 0.8; ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Label
+      const lx = cx + (r2 + 8) * ldx;
+      const ly = cy + (r2 + 8) * ldy;
       ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${prefix}${tab.idx}`, lx, ly);
