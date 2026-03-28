@@ -215,8 +215,8 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
           <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
           <div class="param-item"><label>Skip turns</label><input type="number" id="p_skip_turns" step="1" value="2"></div>
-          <div class="param-item"><label>Cathode angle (&deg;)</label><input type="number" id="p_cath_angle" step="1" value="90"></div>
-          <div class="param-item"><label>Anode angle (&deg;)</label><input type="number" id="p_anod_angle" step="1" value="270"></div>
+          <div class="param-item"><label>Cathode angle (&deg;)</label><input type="number" id="p_cath_angle" step="1" value="0"></div>
+          <div class="param-item"><label>Anode angle (&deg;)</label><input type="number" id="p_anod_angle" step="1" value="180"></div>
         </div>
       </div>
       <div class="panel" id="panel3d" style="display:none">
@@ -618,7 +618,7 @@ let layers = [
 let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
   tab_w: 10, tab_h: 15, skip_turns: 2,
-  cath_angle: 90, anod_angle: 270
+  cath_angle: 0, anod_angle: 180
 };
 
 let simResult = null;
@@ -1270,7 +1270,9 @@ function renderTop() {
     const count = tabs.length;
     if (count === 0) return;
     // Canvas angle: cell 0°=3 o'clock, 90°=12 o'clock (top)
-    const canvasAng = -cellAngleDeg * Math.PI / 180;
+    // 0° = top (12 o'clock), 180° = bottom (6 o'clock)
+    // Canvas: -PI/2 = top. So canvasAng = -PI/2 - cellAngle
+    const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
     const dx = Math.cos(canvasAng);
     const dy = Math.sin(canvasAng);
     const tabLenPx = 18; // length of tab rectangle extending outward
@@ -1337,8 +1339,8 @@ function renderTop() {
   // Angle labels at drill positions
   const angLabelR = outerR * sc + 8;
   ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
-  const cAng = -params.cath_angle * Math.PI / 180;
-  const aAng = -params.anod_angle * Math.PI / 180;
+  const cAng = -Math.PI / 2 - params.cath_angle * Math.PI / 180;
+  const aAng = -Math.PI / 2 - params.anod_angle * Math.PI / 180;
   ctx.fillText(`${params.cath_angle}°`, cx + angLabelR * Math.cos(cAng), cy + angLabelR * Math.sin(cAng));
   ctx.fillText(`${params.anod_angle}°`, cx + angLabelR * Math.cos(aAng), cy + angLabelR * Math.sin(aAng));
 
@@ -1813,7 +1815,8 @@ function update3DScene() {
   const tabW = params.tab_w;
 
   function addTabs(tabs, color, emissive, cellAngleDeg) {
-    const angRad = cellAngleDeg * Math.PI / 180;
+    // 0° = top (12 o'clock). Three.js Y-up, XZ plane: offset by 90°
+    const angRad = (cellAngleDeg + 90) * Math.PI / 180;
     tabs.forEach(tab => {
       const r = tab.r * rScale;
       // Tab: much taller (4x) and wider for clear visibility
