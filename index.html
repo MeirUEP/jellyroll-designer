@@ -1266,32 +1266,28 @@ function renderTop() {
   // Looking down at the top face: tabs are welded on the electrode surface
   // and stick up vertically. In the top view they appear as thin radial lines
   // at each tab's radius, at the drill angle direction.
+  // Tabs as thin rectangular fins radiating outward at the drill angle
+  // Like the 3D view: individual thin strips at each turn radius
   function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
-    // Canvas angle: cell 0°=3 o'clock, 90°=12 o'clock (top)
-    // 0° = top (12 o'clock), 180° = bottom (6 o'clock)
-    // Canvas: -PI/2 = top. So canvasAng = -PI/2 - cellAngle
     const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
     const dx = Math.cos(canvasAng);
     const dy = Math.sin(canvasAng);
-    const tabLenPx = 18; // length of tab rectangle extending outward
-    const tabWidthPx = 3; // width of tab rectangle (narrow)
+    const tabLenPx = 12;  // short fins
+    const tabWidthPx = 2; // very thin
 
+    // Draw each tab as a thin rectangle
     tabs.forEach((tab, i) => {
       const r = tab.r * sc;
-      // Tab base point on the ring at the drill angle
       const bx = cx + r * dx;
       const by = cy + r * dy;
-      // Tab tip point (extending outward from center)
       const tx = cx + (r + tabLenPx) * dx;
       const ty = cy + (r + tabLenPx) * dy;
-
-      // Draw thin rectangle along the radial direction
-      // Perpendicular vector for tab width
       const px = -dy * tabWidthPx / 2;
       const py = dx * tabWidthPx / 2;
 
+      // Filled rectangle
       ctx.beginPath();
       ctx.moveTo(bx + px, by + py);
       ctx.lineTo(tx + px, ty + py);
@@ -1299,50 +1295,25 @@ function renderTop() {
       ctx.lineTo(bx - px, by - py);
       ctx.closePath();
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0.9;
       ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
       ctx.globalAlpha = 1;
     });
 
-    // Labels — spread along the outer edge beyond all tabs
-    const labelR = outerR * sc + tabLenPx + 20;
-    const labelSpread = Math.min(1.5, count * 0.15); // angular spread for labels
-    const labelStep = count > 1 ? labelSpread / (count - 1) : 0;
-    const labelStart = canvasAng - labelSpread / 2;
+    // Angle label at the drill position
+    const angR = outerR * sc + tabLenPx + 8;
+    ctx.fillStyle = fg; ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(`${cellAngleDeg}°`, cx + angR * dx, cy + angR * dy);
 
-    tabs.forEach((tab, i) => {
-      const r = tab.r * sc;
-      const bx = cx + r * dx;
-      const by = cy + r * dy;
-      // Fan labels angularly
-      const labelAng = labelStart + i * labelStep;
-      const lx = cx + labelR * Math.cos(labelAng);
-      const ly = cy + labelR * Math.sin(labelAng);
-      // Leader line
-      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.3;
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(lx, ly); ctx.stroke();
-      ctx.globalAlpha = 1;
-      // Label
-      ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(`${prefix}${tab.idx}`, lx, ly);
-    });
+    // Tab count label next to angle
+    ctx.fillStyle = color; ctx.font = '8px sans-serif';
+    ctx.fillText(`${count}× ${prefix}`, cx + (angR + 14) * dx, cy + (angR + 14) * dy);
   }
 
   drawTabsTopView(s.cTabs, '#3b82f6', 'C', params.cath_angle);
   drawTabsTopView(s.aTabs, '#16a34a', 'A', params.anod_angle);
   ctx.textBaseline = 'alphabetic';
-
-  // Angle labels at drill positions
-  const angLabelR = outerR * sc + 8;
-  ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
-  const cAng = -Math.PI / 2 - params.cath_angle * Math.PI / 180;
-  const aAng = -Math.PI / 2 - params.anod_angle * Math.PI / 180;
-  ctx.fillText(`${params.cath_angle}°`, cx + angLabelR * Math.cos(cAng), cy + angLabelR * Math.sin(cAng));
-  ctx.fillText(`${params.anod_angle}°`, cx + angLabelR * Math.cos(aAng), cy + angLabelR * Math.sin(aAng));
 
   renderLegend();
 }
