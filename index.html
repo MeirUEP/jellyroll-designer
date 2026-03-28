@@ -472,14 +472,14 @@ function renderSide() {
   const fg = var_fg();
 
   const PAD_L = 70, PAD_R = 70, PAD_BOT = 50;
-  const tabHpx_max = 40;
+  const TAB_AREA = 70; // more space for tab labels above cell
   // Scale to use full canvas height
   const availW = W - PAD_L - PAD_R;
-  const availH = H - tabHpx_max - 20 - PAD_BOT;
+  const availH = H - TAB_AREA - PAD_BOT;
   const sc = Math.min(availW / (outerR * 2), availH / cellH);
 
   const cx = W / 2;
-  const cellTop = tabHpx_max + 20;
+  const cellTop = TAB_AREA;
   const cellBot = cellTop + cellH * sc;
   const cellLeft = cx - outerR * sc;
   const cellRight = cx + outerR * sc;
@@ -527,32 +527,39 @@ function renderSide() {
   ctx.fillStyle = hexToRgba('#888899', 0.4);
   ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
 
-  // Tab sizing — stagger labels to avoid overlap
-  const pitchPx = s.turns.length > 1 ? Math.abs(s.turns[1].r - s.turns[0].r) * sc : 10;
-  const tabWpx = Math.max(3, pitchPx * 0.6);
-  const tabHpx = Math.min(tabHpx_max, Math.max(15, tabH * sc * 0.4));
+  // Tabs as uniform thin lines with fanned-out leader labels
+  const tabLineH = 20; // all tabs same height
+  function drawSideTabs(tabs, color, prefix, side) {
+    const count = tabs.length;
+    // Compute evenly spaced label positions across available width
+    const areaStart = side === 'left' ? cellLeft - 10 : cx + mandrelR * sc;
+    const areaEnd = side === 'left' ? cx - mandrelR * sc : cellRight + 10;
+    const areaW = areaEnd - areaStart;
+    const labelSpacing = count > 1 ? areaW / (count - 1) : 0;
 
-  // Cathode tabs (blue, left of center, pointing up)
-  s.cTabs.forEach((tab, i) => {
-    const x = cx - tab.r * sc;
-    const stagger = (i % 3) * 10;
-    const tH = tabHpx + stagger;
-    ctx.fillStyle = '#3b82f6';
-    ctx.fillRect(x - tabWpx/2, cellTop - tH, tabWpx, tH);
-    ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`C${tab.idx}`, x, cellTop - tH - 3);
-  });
+    tabs.forEach((tab, i) => {
+      const x = side === 'left' ? cx - tab.r * sc : cx + tab.r * sc;
+      // Uniform vertical line from cell top upward
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, cellTop); ctx.lineTo(x, cellTop - tabLineH); ctx.stroke();
+      // Dot at cell top
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, cellTop, 2, 0, Math.PI * 2); ctx.fill();
+      // Fan out label positions evenly
+      const labelX = count > 1 ? areaStart + i * labelSpacing : (areaStart + areaEnd) / 2;
+      const labelY = 12;
+      // Leader line from tab top to label
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, cellTop - tabLineH); ctx.lineTo(labelX, labelY + 4); ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Label
+      ctx.fillStyle = color; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelY);
+    });
+  }
 
-  // Anode tabs (green, right of center, pointing up)
-  s.aTabs.forEach((tab, i) => {
-    const x = cx + tab.r * sc;
-    const stagger = (i % 3) * 10;
-    const tH = tabHpx + stagger;
-    ctx.fillStyle = '#16a34a';
-    ctx.fillRect(x - tabWpx/2, cellTop - tH, tabWpx, tH);
-    ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`A${tab.idx}`, x, cellTop - tH - 3);
-  });
+  drawSideTabs(s.cTabs, '#3b82f6', 'C', 'left');
+  drawSideTabs(s.aTabs, '#16a34a', 'A', 'right');
 
   // Dimension annotations with bracket lines
   ctx.strokeStyle = fg; ctx.fillStyle = fg; ctx.lineWidth = 0.8;
@@ -692,40 +699,53 @@ function renderTop() {
     });
   }
 
-  // Tab lines at correct angles with staggered lengths
-  const cAngRad = (90) * Math.PI / 180; // 90° = left side in top view (12 o'clock canvas)
-  const aAngRad = (270) * Math.PI / 180;
+  // Tab lines at correct drill angles, radiating outward from circle
+  // Canvas convention: 0° = 3 o'clock, 90° = 12 o'clock (top)
+  // Canvas angle: -PI/2 for 90° (12 o'clock), PI/2 for 270° (6 o'clock)
+  function drawTabsRadial(tabs, color, prefix, cellAngleDeg) {
+    // Convert cell angle to canvas angle: 0° cell = 0 canvas (3 o'clock)
+    // 90° cell = -PI/2 canvas (12 o'clock), 270° cell = PI/2 (6 o'clock)
+    const canvasAng = -cellAngleDeg * Math.PI / 180;
+    const dx = Math.cos(canvasAng);
+    const dy = Math.sin(canvasAng);
 
-  function drawTabLineTop(tab, color, label, angDeg, idx, total) {
-    // Cathode at 90° = 12 o'clock = top, left side of center
-    // Anode at 270° = bottom = right side of center
-    // In canvas: 90° → left, 270° → right
-    const x = angDeg === 90 ? cx - tab.r * sc : cx + tab.r * sc;
-    // Stagger tab lengths to avoid label overlap
-    const stagger = (idx % 3) * 8;
-    const y1 = cy, y2 = cy - tabLen - stagger;
+    tabs.forEach((tab, i) => {
+      const r1 = tab.r * sc; // start at ring
+      const r2 = outerR * sc + 10 + tabLen; // end beyond outer ring (uniform height)
 
-    // White outline
-    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
-    // Colored stroke
-    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
-    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
-    // Arrow tip
-    ctx.beginPath(); ctx.moveTo(x, y2); ctx.lineTo(x-3, y2+6); ctx.lineTo(x+3, y2+6); ctx.closePath();
-    ctx.fillStyle = color; ctx.fill();
-    // Label
-    ctx.fillStyle = color; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(label, x, y2 - 4);
+      const x1 = cx + r1 * dx;
+      const y1 = cy + r1 * dy;
+      const x2 = cx + r2 * dx;
+      const y2 = cy + r2 * dy;
+
+      // White outline
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+      // Colored line
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+      // Dot at ring intersection
+      ctx.beginPath(); ctx.arc(x1, y1, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      // Label at end
+      const lx = cx + (r2 + 10) * dx;
+      const ly = cy + (r2 + 10) * dy;
+      ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${prefix}${tab.idx}`, lx, ly);
+    });
   }
 
-  s.cTabs.forEach((tab, i) => drawTabLineTop(tab, '#3b82f6', `C${tab.idx}`, 90, i, s.cTabs.length));
-  s.aTabs.forEach((tab, i) => drawTabLineTop(tab, '#16a34a', `A${tab.idx}`, 270, i, s.aTabs.length));
+  drawTabsRadial(s.cTabs, '#3b82f6', 'C', params.cath_angle);
+  drawTabsRadial(s.aTabs, '#16a34a', 'A', params.anod_angle);
+  ctx.textBaseline = 'alphabetic'; // reset
 
-  // Angle labels
-  ctx.font = '10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
-  ctx.fillText(`${params.cath_angle}°`, cx - outerR * sc - 20, cy);
-  ctx.fillText(`${params.anod_angle}°`, cx + outerR * sc + 20, cy);
+  // Angle labels at the drill positions
+  const cCanvAng = -params.cath_angle * Math.PI / 180;
+  const aCanvAng = -params.anod_angle * Math.PI / 180;
+  ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
+  const angLabelR = outerR * sc + 8;
+  ctx.fillText(`${params.cath_angle}°`, cx + angLabelR * Math.cos(cCanvAng), cy + angLabelR * Math.sin(cCanvAng));
 
   renderLegend();
 }
