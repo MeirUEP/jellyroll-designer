@@ -1510,130 +1510,117 @@ function renderTabMap() {
   if (!simResult) return;
 
   const s = simResult;
-  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
-  const maxLen = Math.max(...nonMandrel.map(l => l.off + l.len));
   const fg = var_fg();
-  const PAD_L = 112, PAD_R = 20;
-  const RULER_H = 36;
-  const sc = (W - PAD_L - PAD_R) / maxLen;
+  const PAD_L = 112, PAD_R = 40;
 
-  const tabStripH = 30;
-  const tabMarkerH = 30;
-  const tabSectionH = tabStripH + tabMarkerH + 30;
-  const electrodeCount = [layers.find(l => l.type === 'cathode'), layers.find(l => l.type === 'anode')].filter(Boolean).length;
-  const totalH = RULER_H + 10 + electrodeCount * tabSectionH + 20;
+  // Each electrode gets its own zero-based scale
+  const labelH = 16;       // height for tab labels above strip
+  const tabLineH = 20;     // height of tab marker lines
+  const stripH = 24;       // electrode strip height
+  const distH = 16;        // height for distance labels below strip
+  const spacingH = 16;     // height for spacing annotations
+  const sectionGap = 30;   // gap between cathode and anode sections
+  const sectionH = labelH + tabLineH + stripH + distH + spacingH;
 
+  const electrodes = [
+    { layer: layers.find(l => l.type === 'cathode'), tabs: s.cTabs, color: '#3b82f6', prefix: 'C' },
+    { layer: layers.find(l => l.type === 'anode'), tabs: s.aTabs, color: '#16a34a', prefix: 'A' },
+  ].filter(e => e.layer);
+
+  const totalH = electrodes.length * sectionH + (electrodes.length - 1) * sectionGap + 40;
   canvas.width = W;
   canvas.height = Math.max(totalH, H);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Ruler background
-  ctx.fillStyle = 'rgba(50,50,60,0.5)';
-  ctx.fillRect(0, 0, W, RULER_H);
+  let y = 15;
 
-  // mm scale
-  ctx.fillStyle = fg; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-  const mmStep = Math.pow(10, Math.floor(Math.log10(maxLen / 10)));
-  for (let mm = 0; mm <= maxLen; mm += mmStep) {
-    const x = PAD_L + mm * sc;
-    if (x > W - PAD_R) break;
-    ctx.fillText(`${mm}`, x, RULER_H - 4);
-    ctx.beginPath(); ctx.moveTo(x, RULER_H - 14); ctx.lineTo(x, RULER_H - 8);
-    ctx.strokeStyle = 'rgba(150,150,150,0.5)'; ctx.lineWidth = 0.5; ctx.stroke();
-  }
+  electrodes.forEach((elec, ei) => {
+    const { layer, tabs, color, prefix } = elec;
+    // Zero-based: electrode starts at 0, length = layer.len
+    const eSc = (W - PAD_L - PAD_R) / layer.len;
 
-  // Turn markers + grid lines
-  ctx.font = '8px sans-serif';
-  s.turns.forEach(t => {
-    const x = PAD_L + t.arc * sc;
-    if (x > W - PAD_R) return;
-    ctx.fillStyle = 'rgba(150,150,150,0.7)';
-    ctx.fillText(`T${t.turn}`, x, 10);
-    ctx.beginPath(); ctx.moveTo(x, RULER_H); ctx.lineTo(x, canvas.height);
-    ctx.strokeStyle = 'rgba(100,100,100,0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
-  });
-
-  // Tab Map strips
-  let y = RULER_H + 15;
-
-  function drawTabMapStrip(electrode, tabs, color, prefix) {
-    if (!electrode) return;
-    const mapY = y + tabMarkerH;
-    const x0 = PAD_L + electrode.off * sc;
-    const w = electrode.len * sc;
-
-    // Electrode strip background
-    ctx.fillStyle = hexToRgba(color, 0.25);
-    ctx.fillRect(x0, mapY, w, tabStripH);
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-    ctx.strokeRect(x0, mapY, w, tabStripH);
-
-    // Label
+    // Section title
     ctx.fillStyle = color; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'right';
-    ctx.fillText(electrode.name, PAD_L - 6, mapY + tabStripH / 2 + 4);
+    ctx.fillText(layer.name, PAD_L - 6, y + labelH + tabLineH + stripH / 2 + 4);
 
-    // Length label inside
-    if (w > 60) {
-      ctx.fillStyle = hexToRgba(color, 0.4); ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${electrode.len}mm`, x0 + w / 2, mapY + tabStripH / 2 + 3);
+    // Ruler for this electrode (zero-based)
+    const rulerY = y;
+    ctx.fillStyle = 'rgba(50,50,60,0.4)';
+    ctx.fillRect(PAD_L, rulerY, W - PAD_L - PAD_R, 14);
+    ctx.fillStyle = fg; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    const mmStep = Math.pow(10, Math.floor(Math.log10(layer.len / 8)));
+    for (let mm = 0; mm <= layer.len; mm += mmStep) {
+      const x = PAD_L + mm * eSc;
+      if (x > W - PAD_R + 5) break;
+      ctx.fillText(`${mm}`, x, rulerY + 10);
+      ctx.strokeStyle = 'rgba(150,150,150,0.3)'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, rulerY + 14); ctx.lineTo(x, y + sectionH); ctx.stroke();
     }
 
-    // Tab markers
+    // Strip
+    const stripY = y + labelH + tabLineH;
+    const x0 = PAD_L;
+    const w = layer.len * eSc;
+
+    ctx.fillStyle = hexToRgba(color, 0.2);
+    ctx.fillRect(x0, stripY, w, stripH);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x0, stripY, w, stripH);
+
+    // Length label inside strip
+    if (w > 80) {
+      ctx.fillStyle = hexToRgba(color, 0.3); ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${layer.len}mm`, x0 + w / 2, stripY + stripH / 2 + 3);
+    }
+
+    // Tab markers — uniform height, no stagger
     tabs.forEach((tab, ti) => {
-      const tx = PAD_L + tab.arcLen * sc;
-      if (tx < x0 - 2 || tx > x0 + w + 2) return;
+      // Zero-based position: tab arc length relative to electrode offset
+      const relPos = tab.arcLen - layer.off;
+      if (relPos < 0 || relPos > layer.len) return;
+      const tx = PAD_L + relPos * eSc;
 
-      // Vertical line above strip
+      // Tab line above strip
       ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(tx, mapY - tabMarkerH + 5); ctx.lineTo(tx, mapY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, stripY - tabLineH); ctx.lineTo(tx, stripY); ctx.stroke();
 
-      // Triangle pointing down
+      // Triangle pointing down into strip
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(tx, mapY + 5);
-      ctx.lineTo(tx - 4, mapY - 2);
-      ctx.lineTo(tx + 4, mapY - 2);
+      ctx.moveTo(tx, stripY + 4);
+      ctx.lineTo(tx - 3, stripY - 2);
+      ctx.lineTo(tx + 3, stripY - 2);
       ctx.closePath(); ctx.fill();
 
-      // Label above — stagger
-      const labelY = y + 4 - (ti % 2) * 11;
+      // Label above — all at same height
       ctx.fillStyle = color; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${prefix}${tab.idx}`, tx, labelY);
+      ctx.fillText(`${prefix}${tab.idx}`, tx, stripY - tabLineH - 3);
 
-      // Arc length below strip — stagger
-      ctx.fillStyle = color; ctx.font = '8px sans-serif';
-      const arcY = mapY + tabStripH + 10 + (ti % 2) * 10;
-      ctx.fillText(`${tab.arcLen.toFixed(0)}mm`, tx, arcY);
+      // Distance from electrode start below strip — all at same height
+      ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${relPos.toFixed(0)}`, tx, stripY + stripH + 11);
     });
 
     // Spacing between tabs inside the strip
     for (let i = 1; i < tabs.length; i++) {
-      const x1 = PAD_L + tabs[i-1].arcLen * sc;
-      const x2 = PAD_L + tabs[i].arcLen * sc;
+      const rel1 = tabs[i-1].arcLen - layer.off;
+      const rel2 = tabs[i].arcLen - layer.off;
+      const x1 = PAD_L + rel1 * eSc;
+      const x2 = PAD_L + rel2 * eSc;
       const midX = (x1 + x2) / 2;
-      const spY = mapY + tabStripH / 2;
-      if (x2 - x1 > 30) {
-        // Bracket line
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(x1 + 2, spY); ctx.lineTo(x2 - 2, spY);
-        ctx.stroke();
-        // Ticks
+      const spY = stripY + stripH / 2;
+      if (x2 - x1 > 25) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(x1 + 2, spY); ctx.lineTo(x2 - 2, spY); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x1 + 2, spY - 3); ctx.lineTo(x1 + 2, spY + 3); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x2 - 2, spY - 3); ctx.lineTo(x2 - 2, spY + 3); ctx.stroke();
-        // Spacing value
-        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(`${tabs[i].spacing ? tabs[i].spacing.toFixed(0) : ''}`, midX, spY - 4);
       }
     }
 
-    y += tabSectionH;
-  }
-
-  const cathode = layers.find(l => l.type === 'cathode');
-  const anode = layers.find(l => l.type === 'anode');
-  drawTabMapStrip(cathode, s.cTabs, '#3b82f6', 'C');
-  drawTabMapStrip(anode, s.aTabs, '#16a34a', 'A');
+    y += sectionH + sectionGap;
+  });
 }
 
 // ========== 3D VIEW (improved) ==========
