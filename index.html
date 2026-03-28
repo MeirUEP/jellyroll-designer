@@ -39,7 +39,7 @@ body { font-family: sans-serif; font-size: 12px; color: var(--fg); background: v
 .param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .param-item { display: flex; flex-direction: column; gap: 2px; }
 .param-item label { font-size: 10px; color: var(--fg2); }
-.param-item input { width: 100%; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: 11px; }
+.param-item input, .param-item select { width: 100%; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: 11px; }
 .param-item input:focus { outline: none; border-color: var(--accent); }
 button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; padding: 5px 10px; }
 .btn-primary { background: var(--accent); color: #fff; }
@@ -67,24 +67,25 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .view-tab { padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--fg2); background: none; border-radius: 0; }
 .view-tab:hover { color: var(--fg); }
 .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.canvas-wrap { flex: 1; position: relative; overflow: auto; background: var(--canvas-bg); }
+/* Canvas area takes most of the space */
+.canvas-wrap { flex: 1; min-height: 0; position: relative; overflow: auto; background: var(--canvas-bg); }
 .canvas-wrap canvas { display: block; }
-.view-controls { display: flex; gap: 8px; padding: 6px 10px; background: var(--bg2); border-top: 1px solid var(--border); flex-wrap: wrap; align-items: center; font-size: 11px; }
-.view-controls label { color: var(--fg2); display: flex; align-items: center; gap: 4px; }
-.view-controls input[type="range"] { width: 80px; accent-color: var(--accent); }
-.view-controls input[type="number"] { width: 50px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); font-size: 11px; }
-.summary-cards { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg2); border-top: 1px solid var(--border); }
-.summary-card { flex: 1; text-align: center; padding: 6px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
-.summary-card .val { font-size: 16px; font-weight: bold; }
-.summary-card .lbl { font-size: 10px; color: var(--fg2); }
-.results-area { background: var(--bg2); border-top: 1px solid var(--border); max-height: 200px; overflow-y: auto; }
+#threeContainer { width: 100%; height: 100%; }
+/* Bottom section: collapsible summary + table */
+.bottom-section { display: flex; flex-direction: column; max-height: 180px; overflow: hidden; flex-shrink: 0; }
+.bottom-section.collapsed { max-height: 28px; }
+.bottom-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); cursor: pointer; font-size: 11px; color: var(--fg2); user-select: none; }
+.bottom-toggle:hover { color: var(--fg); }
+.summary-cards { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg2); }
+.summary-card { flex: 1; text-align: center; padding: 4px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+.summary-card .val { font-size: 14px; font-weight: bold; }
+.summary-card .lbl { font-size: 9px; color: var(--fg2); }
+.results-area { background: var(--bg2); overflow-y: auto; flex: 1; min-height: 0; }
 .results-area table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .results-area th { background: var(--bg3); padding: 4px 6px; text-align: left; position: sticky; top: 0; }
 .results-area td { padding: 3px 6px; border-bottom: 1px solid var(--border); }
-.results-bar { display: flex; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); align-items: center; }
 .file-actions { display: flex; gap: 4px; padding: 4px 0; }
-#threeContainer { width: 100%; height: 100%; }
-.legend { position: absolute; bottom: 10px; right: 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 10px; max-height: 200px; overflow-y: auto; }
+.legend { position: absolute; bottom: 10px; right: 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 10px; max-height: 200px; overflow-y: auto; z-index: 10; }
 .legend-item { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 2px 0; }
 .legend-item .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
 .legend-item.hidden { opacity: 0.4; }
@@ -152,23 +153,22 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       <canvas id="mainCanvas"></canvas>
       <div id="threeContainer" style="display:none"></div>
     </div>
-    <div class="summary-cards" id="summaryCards"></div>
-    <div class="results-bar">
-      <strong style="font-size:11px">Tab Positions</strong>
+    <div class="bottom-section" id="bottomSection">
+      <div class="bottom-toggle" id="bottomToggle">&#9660; Summary &amp; Tab Positions</div>
+      <div class="summary-cards" id="summaryCards"></div>
+      <div class="results-area" id="resultsArea"></div>
     </div>
-    <div class="results-area" id="resultsArea"></div>
   </div>
 </div>
 <script>
 // ========== AUTH GATE ==========
-const _h = 'a3f2b1c8d5e9'; // obfuscation
 function checkAuth() {
   const p = document.getElementById('authPass').value;
   if (p === atob('WmluY0Fub2Rl')) {
     document.getElementById('authGate').classList.add('hidden');
     document.getElementById('appMain').style.display = '';
     sessionStorage.setItem('jr_auth', '1');
-    window.dispatchEvent(new Event('resize'));
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); runSimulation(); }, 100);
   } else {
     document.getElementById('authErr').textContent = 'Incorrect password';
     document.getElementById('authPass').value = '';
@@ -179,6 +179,16 @@ if (sessionStorage.getItem('jr_auth') === '1') {
   document.getElementById('authGate').classList.add('hidden');
   document.getElementById('appMain').style.display = '';
 }
+
+// Bottom section toggle
+document.getElementById('bottomToggle').addEventListener('click', () => {
+  const bs = document.getElementById('bottomSection');
+  bs.classList.toggle('collapsed');
+  document.getElementById('bottomToggle').innerHTML = bs.classList.contains('collapsed')
+    ? '&#9650; Summary &amp; Tab Positions'
+    : '&#9660; Summary &amp; Tab Positions';
+  setTimeout(() => renderView(), 50);
+});
 
 // ========== STATE ==========
 const LAYER_TYPES = ['mandrel','anode','cathode','separator','collector','tape','other'];
@@ -203,7 +213,7 @@ let params = {
 
 let simResult = null;
 let currentView = 'side';
-let needsRun = false;
+let debounceTimer = null;
 
 // 3D state
 let threeScene, threeCamera, threeRenderer, threeControls;
@@ -271,7 +281,6 @@ function runSimulation() {
     }
   }
 
-  // Compute spacings
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
@@ -280,11 +289,10 @@ function runSimulation() {
 
   simResult = {
     turns, cTabs, aTabs, outerR,
-    minPitch: Math.min(...pitches),
-    maxPitch: Math.max(...pitches),
+    minPitch: pitches.length ? Math.min(...pitches) : 0,
+    maxPitch: pitches.length ? Math.max(...pitches) : 0,
   };
 
-  needsRun = false;
   document.getElementById('btnRun').classList.remove('needs-run');
   document.getElementById('runTs').textContent = new Date().toLocaleTimeString();
   updateInfoBar();
@@ -302,7 +310,8 @@ function updateInfoBar() {
     `<span>OD: <strong>${(s.outerR*2).toFixed(1)}mm</strong></span>` +
     `<span>Pitch: <strong>${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm</strong></span>` +
     `<span>Cathode tabs: <strong style="color:#3b82f6">${s.cTabs.length}</strong></span>` +
-    `<span>Anode tabs: <strong style="color:#16a34a">${s.aTabs.length}</strong></span>`;
+    `<span>Anode tabs: <strong style="color:#16a34a">${s.aTabs.length}</strong></span>` +
+    `<span>Layers: <strong>${layers.length}</strong></span>`;
 }
 
 function updateSummary() {
@@ -326,11 +335,11 @@ function updateTable() {
   for (let i = 0; i < maxLen; i++) {
     if (i < s.cTabs.length) {
       const t = s.cTabs[i];
-      rows += `<tr><td style="color:#3b82f6">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.cath_angle}&deg;</td></tr>`;
+      rows += `<tr><td style="color:#3b82f6;font-weight:bold">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.cath_angle}&deg;</td></tr>`;
     }
     if (i < s.aTabs.length) {
       const t = s.aTabs[i];
-      rows += `<tr><td style="color:#16a34a">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.anod_angle}&deg;</td></tr>`;
+      rows += `<tr><td style="color:#16a34a;font-weight:bold">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.anod_angle}&deg;</td></tr>`;
     }
   }
   document.getElementById('resultsArea').innerHTML =
@@ -365,7 +374,6 @@ function buildLayerUI() {
     list.appendChild(card);
   });
 
-  // Event delegation
   list.querySelectorAll('input,select').forEach(el => {
     el.addEventListener('change', e => {
       const i = +e.target.dataset.i, f = e.target.dataset.f;
@@ -377,7 +385,8 @@ function buildLayerUI() {
   });
   list.querySelectorAll('[data-move]').forEach(el => {
     el.addEventListener('click', e => {
-      const i = +e.target.dataset.move, d = +e.target.dataset.dir;
+      const btn = e.target.closest('[data-move]');
+      const i = +btn.dataset.move, d = +btn.dataset.dir;
       const j = i + d;
       if (j < 0 || j >= layers.length) return;
       [layers[i], layers[j]] = [layers[j], layers[i]];
@@ -386,15 +395,17 @@ function buildLayerUI() {
   });
   list.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', e => {
-      layers.splice(+e.target.dataset.del, 1);
+      const btn = e.target.closest('[data-del]');
+      layers.splice(+btn.dataset.del, 1);
       buildLayerUI(); markDirty();
     });
   });
 }
 
 function markDirty() {
-  needsRun = true;
-  document.getElementById('btnRun').classList.add('needs-run');
+  // Auto-run with debounce
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => runSimulation(), 300);
 }
 
 document.getElementById('btnAddLayer').addEventListener('click', () => {
@@ -402,7 +413,7 @@ document.getElementById('btnAddLayer').addEventListener('click', () => {
   buildLayerUI(); markDirty();
 });
 
-// Param inputs
+// Param inputs — auto-run on change
 document.querySelectorAll('.param-grid input').forEach(el => {
   el.addEventListener('change', e => {
     const key = e.target.id.replace('p_','');
@@ -420,11 +431,13 @@ document.querySelectorAll('.view-tab').forEach(btn => {
     document.getElementById('panel3d').style.display = currentView === '3d' ? '' : 'none';
     document.getElementById('mainCanvas').style.display = currentView === '3d' ? 'none' : '';
     document.getElementById('threeContainer').style.display = currentView === '3d' ? '' : 'none';
+    // Hide legend when not in top view
+    const leg = document.getElementById('topLegend');
+    if (leg) leg.style.display = currentView === 'top' ? '' : 'none';
     renderView();
   });
 });
 
-// ========== RENDER DISPATCHER ==========
 function renderView() {
   if (!simResult) return;
   if (currentView === 'side') renderSide();
@@ -433,7 +446,15 @@ function renderView() {
   else if (currentView === '3d') render3D();
 }
 
-// ========== SIDE VIEW ==========
+function var_fg() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#f3f4f6';
+}
+function hexToRgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ========== SIDE VIEW (improved) ==========
 function renderSide() {
   const canvas = document.getElementById('mainCanvas');
   const wrap = document.getElementById('canvasWrap');
@@ -441,83 +462,148 @@ function renderSide() {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
+  if (!simResult) return;
 
   const s = simResult;
   const outerR = s.outerR;
   const cellH = params.cell_h;
   const tabH = params.tab_h;
   const mandrelR = params.mandrel_d / 2;
+  const fg = var_fg();
 
-  const PAD_L = 60, PAD_R = 60, PAD_TOP = 30, PAD_BOT = 50;
+  const PAD_L = 70, PAD_R = 70, PAD_BOT = 50;
+  const tabHpx_max = 40;
+  // Scale to use full canvas height
   const availW = W - PAD_L - PAD_R;
-  const availH = H - PAD_TOP - PAD_BOT - tabH * 1.5;
+  const availH = H - tabHpx_max - 20 - PAD_BOT;
   const sc = Math.min(availW / (outerR * 2), availH / cellH);
 
-  const cx = PAD_L + (outerR * 2 * sc) / 2;
-  const cellTop = PAD_TOP + tabH * 1.5;
+  const cx = W / 2;
+  const cellTop = tabHpx_max + 20;
   const cellBot = cellTop + cellH * sc;
+  const cellLeft = cx - outerR * sc;
+  const cellRight = cx + outerR * sc;
 
-  // Cell rectangle
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
-  ctx.strokeRect(cx - outerR * sc, cellTop, outerR * 2 * sc, cellH * sc);
+  // Cell rectangle outline
+  ctx.strokeStyle = fg; ctx.lineWidth = 1.5;
+  ctx.strokeRect(cellLeft, cellTop, outerR * 2 * sc, cellH * sc);
 
-  // Mandrel
-  ctx.fillStyle = 'rgba(136,136,153,0.3)';
-  ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
+  // Draw layer-colored rings for each turn
+  s.turns.forEach((turn, ti) => {
+    const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
+    const innerR_t = prevR;
+    const bandW = turn.r - innerR_t;
 
-  // Turn rings
-  const avgPitch = s.turns.length > 1 ? (s.turns.map(t=>t.r).reduce((a,b)=>a+b,0)/s.turns.length - mandrelR) / s.turns.length * sc : 10;
-  ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 0.5;
-  s.turns.forEach(t => {
-    const x1 = cx - t.r * sc, x2 = cx + t.r * sc;
+    turn.active.forEach((layer, li) => {
+      const nActive = turn.active.length;
+      const rInner = innerR_t + (bandW / nActive) * li;
+      const rOuter = innerR_t + (bandW / nActive) * (li + 1);
+
+      // Left half
+      const lx = cx - rOuter * sc;
+      const lw = (rOuter - rInner) * sc;
+      // Right half
+      const rx = cx + rInner * sc;
+
+      // Determine height based on layer width vs cell height
+      const layerH = layer.w * sc;
+      const yOff = (cellH * sc - layerH) / 2;
+
+      ctx.fillStyle = hexToRgba(layer.color, 0.5);
+      // Left side
+      ctx.fillRect(lx, cellTop + yOff, lw, layerH);
+      // Right side
+      ctx.fillRect(rx, cellTop + yOff, lw, layerH);
+    });
+
+    // Faint turn boundary lines
+    const x1 = cx - turn.r * sc, x2 = cx + turn.r * sc;
+    ctx.strokeStyle = 'rgba(150,150,150,0.15)'; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(x1, cellTop); ctx.lineTo(x1, cellBot); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x2, cellTop); ctx.lineTo(x2, cellBot); ctx.stroke();
   });
 
-  // Tab sizing
+  // Mandrel shading
+  ctx.fillStyle = hexToRgba('#888899', 0.4);
+  ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
+
+  // Tab sizing — stagger labels to avoid overlap
   const pitchPx = s.turns.length > 1 ? Math.abs(s.turns[1].r - s.turns[0].r) * sc : 10;
   const tabWpx = Math.max(3, pitchPx * 0.6);
-  const tabHpx = tabH * sc * 0.5;
+  const tabHpx = Math.min(tabHpx_max, Math.max(15, tabH * sc * 0.4));
 
   // Cathode tabs (blue, left of center, pointing up)
-  ctx.fillStyle = '#3b82f6';
-  s.cTabs.forEach(tab => {
+  s.cTabs.forEach((tab, i) => {
     const x = cx - tab.r * sc;
+    ctx.fillStyle = '#3b82f6';
     ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
-    ctx.fillStyle = '#3b82f6';
-    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`C${tab.idx}`, x, cellTop - tabHpx - 3);
-    ctx.fillStyle = '#3b82f6';
+    ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    // Stagger label heights
+    const labelY = cellTop - tabHpx - 3 - (i % 2) * 10;
+    ctx.fillText(`C${tab.idx}`, x, labelY);
   });
 
   // Anode tabs (green, right of center, pointing up)
-  ctx.fillStyle = '#16a34a';
-  s.aTabs.forEach(tab => {
+  s.aTabs.forEach((tab, i) => {
     const x = cx + tab.r * sc;
+    ctx.fillStyle = '#16a34a';
     ctx.fillRect(x - tabWpx/2, cellTop - tabHpx, tabWpx, tabHpx);
-    ctx.fillStyle = '#16a34a';
-    ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`A${tab.idx}`, x, cellTop - tabHpx - 3);
-    ctx.fillStyle = '#16a34a';
+    ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    const labelY = cellTop - tabHpx - 3 - (i % 2) * 10;
+    ctx.fillText(`A${tab.idx}`, x, labelY);
   });
 
-  // Dimension annotations
-  ctx.fillStyle = var_fg(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-  // Cell height (right)
-  const dimX = cx + outerR * sc + 30;
-  ctx.beginPath(); ctx.moveTo(dimX, cellTop); ctx.lineTo(dimX, cellBot); ctx.strokeStyle = var_fg(); ctx.lineWidth = 0.5; ctx.stroke();
-  ctx.fillText(`${cellH}mm`, dimX + 5, (cellTop + cellBot) / 2);
-  // OD (bottom)
-  ctx.fillText(`OD ${(outerR*2).toFixed(1)}mm`, cx, cellBot + 20);
-  // Mandrel (bottom inner)
-  ctx.fillText(`${params.mandrel_d}mm`, cx, cellBot + 35);
+  // Dimension annotations with bracket lines
+  ctx.strokeStyle = fg; ctx.fillStyle = fg; ctx.lineWidth = 0.8;
+  ctx.font = '10px sans-serif';
+
+  // Cell height — right side bracket
+  const dimX = cellRight + 20;
+  ctx.beginPath();
+  ctx.moveTo(dimX - 4, cellTop); ctx.lineTo(dimX, cellTop); ctx.lineTo(dimX, cellBot); ctx.lineTo(dimX - 4, cellBot);
+  ctx.stroke();
+  ctx.textAlign = 'left';
+  ctx.fillText(`${cellH}mm`, dimX + 4, (cellTop + cellBot) / 2 + 4);
+
+  // OD — bottom bracket
+  const dimY = cellBot + 20;
+  ctx.beginPath();
+  ctx.moveTo(cellLeft, dimY - 4); ctx.lineTo(cellLeft, dimY); ctx.lineTo(cellRight, dimY); ctx.lineTo(cellRight, dimY - 4);
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillText(`OD ${(outerR*2).toFixed(1)}mm`, cx, dimY + 14);
+
+  // Mandrel diameter — below OD
+  const mLeft = cx - mandrelR * sc, mRight = cx + mandrelR * sc;
+  const dimY2 = dimY + 24;
+  ctx.strokeStyle = '#888899';
+  ctx.beginPath();
+  ctx.moveTo(mLeft, dimY2 - 4); ctx.lineTo(mLeft, dimY2); ctx.lineTo(mRight, dimY2); ctx.lineTo(mRight, dimY2 - 4);
+  ctx.stroke();
+  ctx.fillStyle = '#888899';
+  ctx.fillText(`\u00D8${params.mandrel_d}mm`, cx, dimY2 + 14);
+
+  // Layer legend for side view
+  ctx.textAlign = 'left'; ctx.font = '10px sans-serif';
+  const uniqueLayers = [];
+  const seen = new Set();
+  layers.filter(l => l.type !== 'mandrel').forEach(l => {
+    const key = l.name.startsWith('Cellophane') ? 'Cellophane' : l.name;
+    if (!seen.has(key)) { seen.add(key); uniqueLayers.push({name: key, color: l.color}); }
+  });
+  const legX = 10, legY0 = cellTop + 10;
+  uniqueLayers.forEach((l, i) => {
+    const y = legY0 + i * 16;
+    ctx.fillStyle = l.color;
+    ctx.fillRect(legX, y, 10, 10);
+    ctx.strokeStyle = var_fg(); ctx.lineWidth = 0.5;
+    ctx.strokeRect(legX, y, 10, 10);
+    ctx.fillStyle = fg;
+    ctx.fillText(l.name, legX + 14, y + 9);
+  });
 }
 
-function var_fg() {
-  return getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
-}
-
-// ========== TOP VIEW ==========
+// ========== TOP VIEW (improved) ==========
 function renderTop() {
   const canvas = document.getElementById('mainCanvas');
   const wrap = document.getElementById('canvasWrap');
@@ -525,25 +611,24 @@ function renderTop() {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
+  if (!simResult) return;
 
   const s = simResult;
   const outerR = s.outerR;
   const mandrelR = params.mandrel_d / 2;
-  const tabLen = 30;
+  const fg = var_fg();
 
-  const PAD_SIDES = 40, PAD_TOP = tabLen + 30, PAD_BOT = 30;
+  const tabLen = 35;
+  const PAD_SIDES = 50, PAD_TOP = tabLen + 40, PAD_BOT = 40;
   const sc = Math.min((W - PAD_SIDES*2) / (outerR*2), (H - PAD_TOP - PAD_BOT) / (outerR*2));
   const cx = W / 2;
   const cy = PAD_TOP + outerR * sc;
 
-  // Mandrel circle
-  ctx.beginPath(); ctx.arc(cx, cy, mandrelR * sc, 0, Math.PI * 2);
-  ctx.fillStyle = '#888899'; ctx.fill();
+  // Outer boundary circle
+  ctx.beginPath(); ctx.arc(cx, cy, outerR * sc, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(150,150,150,0.4)'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Layer arcs per turn
-  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
-  const arcThickMult = 0.85;
-
+  // Layer arcs per turn — with distinct colors and thickness for electrodes
   s.turns.forEach((turn, ti) => {
     const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
     const innerR = prevR;
@@ -555,23 +640,25 @@ function renderTop() {
       const vis = layerVisibility[layer.name] !== false;
       if (!vis) return;
       const rMid = innerR + (bandW / nActive) * (li + 0.5);
-      const lw = bandW / nActive * arcThickMult;
+      const baseThick = bandW / nActive * 0.85;
+      // Electrodes get thicker strokes
+      const isElectrode = layer.type === 'cathode' || layer.type === 'anode';
+      const lw = isElectrode ? Math.max(2.5, baseThick * sc * 1.2) : Math.max(1, baseThick * sc);
 
-      // Compute start/end angles for this layer in this turn
+      // Compute partial arc angles
       const layerArcStart = Math.max(turn.arcStart, layer.off);
       const layerArcEnd = Math.min(turn.arc, layer.off + layer.len);
       const turnArcLen = turn.circ;
       const fracStart = (layerArcStart - turn.arcStart) / turnArcLen;
       const fracEnd = (layerArcEnd - turn.arcStart) / turnArcLen;
-
       const angStart = -Math.PI/2 + fracStart * Math.PI * 2;
       const angEnd = -Math.PI/2 + fracEnd * Math.PI * 2;
 
       ctx.beginPath();
       ctx.arc(cx, cy, rMid * sc, angStart, angEnd);
       ctx.strokeStyle = layer.color;
-      ctx.lineWidth = Math.max(1, lw * sc);
-      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = lw;
+      ctx.globalAlpha = isElectrode ? 1.0 : 0.7;
       ctx.stroke();
       ctx.globalAlpha = 1;
 
@@ -581,24 +668,48 @@ function renderTop() {
       const ex = cx + rMid * sc * Math.cos(angEnd);
       const ey = cy + rMid * sc * Math.sin(angEnd);
       ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-      ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI*2); ctx.fillStyle=layer.color; ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey, 2.5, 0, Math.PI*2); ctx.fillStyle=layer.color; ctx.fill();
     });
   });
 
-  // Outer boundary
-  ctx.beginPath(); ctx.arc(cx, cy, outerR * sc, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(100,100,100,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+  // Mandrel circle
+  ctx.beginPath(); ctx.arc(cx, cy, mandrelR * sc, 0, Math.PI * 2);
+  ctx.fillStyle = '#888899'; ctx.fill();
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Tab lines (both point up)
-  function drawTabLine(tab, color, label, side) {
-    const x = side === 'left' ? cx - tab.r * sc : cx + tab.r * sc;
-    const y1 = cy, y2 = cy - tabLen;
+  // Turn number labels on outermost ring
+  if (s.turns.length > 0) {
+    ctx.font = '8px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
+    s.turns.forEach((t, i) => {
+      // Place at bottom-right area to avoid tab overlap
+      const ang = Math.PI / 4 + (i / s.turns.length) * Math.PI; // bottom-right quadrant
+      const lx = cx + (t.r * sc + 10) * Math.cos(ang);
+      const ly = cy + (t.r * sc + 10) * Math.sin(ang);
+      if (i % 2 === 0 || s.turns.length <= 6) { // skip some if too many
+        ctx.fillText(`T${t.turn}`, lx, ly + 3);
+      }
+    });
+  }
+
+  // Tab lines at correct angles with staggered lengths
+  const cAngRad = (90) * Math.PI / 180; // 90° = left side in top view (12 o'clock canvas)
+  const aAngRad = (270) * Math.PI / 180;
+
+  function drawTabLineTop(tab, color, label, angDeg, idx, total) {
+    // Cathode at 90° = 12 o'clock = top, left side of center
+    // Anode at 270° = bottom = right side of center
+    // In canvas: 90° → left, 270° → right
+    const x = angDeg === 90 ? cx - tab.r * sc : cx + tab.r * sc;
+    // Stagger tab lengths to avoid label overlap
+    const stagger = (idx % 3) * 8;
+    const y1 = cy, y2 = cy - tabLen - stagger;
+
     // White outline
     ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
     // Colored stroke
     ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2);
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
     // Arrow tip
     ctx.beginPath(); ctx.moveTo(x, y2); ctx.lineTo(x-3, y2+6); ctx.lineTo(x+3, y2+6); ctx.closePath();
     ctx.fillStyle = color; ctx.fill();
@@ -607,10 +718,14 @@ function renderTop() {
     ctx.fillText(label, x, y2 - 4);
   }
 
-  s.cTabs.forEach(tab => drawTabLine(tab, '#3b82f6', `C${tab.idx}`, 'left'));
-  s.aTabs.forEach(tab => drawTabLine(tab, '#16a34a', `A${tab.idx}`, 'right'));
+  s.cTabs.forEach((tab, i) => drawTabLineTop(tab, '#3b82f6', `C${tab.idx}`, 90, i, s.cTabs.length));
+  s.aTabs.forEach((tab, i) => drawTabLineTop(tab, '#16a34a', `A${tab.idx}`, 270, i, s.aTabs.length));
 
-  // Legend
+  // Angle labels
+  ctx.font = '10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
+  ctx.fillText(`${params.cath_angle}°`, cx - outerR * sc - 20, cy);
+  ctx.fillText(`${params.anod_angle}°`, cx + outerR * sc + 20, cy);
+
   renderLegend();
 }
 
@@ -625,7 +740,6 @@ function renderLegend() {
   legend.style.display = currentView === 'top' ? '' : 'none';
   if (currentView !== 'top') return;
 
-  // Group cellophanes
   const groups = {};
   layers.filter(l => l.type !== 'mandrel').forEach(l => {
     const key = l.name.startsWith('Cellophane') ? 'Cellophane' : l.name;
@@ -650,30 +764,30 @@ function renderLegend() {
     });
   });
   document.getElementById('legendAll')?.addEventListener('click', () => {
-    layers.forEach(l => layerVisibility[l.name] = true);
-    renderView();
+    layers.forEach(l => layerVisibility[l.name] = true); renderView();
   });
   document.getElementById('legendNone')?.addEventListener('click', () => {
-    layers.forEach(l => layerVisibility[l.name] = false);
-    renderView();
+    layers.forEach(l => layerVisibility[l.name] = false); renderView();
   });
 }
 
-// ========== UNROLL VIEW ==========
+// ========== UNROLL VIEW (improved) ==========
 function renderUnroll() {
   const canvas = document.getElementById('mainCanvas');
   const wrap = document.getElementById('canvasWrap');
   const W = wrap.clientWidth;
   const ctx = canvas.getContext('2d');
+  if (!simResult) return;
 
   const s = simResult;
   const nonMandrel = layers.filter(l => l.type !== 'mandrel');
   const maxLen = Math.max(...nonMandrel.map(l => l.off + l.len));
+  const fg = var_fg();
 
   const PAD_L = 112, PAD_R = 20;
   const RULER_H = 36;
-  const stripH = 20;
-  const stripGap = 8;
+  const stripH = 22;
+  const stripGap = 6;
   const tabZone = 50;
   const sc = (W - PAD_L - PAD_R) / maxLen;
 
@@ -683,15 +797,13 @@ function renderUnroll() {
     if (l.type === 'cathode' || l.type === 'anode') totalH += tabZone;
     totalH += stripH + stripGap;
   });
-  totalH += 40;
+  totalH += 50;
 
   canvas.width = W;
   canvas.height = Math.max(totalH, wrap.clientHeight);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const fg = var_fg();
-
-  // Ruler
+  // Ruler background
   ctx.fillStyle = 'rgba(50,50,60,0.5)';
   ctx.fillRect(0, 0, W, RULER_H);
 
@@ -706,14 +818,14 @@ function renderUnroll() {
     ctx.strokeStyle = 'rgba(150,150,150,0.5)'; ctx.lineWidth = 0.5; ctx.stroke();
   }
 
-  // Turn markers (top of ruler)
+  // Turn markers (top of ruler) + full vertical grid lines
   ctx.font = '8px sans-serif';
   s.turns.forEach(t => {
     const x = PAD_L + t.arc * sc;
     if (x > W - PAD_R) return;
-    ctx.fillStyle = 'rgba(150,150,150,0.6)';
+    ctx.fillStyle = 'rgba(150,150,150,0.7)';
     ctx.fillText(`T${t.turn}`, x, 10);
-    // Faint vertical line spanning full height
+    // Full-height grid line
     ctx.beginPath(); ctx.moveTo(x, RULER_H); ctx.lineTo(x, canvas.height);
     ctx.strokeStyle = 'rgba(100,100,100,0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
   });
@@ -723,11 +835,10 @@ function renderUnroll() {
   nonMandrel.forEach(l => {
     const isElectrode = l.type === 'cathode' || l.type === 'anode';
     if (isElectrode) {
-      // Tab zone
       const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
       const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
       const prefix = l.type === 'cathode' ? 'C' : 'A';
-      tabs.forEach(tab => {
+      tabs.forEach((tab, ti) => {
         const tx = PAD_L + tab.arcLen * sc;
         // Tab line pointing down
         ctx.beginPath(); ctx.moveTo(tx, y + 10); ctx.lineTo(tx, y + tabZone - 4);
@@ -735,10 +846,10 @@ function renderUnroll() {
         // Arrow tip pointing down
         ctx.beginPath(); ctx.moveTo(tx, y + tabZone - 4); ctx.lineTo(tx - 3, y + tabZone - 10); ctx.lineTo(tx + 3, y + tabZone - 10); ctx.closePath();
         ctx.fillStyle = color; ctx.fill();
-        // Label at top
+        // Label at top — stagger to avoid overlap
         ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`${prefix}${tab.idx}`, tx, y + 8);
-        // Arc length below strip (will draw after strip)
+        const labelOff = (ti % 2) * 8;
+        ctx.fillText(`${prefix}${tab.idx}`, tx, y + 8 - labelOff);
       });
       y += tabZone;
     }
@@ -748,14 +859,12 @@ function renderUnroll() {
     const w = l.len * sc;
 
     // Faint background
-    ctx.fillStyle = 'rgba(100,100,100,0.1)';
+    ctx.fillStyle = 'rgba(100,100,100,0.08)';
     ctx.fillRect(PAD_L, stripY, (W - PAD_L - PAD_R), stripH);
 
     // Strip
-    ctx.fillStyle = l.color;
-    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = hexToRgba(l.color, 0.7);
     ctx.fillRect(x0, stripY, w, stripH);
-    ctx.globalAlpha = 1;
     ctx.strokeStyle = l.color;
     ctx.lineWidth = 1;
     ctx.strokeRect(x0, stripY, w, stripH);
@@ -767,7 +876,7 @@ function renderUnroll() {
     ctx.fillText(l.name, PAD_L - 6, stripY + stripH / 2 + 4);
 
     // Length label inside strip
-    if (w > 40) {
+    if (w > 50) {
       ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(`${l.len}mm`, x0 + w / 2, stripY + stripH / 2 + 3);
     }
@@ -783,14 +892,16 @@ function renderUnroll() {
     ctx.moveTo(x0 + w, stripY); ctx.lineTo(x0 + w - 5, stripY + stripH/2); ctx.lineTo(x0 + w, stripY + stripH);
     ctx.fillStyle = l.color; ctx.fill();
 
-    // Arc length annotations for tabs
+    // Arc length annotations for tabs — stagger above/below
     if (isElectrode) {
       const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
       const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
-      tabs.forEach(tab => {
+      tabs.forEach((tab, ti) => {
         const tx = PAD_L + tab.arcLen * sc;
         ctx.fillStyle = color; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`${tab.arcLen.toFixed(0)}`, tx, stripY + stripH + 10);
+        // Alternate above/below to avoid overlap
+        const yOff = (ti % 2 === 0) ? stripY + stripH + 10 : stripY + stripH + 19;
+        ctx.fillText(`${tab.arcLen.toFixed(0)}`, tx, yOff);
       });
     }
 
@@ -798,7 +909,7 @@ function renderUnroll() {
   });
 }
 
-// ========== 3D VIEW ==========
+// ========== 3D VIEW (improved) ==========
 function render3D() {
   if (!threeInited) init3D();
   update3DScene();
@@ -820,9 +931,9 @@ function init3D() {
   const d1 = new THREE.DirectionalLight(0xffffff, 0.6); d1.position.set(200, 300, 200); threeScene.add(d1);
   const d2 = new THREE.DirectionalLight(0xffffff, 0.3); d2.position.set(-200, 100, -200); threeScene.add(d2);
 
-  // Simple orbit controls
+  // Orbit controls
   let isDragging = false, prevX = 0, prevY = 0;
-  let azimuth = Math.PI / 4, elevation = Math.PI / 6, dist = 500;
+  let azimuth = Math.PI / 4, elevation = Math.PI / 6, dist = 500; // ~30° elevation
 
   function updateCamera() {
     threeCamera.position.set(
@@ -830,7 +941,7 @@ function init3D() {
       dist * Math.sin(elevation),
       dist * Math.cos(elevation) * Math.cos(azimuth)
     );
-    threeCamera.lookAt(0, params.cell_h / 2, 0);
+    threeCamera.lookAt(0, params.cell_h * 0.4, 0);
   }
 
   threeRenderer.domElement.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
@@ -846,11 +957,14 @@ function init3D() {
   threeRenderer.domElement.addEventListener('wheel', e => {
     dist *= e.deltaY > 0 ? 1.1 : 0.9;
     dist = Math.max(50, Math.min(5000, dist));
-    updateCamera();
-    e.preventDefault();
+    updateCamera(); e.preventDefault();
   }, { passive: false });
 
-  threeControls = { updateCamera, setDist: d => { dist = d; updateCamera(); }, getAzimuth: () => azimuth };
+  threeControls = {
+    updateCamera,
+    setDist: d => { dist = d; updateCamera(); },
+    resetView: () => { azimuth = Math.PI / 4; elevation = Math.PI / 6; updateCamera(); }
+  };
   updateCamera();
 
   function animate() {
@@ -861,8 +975,8 @@ function init3D() {
   animate();
   threeInited = true;
 
-  // Resize
   const ro = new ResizeObserver(() => {
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
     threeCamera.aspect = container.clientWidth / container.clientHeight;
     threeCamera.updateProjectionMatrix();
     threeRenderer.setSize(container.clientWidth, container.clientHeight);
@@ -873,21 +987,26 @@ function init3D() {
 function update3DScene() {
   if (!threeScene || !simResult) return;
 
-  // Clear existing meshes
-  while (threeScene.children.length > 3) threeScene.remove(threeScene.children[threeScene.children.length - 1]);
+  // Clear non-light children
+  const toRemove = [];
+  threeScene.children.forEach(c => { if (!c.isLight) toRemove.push(c); });
+  toRemove.forEach(c => threeScene.remove(c));
 
   const s = simResult;
   const rScale = +document.getElementById('p_rscale').value;
   const cutDeg = +document.getElementById('p_cut').value;
   const cutRad = cutDeg * Math.PI / 180;
-  const startAngle = 0;
   const cellH = params.cell_h;
   const mandrelR = params.mandrel_d / 2;
 
-  // Build radii for each layer within each turn
-  const radii3d = [];
-  let cathodeOuterR = 0, anodeOuterR = 0;
+  // Mandrel as solid grey cylinder
+  const mandrelGeo = new THREE.CylinderGeometry(mandrelR * rScale, mandrelR * rScale, cellH, 64);
+  const mandrelMat = new THREE.MeshPhongMaterial({ color: 0x888899, transparent: true, opacity: 0.6 });
+  const mandrelMesh = new THREE.Mesh(mandrelGeo, mandrelMat);
+  mandrelMesh.position.y = cellH / 2;
+  threeScene.add(mandrelMesh);
 
+  // Build layer cylinders with actual radial thickness
   s.turns.forEach((turn, ti) => {
     const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
     const innerR = prevR;
@@ -896,87 +1015,87 @@ function update3DScene() {
     if (nActive === 0) return;
 
     turn.active.forEach((layer, li) => {
-      const rInner = innerR + (bandW / nActive) * li;
-      const rOuter = innerR + (bandW / nActive) * (li + 1);
+      const rInner = (innerR + (bandW / nActive) * li) * rScale;
+      const rOuter = (innerR + (bandW / nActive) * (li + 1)) * rScale;
+      const isElectrode = layer.type === 'cathode' || layer.type === 'anode';
 
       const mat = new THREE.MeshPhongMaterial({
         color: new THREE.Color(layer.color),
-        transparent: true, opacity: 0.85,
+        transparent: true,
+        opacity: isElectrode ? 0.9 : 0.7,
         side: THREE.DoubleSide
       });
 
-      // Cylinder arc
-      const geo = new THREE.CylinderGeometry(
-        rOuter * rScale, rOuter * rScale,
-        cellH, 64, 1, true,
-        startAngle, cutRad
-      );
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.y = cellH / 2;
-      threeScene.add(mesh);
+      // Outer cylinder surface
+      const geoO = new THREE.CylinderGeometry(rOuter, rOuter, cellH, 64, 1, true, 0, cutRad);
+      threeScene.add(Object.assign(new THREE.Mesh(geoO, mat), { position: { x:0, y: cellH/2, z:0 } }));
+      const meshO = new THREE.Mesh(geoO, mat);
+      meshO.position.y = cellH / 2;
+      threeScene.add(meshO);
 
-      // Inner cylinder
-      const geoI = new THREE.CylinderGeometry(
-        rInner * rScale, rInner * rScale,
-        cellH, 64, 1, true,
-        startAngle, cutRad
-      );
+      // Inner cylinder surface
+      const geoI = new THREE.CylinderGeometry(rInner, rInner, cellH, 64, 1, true, 0, cutRad);
       const meshI = new THREE.Mesh(geoI, mat.clone());
       meshI.position.y = cellH / 2;
       threeScene.add(meshI);
 
-      // Top and bottom rings
+      // Top and bottom ring caps
       [0, cellH].forEach(yy => {
-        const ring = new THREE.RingGeometry(rInner * rScale, rOuter * rScale, 64, 1, startAngle, cutRad);
+        const ring = new THREE.RingGeometry(rInner, rOuter, 64, 1, 0, cutRad);
         const ringMesh = new THREE.Mesh(ring, mat.clone());
         ringMesh.rotation.x = -Math.PI / 2;
         ringMesh.position.y = yy;
         threeScene.add(ringMesh);
       });
 
-      // Track electrode radii
-      if (layer.type === 'cathode') cathodeOuterR = Math.max(cathodeOuterR, rOuter);
-      if (layer.type === 'anode') anodeOuterR = Math.max(anodeOuterR, rOuter);
+      // Cross-section cut faces (two planar cuts at cutaway edges)
+      if (cutDeg < 360) {
+        const thickness = rOuter - rInner;
+        const midR = (rInner + rOuter) / 2;
+
+        // Cut face at angle 0
+        const cutGeo1 = new THREE.PlaneGeometry(thickness, cellH);
+        const cutMesh1 = new THREE.Mesh(cutGeo1, mat.clone());
+        cutMesh1.position.set(midR, cellH/2, 0);
+        threeScene.add(cutMesh1);
+
+        // Cut face at cutaway angle
+        const cutGeo2 = new THREE.PlaneGeometry(thickness, cellH);
+        const cutMesh2 = new THREE.Mesh(cutGeo2, mat.clone());
+        cutMesh2.position.set(midR * Math.cos(cutRad), cellH/2, midR * Math.sin(cutRad));
+        cutMesh2.rotation.y = -cutRad;
+        threeScene.add(cutMesh2);
+      }
     });
   });
 
-  // Tabs
+  // Tabs — larger and more visible
   const cAngRad = params.cath_angle * Math.PI / 180;
   const aAngRad = params.anod_angle * Math.PI / 180;
   const tabH = params.tab_h;
   const tabW = params.tab_w;
 
-  // Cathode tabs
   s.cTabs.forEach(tab => {
     const r = tab.r * rScale;
-    const geo = new THREE.BoxGeometry(tabW * 0.3, tabH, 0.5);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x3b82f6 });
+    const geo = new THREE.BoxGeometry(tabW * 0.5, tabH * 1.5, 1);
+    const mat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, emissive: 0x1a3a6b });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(
-      r * Math.cos(cAngRad),
-      cellH + tabH / 2,
-      r * Math.sin(cAngRad)
-    );
+    mesh.position.set(r * Math.cos(cAngRad), cellH + tabH * 0.75, r * Math.sin(cAngRad));
     mesh.rotation.y = -cAngRad;
     threeScene.add(mesh);
   });
 
-  // Anode tabs
   s.aTabs.forEach(tab => {
     const r = tab.r * rScale;
-    const geo = new THREE.BoxGeometry(tabW * 0.3, tabH, 0.5);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x16a34a });
+    const geo = new THREE.BoxGeometry(tabW * 0.5, tabH * 1.5, 1);
+    const mat = new THREE.MeshPhongMaterial({ color: 0x16a34a, emissive: 0x0a4a22 });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(
-      r * Math.cos(aAngRad),
-      cellH + tabH / 2,
-      r * Math.sin(aAngRad)
-    );
+    mesh.position.set(r * Math.cos(aAngRad), cellH + tabH * 0.75, r * Math.sin(aAngRad));
     mesh.rotation.y = -aAngRad;
     threeScene.add(mesh);
   });
 
-  // Camera distance
+  // Set camera distance
   const outerScaledR = s.outerR * rScale;
   const camDist = Math.max(outerScaledR * 2.5, cellH * 1.2);
   threeControls.setDist(camDist);
@@ -996,7 +1115,7 @@ document.getElementById('btnSpin').addEventListener('click', () => {
   document.getElementById('btnSpin').textContent = autoSpin ? 'Stop spin' : 'Auto-spin';
 });
 document.getElementById('btnResetCam').addEventListener('click', () => {
-  if (threeControls) threeControls.setDist(500);
+  if (threeControls) threeControls.resetView();
 });
 
 // ========== CSV EXPORT ==========
@@ -1038,7 +1157,6 @@ document.getElementById('fileLoad').addEventListener('change', e => {
       if (data.version && data.params && data.layers) {
         params = data.params;
         layers = data.layers;
-        // Update param inputs
         for (const [k, v] of Object.entries(params)) {
           const el = document.getElementById('p_' + k);
           if (el) el.value = v;
