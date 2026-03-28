@@ -1819,10 +1819,10 @@ function update3DScene() {
     const angRad = (cellAngleDeg + 90) * Math.PI / 180;
     tabs.forEach(tab => {
       const r = tab.r * rScale;
-      // Tab: much taller (4x) and wider for clear visibility
-      const tH = tabH * 4;
-      const tW = Math.max(tabW * 0.6, 4);
-      const geo = new THREE.BoxGeometry(tW, tH, 2);
+      // Tab: thin strip standing up from top face
+      const tH = tabH * 1.5;  // shorter
+      const tW = Math.max(tabW * 0.3, 2);  // thinner
+      const geo = new THREE.BoxGeometry(tW, tH, 0.5);
       const mat = new THREE.MeshPhongMaterial({ color, emissive: emissive, emissiveIntensity: 0.4, side: THREE.DoubleSide });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(
