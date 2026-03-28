@@ -1262,65 +1262,85 @@ function renderTop() {
     });
   }
 
-  // Tab lines extending horizontally from the cell
-  // Cathode at 90° → tabs extend LEFT; Anode at 270° → tabs extend RIGHT
-  // Per spec: "Both cathode and anode tabs point straight UP in canvas coordinates"
-  // But user wants horizontal: cathode LEFT of center, anode RIGHT of center
-  function drawTabsHorizontal(tabs, color, prefix, side) {
+  // Tabs as thin rectangles radiating outward at the drill angle
+  // Looking down at the top face: tabs are welded on the electrode surface
+  // and stick up vertically. In the top view they appear as thin radial lines
+  // at each tab's radius, at the drill angle direction.
+  function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
-
-    // Spread labels vertically along the left or right edge
-    const labelX = side === 'left' ? PAD_SIDES - 30 : W - PAD_SIDES + 30;
-    const minSpacing = 14;
-    const totalH = count * minSpacing;
-    const startY = cy - totalH / 2;
+    // Canvas angle: cell 0°=3 o'clock, 90°=12 o'clock (top)
+    const canvasAng = -cellAngleDeg * Math.PI / 180;
+    const dx = Math.cos(canvasAng);
+    const dy = Math.sin(canvasAng);
+    const tabLenPx = 18; // length of tab rectangle extending outward
+    const tabWidthPx = 3; // width of tab rectangle (narrow)
 
     tabs.forEach((tab, i) => {
-      const r1 = tab.r * sc;
-      // Tab position on circle: left side or right side
-      const x1 = side === 'left' ? cx - r1 : cx + r1;
-      const y1 = cy;
+      const r = tab.r * sc;
+      // Tab base point on the ring at the drill angle
+      const bx = cx + r * dx;
+      const by = cy + r * dy;
+      // Tab tip point (extending outward from center)
+      const tx = cx + (r + tabLenPx) * dx;
+      const ty = cy + (r + tabLenPx) * dy;
 
-      // Dot at ring position
-      ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.fill();
+      // Draw thin rectangle along the radial direction
+      // Perpendicular vector for tab width
+      const px = -dy * tabWidthPx / 2;
+      const py = dx * tabWidthPx / 2;
 
-      // Tab line extending outward horizontally — slight vertical fan to avoid stacking
-      const fanOffset = (i - (count - 1) / 2) * 3; // spread ±N pixels from center
-      const x2 = side === 'left' ? cx - outerR * sc - 10 : cx + outerR * sc + 10;
-      const y2 = cy + fanOffset;
-      // White outline
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
-      // Colored line
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-
-      // Label — spread vertically along the edge
-      const labelY = startY + i * minSpacing + minSpacing / 2;
-
-      // Leader line from tab end to label
-      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
-      ctx.beginPath(); ctx.moveTo(x2, y1); ctx.lineTo(labelX, labelY); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bx + px, by + py);
+      ctx.lineTo(tx + px, ty + py);
+      ctx.lineTo(tx - px, ty - py);
+      ctx.lineTo(bx - px, by - py);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.8;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
       ctx.globalAlpha = 1;
+    });
 
-      // Label text
+    // Labels — spread along the outer edge beyond all tabs
+    const labelR = outerR * sc + tabLenPx + 20;
+    const labelSpread = Math.min(1.5, count * 0.15); // angular spread for labels
+    const labelStep = count > 1 ? labelSpread / (count - 1) : 0;
+    const labelStart = canvasAng - labelSpread / 2;
+
+    tabs.forEach((tab, i) => {
+      const r = tab.r * sc;
+      const bx = cx + r * dx;
+      const by = cy + r * dy;
+      // Fan labels angularly
+      const labelAng = labelStart + i * labelStep;
+      const lx = cx + labelR * Math.cos(labelAng);
+      const ly = cy + labelR * Math.sin(labelAng);
+      // Leader line
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.3;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(lx, ly); ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Label
       ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = side === 'left' ? 'right' : 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelY);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`${prefix}${tab.idx}`, lx, ly);
     });
   }
 
-  drawTabsHorizontal(s.cTabs, '#3b82f6', 'C', 'left');
-  drawTabsHorizontal(s.aTabs, '#16a34a', 'A', 'right');
+  drawTabsTopView(s.cTabs, '#3b82f6', 'C', params.cath_angle);
+  drawTabsTopView(s.aTabs, '#16a34a', 'A', params.anod_angle);
   ctx.textBaseline = 'alphabetic';
 
-  // Angle labels
+  // Angle labels at drill positions
+  const angLabelR = outerR * sc + 8;
   ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
-  ctx.fillText(`${params.cath_angle}°`, cx - outerR * sc - 18, cy - 10);
-  ctx.fillText(`${params.anod_angle}°`, cx + outerR * sc + 18, cy - 10);
+  const cAng = -params.cath_angle * Math.PI / 180;
+  const aAng = -params.anod_angle * Math.PI / 180;
+  ctx.fillText(`${params.cath_angle}°`, cx + angLabelR * Math.cos(cAng), cy + angLabelR * Math.sin(cAng));
+  ctx.fillText(`${params.anod_angle}°`, cx + angLabelR * Math.cos(aAng), cy + angLabelR * Math.sin(aAng));
 
   renderLegend();
 }
