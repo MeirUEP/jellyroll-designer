@@ -72,7 +72,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .canvas-wrap canvas { display: block; }
 #threeContainer { width: 100%; height: 100%; }
 /* Bottom section: collapsible summary + table */
-.bottom-section { display: flex; flex-direction: column; max-height: 180px; overflow: hidden; flex-shrink: 0; }
+.bottom-section { display: flex; flex-direction: column; max-height: 250px; overflow: hidden; flex-shrink: 0; }
 .bottom-section.collapsed { max-height: 28px; }
 .bottom-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); cursor: pointer; font-size: 11px; color: var(--fg2); user-select: none; }
 .bottom-toggle:hover { color: var(--fg); }
@@ -123,6 +123,26 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       <div style="display:flex;gap:4px;margin-top:4px">
         <button class="btn-sm" id="btnSpin">Auto-spin</button>
         <button class="btn-sm" id="btnResetCam">Reset view</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Cathode Properties</h3>
+      <div class="param-grid">
+        <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_cath_bulk_density" step="0.01" value="2.41"></div>
+        <div class="param-item"><label>Active wt% (EMD)</label><input type="number" id="ep_cath_active_wt" step="0.01" value="0.75"></div>
+        <div class="param-item"><label>Spec. cap. (mAh/g)</label><input type="number" id="ep_cath_spec_cap" step="1" value="250"></div>
+        <div class="param-item"><label>Mesh density (g/in&sup2;)</label><input type="number" id="ep_cath_mesh_dens" step="0.001" value="0.16"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Anode Properties</h3>
+      <div class="param-grid">
+        <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_anod_bulk_density" step="0.01" value="4.062"></div>
+        <div class="param-item"><label>Zn wt%</label><input type="number" id="ep_anod_zn_wt" step="0.01" value="0.75"></div>
+        <div class="param-item"><label>ZnO wt%</label><input type="number" id="ep_anod_zno_wt" step="0.01" value="0.16"></div>
+        <div class="param-item"><label>Zn cap. (mAh/g)</label><input type="number" id="ep_anod_zn_cap" step="1" value="820"></div>
+        <div class="param-item"><label>ZnO cap. (mAh/g)</label><input type="number" id="ep_anod_zno_cap" step="1" value="660"></div>
+        <div class="param-item"><label>Mesh density (g/in&sup2;)</label><input type="number" id="ep_anod_mesh_dens" step="0.001" value="0.149"></div>
       </div>
     </div>
     <div class="panel">
@@ -212,8 +232,23 @@ let params = {
 };
 
 let simResult = null;
+let capResult = null;
 let currentView = 'side';
 let debounceTimer = null;
+
+// Electrode properties (Rev 3 Can defaults from JellyRollModel_CORRECTED.xlsx)
+let elecProps = {
+  cath_bulk_density: 2.41,    // g/cm³ (with mesh)
+  cath_active_wt: 0.75,       // EMD wt%
+  cath_spec_cap: 250,         // mAh/g EMD
+  cath_mesh_dens: 0.16,       // g/in² Ni mesh
+  anod_bulk_density: 4.062,   // g/cm³ (with mesh)
+  anod_zn_wt: 0.75,           // Zn wt%
+  anod_zno_wt: 0.16,          // ZnO wt%
+  anod_zn_cap: 820,           // mAh/g Zn
+  anod_zno_cap: 660,          // mAh/g ZnO
+  anod_mesh_dens: 0.149,      // g/in² Cu mesh
+};
 
 // 3D state
 let threeScene, threeCamera, threeRenderer, threeControls;
@@ -295,36 +330,133 @@ function runSimulation() {
 
   document.getElementById('btnRun').classList.remove('needs-run');
   document.getElementById('runTs').textContent = new Date().toLocaleTimeString();
+  computeCapacity();
   updateInfoBar();
   updateSummary();
   updateTable();
   renderView();
 }
 
+// ========== CAPACITY CALCULATION (from JellyRollModel_CORRECTED.xlsx) ==========
+function computeCapacity() {
+  if (!simResult) { capResult = null; return; }
+  const s = simResult;
+  const ep = elecProps;
+  const cathode = layers.find(l => l.type === 'cathode');
+  const anode = layers.find(l => l.type === 'anode');
+  if (!cathode || !anode) { capResult = null; return; }
+
+  // Electrode lengths from simulation (use the layer length in mm, convert to inches for mesh calc)
+  const cathLenMm = cathode.len;
+  const anodLenMm = anode.len;
+  const cathLenIn = cathLenMm / 25.4;
+  const anodLenIn = anodLenMm / 25.4;
+
+  // Widths (mm -> inches for volume/mesh calc)
+  const cathWidthMm = cathode.w;
+  const anodWidthMm = anode.w;
+  const cathWidthIn = cathWidthMm / 25.4;
+  const anodWidthIn = anodWidthMm / 25.4;
+
+  // Thicknesses (mm -> inches)
+  const cathThickMm = cathode.t;
+  const anodThickMm = anode.t;
+  const cathThickIn = cathThickMm / 25.4;
+  const anodThickIn = anodThickMm / 25.4;
+
+  // Volumes (in³) = length × width × thickness
+  const cathVolIn3 = cathLenIn * cathWidthIn * cathThickIn;
+  const anodVolIn3 = anodLenIn * anodWidthIn * anodThickIn;
+
+  // Total mass (g) = volume (cm³) × bulk density
+  // 1 in³ = 16.387064 cm³
+  const in3ToCm3 = 16.387064;
+  const cathVolCm3 = cathVolIn3 * in3ToCm3;
+  const anodVolCm3 = anodVolIn3 * in3ToCm3;
+  const cathTotalMass = cathVolCm3 * ep.cath_bulk_density;
+  const anodTotalMass = anodVolCm3 * ep.anod_bulk_density;
+
+  // Mesh mass (g) = mesh_density (g/in²) × length (in) × width (in)
+  const cathMeshMass = ep.cath_mesh_dens * cathLenIn * cathWidthIn;
+  const anodMeshMass = ep.anod_mesh_dens * anodLenIn * anodWidthIn;
+
+  // Paste mass = total - mesh
+  const cathPasteMass = cathTotalMass - cathMeshMass;
+  const anodPasteMass = anodTotalMass - anodMeshMass;
+
+  // Cathode capacity (Ah) = paste_mass × active_wt% × specific_capacity / 1000
+  const cathCapAh = cathPasteMass * ep.cath_active_wt * ep.cath_spec_cap / 1000;
+
+  // Anode capacity (Ah) = paste_mass × (Zn_wt% × Zn_cap + ZnO_wt% × ZnO_cap) / 1000
+  const anodCapAh = anodPasteMass * (ep.anod_zn_wt * ep.anod_zn_cap + ep.anod_zno_wt * ep.anod_zno_cap) / 1000;
+
+  // Cell capacity (cathode-limited, 1e⁻)
+  const cellCapAh = Math.min(cathCapAh, anodCapAh);
+  const npRatio = cathCapAh / anodCapAh;
+
+  // Cell energy at 1.2V (1e⁻)
+  const cellEnergy1e = cellCapAh * 1.2;
+
+  // Total dry mass
+  const totalDryMass = cathTotalMass + anodTotalMass;
+
+  // Utilization table
+  const utilTable = [10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 220].map(cycledAh => ({
+    cycledAh,
+    cathUtil: (cycledAh / cathCapAh * 100),
+    anodUtil: (cycledAh / anodCapAh * 100),
+    energy: cycledAh * 1.2,
+    anodExcess: ((anodCapAh - cycledAh) / cycledAh * 100),
+    dod: (cycledAh / cathCapAh * 100),
+  }));
+
+  capResult = {
+    cathTotalMass, anodTotalMass, cathMeshMass, anodMeshMass,
+    cathPasteMass, anodPasteMass,
+    cathCapAh, anodCapAh, cellCapAh, npRatio,
+    cellEnergy1e, totalDryMass,
+    cathVolCm3, anodVolCm3,
+    utilTable,
+  };
+}
+
 // ========== UI UPDATES ==========
 function updateInfoBar() {
   if (!simResult) return;
   const s = simResult;
-  document.getElementById('infoBar').innerHTML =
+  let html =
     `<span>Turns: <strong>${s.turns.length}</strong></span>` +
     `<span>OD: <strong>${(s.outerR*2).toFixed(1)}mm</strong></span>` +
     `<span>Pitch: <strong>${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm</strong></span>` +
     `<span>Cathode tabs: <strong style="color:#3b82f6">${s.cTabs.length}</strong></span>` +
-    `<span>Anode tabs: <strong style="color:#16a34a">${s.aTabs.length}</strong></span>` +
-    `<span>Layers: <strong>${layers.length}</strong></span>`;
+    `<span>Anode tabs: <strong style="color:#16a34a">${s.aTabs.length}</strong></span>`;
+  if (capResult) {
+    html += `<span>Cell cap: <strong>${capResult.cellCapAh.toFixed(1)}Ah</strong></span>` +
+            `<span>N:P: <strong>${capResult.npRatio.toFixed(3)}</strong></span>`;
+  }
+  document.getElementById('infoBar').innerHTML = html;
 }
 
 function updateSummary() {
   if (!simResult) return;
   const s = simResult;
   const odExceeds = s.outerR * 2 > params.target_od;
-  document.getElementById('summaryCards').innerHTML = [
+  const cards = [
     { lbl: 'Computed OD', val: `${(s.outerR*2).toFixed(1)}mm`, cls: odExceeds ? 'color:var(--red)' : '' },
     { lbl: 'Total turns', val: s.turns.length },
     { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
     { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
     { lbl: 'Anode tabs', val: s.aTabs.length, cls: 'color:#16a34a' },
-  ].map(c => `<div class="summary-card"><div class="val" style="${c.cls||''}">${c.val}</div><div class="lbl">${c.lbl}</div></div>`).join('');
+  ];
+  if (capResult) {
+    cards.push(
+      { lbl: 'Cathode cap.', val: `${capResult.cathCapAh.toFixed(1)}Ah`, cls: 'color:#3b82f6' },
+      { lbl: 'Anode cap.', val: `${capResult.anodCapAh.toFixed(1)}Ah`, cls: 'color:#16a34a' },
+      { lbl: 'N:P ratio', val: capResult.npRatio.toFixed(3) },
+    );
+  }
+  document.getElementById('summaryCards').innerHTML = cards
+    .map(c => `<div class="summary-card"><div class="val" style="${c.cls||''}">${c.val}</div><div class="lbl">${c.lbl}</div></div>`).join('');
 }
 
 function updateTable() {
@@ -342,8 +474,37 @@ function updateTable() {
       rows += `<tr><td style="color:#16a34a;font-weight:bold">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.anod_angle}&deg;</td></tr>`;
     }
   }
-  document.getElementById('resultsArea').innerHTML =
-    `<table><thead><tr><th>Electrode</th><th>Tab#</th><th>Turn</th><th>Radius (mm)</th><th>Pitch (mm)</th><th>Arc Length (mm)</th><th>Spacing (mm)</th><th>Angle</th></tr></thead><tbody>${rows}</tbody></table>`;
+  let tableHtml = `<table><thead><tr><th>Electrode</th><th>Tab#</th><th>Turn</th><th>Radius (mm)</th><th>Pitch (mm)</th><th>Arc Length (mm)</th><th>Spacing (mm)</th><th>Angle</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  // Capacity & mass summary table
+  if (capResult) {
+    const c = capResult;
+    tableHtml += `<div style="padding:6px 10px;border-top:1px solid var(--border)">
+      <strong style="font-size:11px">Mass &amp; Capacity</strong>
+      <table style="margin-top:4px"><thead><tr><th></th><th>Cathode</th><th>Anode</th><th>Unit</th></tr></thead><tbody>
+      <tr><td>Total mass (w/ mesh)</td><td>${c.cathTotalMass.toFixed(1)}</td><td>${c.anodTotalMass.toFixed(1)}</td><td>g</td></tr>
+      <tr><td>Mesh mass</td><td>${c.cathMeshMass.toFixed(1)}</td><td>${c.anodMeshMass.toFixed(1)}</td><td>g</td></tr>
+      <tr><td>Paste mass</td><td>${c.cathPasteMass.toFixed(1)}</td><td>${c.anodPasteMass.toFixed(1)}</td><td>g</td></tr>
+      <tr><td>Volume</td><td>${c.cathVolCm3.toFixed(1)}</td><td>${c.anodVolCm3.toFixed(1)}</td><td>cm&sup3;</td></tr>
+      <tr><td style="font-weight:bold">Capacity</td><td style="color:#3b82f6;font-weight:bold">${c.cathCapAh.toFixed(1)}</td><td style="color:#16a34a;font-weight:bold">${c.anodCapAh.toFixed(1)}</td><td>Ah</td></tr>
+      <tr><td>N:P ratio</td><td colspan="2" style="text-align:center;font-weight:bold">${c.npRatio.toFixed(3)}</td><td></td></tr>
+      <tr><td>Cell capacity (1e&minus;)</td><td colspan="2" style="text-align:center;font-weight:bold">${c.cellCapAh.toFixed(1)}</td><td>Ah</td></tr>
+      <tr><td>Cell energy (1e&minus; @ 1.2V)</td><td colspan="2" style="text-align:center">${c.cellEnergy1e.toFixed(1)}</td><td>Wh</td></tr>
+      <tr><td>Total dry mass</td><td colspan="2" style="text-align:center">${c.totalDryMass.toFixed(1)}</td><td>g</td></tr>
+      </tbody></table>
+    </div>`;
+
+    // Utilization table
+    tableHtml += `<div style="padding:6px 10px;border-top:1px solid var(--border)">
+      <strong style="font-size:11px">Utilization Table</strong>
+      <table style="margin-top:4px"><thead><tr><th>Cycled (Ah)</th><th>MnO2 Util. (%)</th><th>Anode Util. (%)</th><th>Energy @1.2V (Wh)</th><th>Anode Excess (%)</th><th>DoD (%)</th></tr></thead><tbody>`;
+    c.utilTable.forEach(row => {
+      tableHtml += `<tr><td>${row.cycledAh}</td><td>${row.cathUtil.toFixed(1)}</td><td>${row.anodUtil.toFixed(1)}</td><td>${row.energy.toFixed(0)}</td><td>${row.anodExcess.toFixed(0)}</td><td>${row.dod.toFixed(1)}</td></tr>`;
+    });
+    tableHtml += `</tbody></table></div>`;
+  }
+
+  document.getElementById('resultsArea').innerHTML = tableHtml;
 }
 
 // ========== LAYER EDITOR ==========
@@ -416,8 +577,12 @@ document.getElementById('btnAddLayer').addEventListener('click', () => {
 // Param inputs — auto-run on change
 document.querySelectorAll('.param-grid input').forEach(el => {
   el.addEventListener('change', e => {
-    const key = e.target.id.replace('p_','');
-    params[key] = +e.target.value;
+    const id = e.target.id;
+    if (id.startsWith('p_')) {
+      params[id.replace('p_','')] = +e.target.value;
+    } else if (id.startsWith('ep_')) {
+      elecProps[id.replace('ep_','')] = +e.target.value;
+    }
     markDirty();
   });
 });
@@ -1171,7 +1336,7 @@ document.getElementById('btnExport').addEventListener('click', () => {
 
 // ========== SAVE/LOAD ==========
 document.getElementById('btnSave').addEventListener('click', () => {
-  const data = { version: '1.0', params, layers };
+  const data = { version: '1.1', params, layers, elecProps };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1190,8 +1355,13 @@ document.getElementById('fileLoad').addEventListener('change', e => {
       if (data.version && data.params && data.layers) {
         params = data.params;
         layers = data.layers;
+        if (data.elecProps) elecProps = data.elecProps;
         for (const [k, v] of Object.entries(params)) {
           const el = document.getElementById('p_' + k);
+          if (el) el.value = v;
+        }
+        for (const [k, v] of Object.entries(elecProps)) {
+          const el = document.getElementById('ep_' + k);
           if (el) el.value = v;
         }
         buildLayerUI();
