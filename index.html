@@ -1210,17 +1210,12 @@ function update3DScene() {
   toRemove.forEach(c => threeScene.remove(c));
 
   const s = simResult;
-  // Auto-compute rScale to maintain correct proportions
-  // Target: diameter should be proportional to height (real aspect ratio)
-  // Real: OD ~88mm, height 222mm → ratio ~0.4
-  // With rScale=1 layers are too thin to see, so use minimum rScale that keeps
-  // the cylinder looking tall (not a disc)
+  // rScale controls radial exaggeration for layer visibility
+  // slider=1: true proportions (OD/height ratio preserved exactly)
+  // slider=20: layers 4x exaggerated
+  // Real cell: OD ~88mm, height 222mm → true rScale = 1.0
   const userScale = +document.getElementById('p_rscale').value;
-  // proportional rScale = height / (2 * outerR) to make OD = height
-  const proportionalScale = params.cell_h / (s.outerR * 2);
-  // Blend: user slider 1-20 maps from proportional (correct shape) to exaggerated
-  // At slider=1: use proportional. At slider=20: use 4x proportional
-  const rScale = proportionalScale * (0.8 + userScale * 0.15);
+  const rScale = 0.5 + userScale * 0.25; // slider 1→0.75, 3→1.25, 8→2.5, 20→5.5
   const cutDeg = +document.getElementById('p_cut').value;
   const cutRad = cutDeg * Math.PI / 180;
   const cellH = params.cell_h;
