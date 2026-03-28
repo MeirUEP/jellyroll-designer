@@ -163,11 +163,15 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <h3>Cathode Electrode</h3>
         <div class="param-grid">
           <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_cath_bulk_density" step="0.01" value="2.41"></div>
-          <div class="param-item"><label>Ni mesh (g/in&sup2;)</label><input type="number" id="ep_cath_mesh_dens" step="0.001" value="0.16"></div>
         </div>
         <div style="font-size:9px;color:var(--fg2);margin-top:4px">
           Solid density: <strong id="cathSolidDens">—</strong> g/cm&sup3; &bull;
           Composite cap: <strong id="cathCompCap">—</strong> mAh/g
+        </div>
+        <h3 style="margin-top:6px">Cathode Current Collector</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Material</label><input type="text" id="ep_cath_cc_material" value="Nickel mesh" style="font-size:10px"></div>
+          <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_cath_mesh_dens" step="0.001" value="0.16"></div>
         </div>
       </div>
       <div class="panel">
@@ -182,11 +186,15 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <h3>Anode Electrode</h3>
         <div class="param-grid">
           <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_anod_bulk_density" step="0.01" value="4.062"></div>
-          <div class="param-item"><label>Cu mesh (g/in&sup2;)</label><input type="number" id="ep_anod_mesh_dens" step="0.001" value="0.149"></div>
         </div>
         <div style="font-size:9px;color:var(--fg2);margin-top:4px">
           Solid density: <strong id="anodSolidDens">—</strong> g/cm&sup3; &bull;
           Composite cap: <strong id="anodCompCap">—</strong> mAh/g
+        </div>
+        <h3 style="margin-top:6px">Anode Current Collector</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Material</label><input type="text" id="ep_anod_cc_material" value="Copper mesh" style="font-size:10px"></div>
+          <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_anod_mesh_dens" step="0.001" value="0.149"></div>
         </div>
       </div>
     </div>
@@ -479,8 +487,8 @@ const DEFAULT_PRESETS = {
       { name: 'Other', wt: 0, density: 3, cap: 0 },
     ],
     elecProps: {
-      cath_bulk_density: 2.41, cath_mesh_dens: 0.16,
-      anod_bulk_density: 4.062, anod_mesh_dens: 0.149,
+      cath_bulk_density: 2.41, cath_mesh_dens: 0.16, cath_cc_material: 'Nickel mesh',
+      anod_bulk_density: 4.062, anod_mesh_dens: 0.149, anod_cc_material: 'Copper mesh',
     }
   }
 };
@@ -518,8 +526,10 @@ function getCurrentFormulation() {
     elecProps: {
       cath_bulk_density: elecProps.cath_bulk_density,
       cath_mesh_dens: elecProps.cath_mesh_dens,
+      cath_cc_material: document.getElementById('ep_cath_cc_material').value,
       anod_bulk_density: elecProps.anod_bulk_density,
       anod_mesh_dens: elecProps.anod_mesh_dens,
+      anod_cc_material: document.getElementById('ep_anod_cc_material').value,
     }
   };
 }
@@ -541,6 +551,8 @@ function applyFormulation(preset) {
     document.getElementById('ep_cath_mesh_dens').value = elecProps.cath_mesh_dens;
     document.getElementById('ep_anod_bulk_density').value = elecProps.anod_bulk_density;
     document.getElementById('ep_anod_mesh_dens').value = elecProps.anod_mesh_dens;
+    if (preset.elecProps.cath_cc_material) document.getElementById('ep_cath_cc_material').value = preset.elecProps.cath_cc_material;
+    if (preset.elecProps.anod_cc_material) document.getElementById('ep_anod_cc_material').value = preset.elecProps.anod_cc_material;
   }
   // Rebuild tables
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
