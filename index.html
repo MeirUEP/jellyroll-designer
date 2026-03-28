@@ -1048,52 +1048,65 @@ function update3DScene() {
         threeScene.add(ringMesh);
       });
 
-      // Cross-section cut faces (two planar cuts at cutaway edges)
+      // Cross-section cut faces — filled colored rectangles at both cut edges
       if (cutDeg < 360) {
         const thickness = rOuter - rInner;
         const midR = (rInner + rOuter) / 2;
+        const cutMat = new THREE.MeshPhongMaterial({
+          color: new THREE.Color(layer.color),
+          side: THREE.DoubleSide,
+          opacity: 1.0, transparent: false
+        });
 
-        // Cut face at angle 0
+        // Cut face at angle 0 — plane faces along +Z, so rotate to face Z direction
         const cutGeo1 = new THREE.PlaneGeometry(thickness, cellH);
-        const cutMesh1 = new THREE.Mesh(cutGeo1, mat.clone());
+        const cutMesh1 = new THREE.Mesh(cutGeo1, cutMat);
+        // Position at midR along X axis, rotated to face +Z (perpendicular to radius)
         cutMesh1.position.set(midR, cellH/2, 0);
+        cutMesh1.rotation.y = Math.PI / 2;
         threeScene.add(cutMesh1);
 
         // Cut face at cutaway angle
         const cutGeo2 = new THREE.PlaneGeometry(thickness, cellH);
-        const cutMesh2 = new THREE.Mesh(cutGeo2, mat.clone());
+        const cutMesh2 = new THREE.Mesh(cutGeo2, cutMat.clone());
         cutMesh2.position.set(midR * Math.cos(cutRad), cellH/2, midR * Math.sin(cutRad));
-        cutMesh2.rotation.y = -cutRad;
+        cutMesh2.rotation.y = Math.PI / 2 + cutRad;
         threeScene.add(cutMesh2);
       }
     });
   });
 
-  // Tabs — larger and more visible
-  const cAngRad = params.cath_angle * Math.PI / 180;
-  const aAngRad = params.anod_angle * Math.PI / 180;
+  // Tabs — protruding vertically from the top of the cell
+  // Three.js CylinderGeometry: angle 0 starts at +Z axis, goes CCW in XZ plane
+  // Cell convention: 0° = +X (3 o'clock), 90° = +Z (12 o'clock when viewed top-down)
+  // Convert cell angle to Three.js angle: threeAngle = cellAngle (both CCW from +Z for sin/cos)
   const tabH = params.tab_h;
   const tabW = params.tab_w;
 
-  s.cTabs.forEach(tab => {
-    const r = tab.r * rScale;
-    const geo = new THREE.BoxGeometry(tabW * 0.5, tabH * 1.5, 1);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, emissive: 0x1a3a6b });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(r * Math.cos(cAngRad), cellH + tabH * 0.75, r * Math.sin(cAngRad));
-    mesh.rotation.y = -cAngRad;
-    threeScene.add(mesh);
-  });
+  function addTabs(tabs, color, emissive, cellAngleDeg) {
+    // Convert to radians — in Three.js XZ plane, use sin for X and cos for Z
+    const angRad = cellAngleDeg * Math.PI / 180;
+    tabs.forEach(tab => {
+      const r = tab.r * rScale;
+      // Tab box: wider and taller for visibility
+      const geo = new THREE.BoxGeometry(tabW * 0.4, tabH * 2, 1.5);
+      const mat = new THREE.MeshPhongMaterial({ color, emissive, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geo, mat);
+      // Position: on the top face, at the correct angle
+      // X = r * sin(angle), Z = r * cos(angle) matches CylinderGeometry convention
+      mesh.position.set(
+        r * Math.sin(angRad),
+        cellH + tabH,
+        r * Math.cos(angRad)
+      );
+      // Rotate tab to face tangent to the cylinder at this angle
+      mesh.rotation.y = angRad;
+      threeScene.add(mesh);
+    });
+  }
 
-  s.aTabs.forEach(tab => {
-    const r = tab.r * rScale;
-    const geo = new THREE.BoxGeometry(tabW * 0.5, tabH * 1.5, 1);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x16a34a, emissive: 0x0a4a22 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(r * Math.cos(aAngRad), cellH + tabH * 0.75, r * Math.sin(aAngRad));
-    mesh.rotation.y = -aAngRad;
-    threeScene.add(mesh);
-  });
+  addTabs(s.cTabs, 0x3b82f6, 0x1a3a6b, params.cath_angle);
+  addTabs(s.aTabs, 0x16a34a, 0x0a4a22, params.anod_angle);
 
   // Set camera distance
   const outerScaledR = s.outerR * rScale;
