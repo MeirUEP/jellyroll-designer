@@ -59,7 +59,12 @@ async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
     )
     db.add(design)
     await db.commit()
-    await db.refresh(design)
+    # Re-fetch with eager loading to avoid lazy-load in async
+    q = select(Design).options(
+        selectinload(Design.sim_result), selectinload(Design.cap_result)
+    ).where(Design.id == design.id)
+    result = await db.execute(q)
+    design = result.scalar_one()
     return DesignDetail.model_validate(design)
 
 
@@ -79,7 +84,11 @@ async def update_design(design_id: UUID, body: DesignCreate, db: AsyncSession = 
     design.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(design)
+    q = select(Design).options(
+        selectinload(Design.sim_result), selectinload(Design.cap_result)
+    ).where(Design.id == design_id)
+    result = await db.execute(q)
+    design = result.scalar_one()
     return DesignDetail.model_validate(design)
 
 
@@ -104,7 +113,11 @@ async def patch_design(design_id: UUID, body: DesignUpdate, db: AsyncSession = D
     design.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(design)
+    q = select(Design).options(
+        selectinload(Design.sim_result), selectinload(Design.cap_result)
+    ).where(Design.id == design_id)
+    result = await db.execute(q)
+    design = result.scalar_one()
     return DesignDetail.model_validate(design)
 
 
@@ -136,7 +149,11 @@ async def import_design(body: DesignImport, db: AsyncSession = Depends(get_db)):
     )
     db.add(design)
     await db.commit()
-    await db.refresh(design)
+    q = select(Design).options(
+        selectinload(Design.sim_result), selectinload(Design.cap_result)
+    ).where(Design.id == design.id)
+    result = await db.execute(q)
+    design = result.scalar_one()
     return DesignDetail.model_validate(design)
 
 
