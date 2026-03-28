@@ -886,14 +886,15 @@ function renderTop() {
   function drawTabsRadial(tabs, color, prefix, cellAngleDeg) {
     const canvasAng = -cellAngleDeg * Math.PI / 180;
     const count = tabs.length;
-    // Fan labels across a wider angular spread to prevent overlap
-    const fanSpread = Math.min(1.2, count * 0.12); // radians total spread
+    // Fan labels across a wide angular spread to prevent overlap
+    // With 9 tabs, need ~2 radians (~115°) spread for readable labels
+    const fanSpread = Math.min(2.0, count * 0.22); // radians total spread
     const fanStep = count > 1 ? fanSpread / (count - 1) : 0;
     const fanStart = -fanSpread / 2;
 
     tabs.forEach((tab, i) => {
       const r1 = tab.r * sc;
-      const r2 = outerR * sc + 12 + tabLen;
+      const r2 = outerR * sc + 18 + tabLen;
 
       // Dot at exact ring position along the drill angle
       const dx0 = Math.cos(canvasAng);
