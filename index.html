@@ -30,10 +30,10 @@
   }
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: sans-serif; font-size: 12px; color: var(--fg); background: var(--bg); overflow: hidden; height: 100vh; }
+body { font-family: sans-serif; font-size: 12px; color: var(--fg); background: var(--bg); overflow: hidden; height: 100vh; overflow-y: auto; }
 .app { display: grid; grid-template-columns: 228px 1fr; height: 100vh; }
 .left { background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
-.right { display: flex; flex-direction: column; overflow: hidden; }
+.right { display: flex; flex-direction: column; overflow-y: auto; }
 .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
 .panel h3 { font-size: 11px; text-transform: uppercase; color: var(--fg2); margin-bottom: 6px; letter-spacing: 0.5px; }
 .param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -72,9 +72,9 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .canvas-wrap canvas { display: block; }
 #threeContainer { width: 100%; height: 100%; }
 /* Bottom section: collapsible summary + table */
-.bottom-section { display: flex; flex-direction: column; max-height: 160px; overflow: hidden; flex-shrink: 0; }
-.bottom-section.collapsed { max-height: 28px; }
-.bottom-section.expanded { max-height: 350px; }
+.bottom-section { display: flex; flex-direction: column; flex-shrink: 0; }
+.bottom-section.collapsed .summary-cards,
+.bottom-section.collapsed .results-area { display: none; }
 .bottom-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); cursor: pointer; font-size: 11px; color: var(--fg2); user-select: none; }
 .bottom-toggle:hover { color: var(--fg); }
 .summary-cards { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg2); }
@@ -160,6 +160,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       <button class="btn-sm" id="btnLoad">Load JSON</button>
       <input type="file" id="fileLoad" accept=".json" style="display:none">
       <button class="btn-sm" id="btnExport">Export CSV</button>
+      <button class="btn-sm" id="btnPDF" style="background:#7c3aed;color:#fff">Export PDF</button>
     </div>
   </div>
   <div class="right">
@@ -204,15 +205,7 @@ if (sessionStorage.getItem('jr_auth') === '1') {
 // Bottom section toggle
 document.getElementById('bottomToggle').addEventListener('click', () => {
   const bs = document.getElementById('bottomSection');
-  if (bs.classList.contains('collapsed')) {
-    bs.classList.remove('collapsed');
-    bs.classList.remove('expanded');
-  } else if (bs.classList.contains('expanded')) {
-    bs.classList.add('collapsed');
-    bs.classList.remove('expanded');
-  } else {
-    bs.classList.add('expanded');
-  }
+  bs.classList.toggle('collapsed');
   const icon = bs.classList.contains('collapsed') ? '&#9650;' : '&#9660;';
   document.getElementById('bottomToggle').innerHTML = icon + ' Summary &amp; Tab Positions';
   setTimeout(() => renderView(), 50);
@@ -816,7 +809,7 @@ function renderTop() {
   const fg = var_fg();
 
   const tabLen = 35;
-  const PAD_SIDES = 50, PAD_TOP = tabLen + 40, PAD_BOT = tabLen + 40;
+  const PAD_SIDES = 80, PAD_TOP = 30, PAD_BOT = 30;
   const sc = Math.min((W - PAD_SIDES*2) / (outerR*2), (H - PAD_TOP - PAD_BOT) / (outerR*2));
   const cx = W / 2;
   const cy = PAD_TOP + outerR * sc;
@@ -888,58 +881,63 @@ function renderTop() {
     });
   }
 
-  // Tab lines at correct drill angles, radiating outward from circle
-  // Canvas convention: 0° = 3 o'clock, 90° = 12 o'clock (top)
-  // Canvas angle: -PI/2 for 90° (12 o'clock), PI/2 for 270° (6 o'clock)
-  // Tab labels laid out in a horizontal row above/below the circle
-  // with leader lines to dots at the actual ring positions
-  function drawTabsWithLabels(tabs, color, prefix, cellAngleDeg) {
-    const canvasAng = -cellAngleDeg * Math.PI / 180;
-    const dx0 = Math.cos(canvasAng);
-    const dy0 = Math.sin(canvasAng);
+  // Tab lines extending horizontally from the cell
+  // Cathode at 90° → tabs extend LEFT; Anode at 270° → tabs extend RIGHT
+  // Per spec: "Both cathode and anode tabs point straight UP in canvas coordinates"
+  // But user wants horizontal: cathode LEFT of center, anode RIGHT of center
+  function drawTabsHorizontal(tabs, color, prefix, side) {
     const count = tabs.length;
     if (count === 0) return;
 
-    // Place labels in a horizontal row
-    // Cathode at 90° (top) → labels above circle; Anode at 270° (bottom) → labels below circle
-    const isBottom = Math.sin(canvasAng) > 0.3;
-    const labelRowY = isBottom ? H - 16 : 12;
-    const minSpacing = 18;
-    const totalWidth = count * minSpacing;
-    const startX = cx - totalWidth / 2;
+    // Spread labels vertically along the left or right edge
+    const labelX = side === 'left' ? PAD_SIDES - 30 : W - PAD_SIDES + 30;
+    const minSpacing = 14;
+    const totalH = count * minSpacing;
+    const startY = cy - totalH / 2;
 
     tabs.forEach((tab, i) => {
       const r1 = tab.r * sc;
-      // Dot at ring position along drill angle
-      const x1 = cx + r1 * dx0;
-      const y1 = cy + r1 * dy0;
+      // Tab position on circle: left side or right side
+      const x1 = side === 'left' ? cx - r1 : cx + r1;
+      const y1 = cy;
+
+      // Dot at ring position
       ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
 
-      // Label position in horizontal row
-      const labelX = startX + i * minSpacing + minSpacing / 2;
+      // Tab line extending outward horizontally
+      const x2 = side === 'left' ? cx - outerR * sc - 10 : cx + outerR * sc + 10;
+      // White outline
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y1);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+      // Colored line
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y1);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
 
-      // Leader line — connect to label from the appropriate side
-      const leaderEndY = isBottom ? labelRowY - 4 : labelRowY + 5;
-      ctx.strokeStyle = color; ctx.lineWidth = 0.6; ctx.globalAlpha = 0.4;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(labelX, leaderEndY); ctx.stroke();
+      // Label — spread vertically along the edge
+      const labelY = startY + i * minSpacing + minSpacing / 2;
+
+      // Leader line from tab end to label
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
+      ctx.beginPath(); ctx.moveTo(x2, y1); ctx.lineTo(labelX, labelY); ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // Label
-      ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelRowY);
+      // Label text
+      ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = side === 'left' ? 'right' : 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelY);
     });
   }
 
-  drawTabsWithLabels(s.cTabs, '#3b82f6', 'C', params.cath_angle);
-  drawTabsWithLabels(s.aTabs, '#16a34a', 'A', params.anod_angle);
+  drawTabsHorizontal(s.cTabs, '#3b82f6', 'C', 'left');
+  drawTabsHorizontal(s.aTabs, '#16a34a', 'A', 'right');
+  ctx.textBaseline = 'alphabetic';
 
-  // Angle labels at the drill positions
-  const cCanvAng = -params.cath_angle * Math.PI / 180;
-  const aCanvAng = -params.anod_angle * Math.PI / 180;
+  // Angle labels
   ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
-  const angLabelR = outerR * sc + 8;
-  ctx.fillText(`${params.cath_angle}°`, cx + angLabelR * Math.cos(cCanvAng), cy + angLabelR * Math.sin(cCanvAng));
+  ctx.fillText(`${params.cath_angle}°`, cx - outerR * sc - 18, cy - 10);
+  ctx.fillText(`${params.anod_angle}°`, cx + outerR * sc + 18, cy - 10);
 
   renderLegend();
 }
@@ -1408,6 +1406,133 @@ window.addEventListener('resize', () => {
 
 // ========== RUN BUTTON ==========
 document.getElementById('btnRun').addEventListener('click', runSimulation);
+
+// ========== PDF EXPORT ==========
+document.getElementById('btnPDF').addEventListener('click', () => {
+  if (!simResult) return;
+  const s = simResult;
+
+  // Capture all 4 views as images
+  const origView = currentView;
+  const canvas = document.getElementById('mainCanvas');
+  const views = ['side','top','unroll'];
+  const images = {};
+
+  views.forEach(v => {
+    currentView = v;
+    document.getElementById('mainCanvas').style.display = '';
+    document.getElementById('threeContainer').style.display = 'none';
+    renderView();
+    images[v] = canvas.toDataURL('image/png');
+  });
+
+  // 3D — capture from Three.js renderer
+  currentView = '3d';
+  if (threeInited) {
+    update3DScene();
+    threeRenderer.render(threeScene, threeCamera);
+    images['3d'] = threeRenderer.domElement.toDataURL('image/png');
+  }
+
+  // Restore original view
+  currentView = origView;
+  document.getElementById('mainCanvas').style.display = currentView === '3d' ? 'none' : '';
+  document.getElementById('threeContainer').style.display = currentView === '3d' ? '' : 'none';
+  renderView();
+
+  // Build layer stack table
+  let layerRows = layers.map((l,i) => `<tr><td>${i}</td><td><span style="display:inline-block;width:12px;height:12px;background:${l.color};border-radius:2px;vertical-align:middle"></span> ${l.name}</td><td>${l.type}</td><td>${l.t}</td><td>${l.w}</td><td>${l.len}</td><td>${l.off}</td></tr>`).join('');
+
+  // Build tab table
+  let tabRows = '';
+  const maxT = Math.max(s.cTabs.length, s.aTabs.length);
+  for (let i = 0; i < maxT; i++) {
+    if (i < s.cTabs.length) { const t = s.cTabs[i]; tabRows += `<tr><td style="color:#3b82f6">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${params.cath_angle}°</td></tr>`; }
+    if (i < s.aTabs.length) { const t = s.aTabs[i]; tabRows += `<tr><td style="color:#16a34a">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${params.anod_angle}°</td></tr>`; }
+  }
+
+  // Capacity info
+  let capHtml = '';
+  if (capResult) {
+    const c = capResult;
+    capHtml = `
+    <h2>Mass & Capacity</h2>
+    <table><tr><th></th><th>Cathode</th><th>Anode</th><th>Unit</th></tr>
+    <tr><td>Thickness</td><td>${c.cathThickMm.toFixed(3)}</td><td>${c.anodThickMm.toFixed(3)}</td><td>mm</td></tr>
+    <tr><td>Width</td><td>${c.cathWidthMm.toFixed(1)}</td><td>${c.anodWidthMm.toFixed(1)}</td><td>mm</td></tr>
+    <tr><td>Length</td><td>${c.cathLenMm.toFixed(0)}</td><td>${c.anodLenMm.toFixed(0)}</td><td>mm</td></tr>
+    <tr><td>Volume</td><td>${c.cathVolCm3.toFixed(1)}</td><td>${c.anodVolCm3.toFixed(1)}</td><td>cm³</td></tr>
+    <tr><td>Total mass</td><td>${c.cathTotalMass.toFixed(1)}</td><td>${c.anodTotalMass.toFixed(1)}</td><td>g</td></tr>
+    <tr><td>Mesh mass</td><td>${c.cathMeshMass.toFixed(1)}</td><td>${c.anodMeshMass.toFixed(1)}</td><td>g</td></tr>
+    <tr><td>Paste mass</td><td>${c.cathPasteMass.toFixed(1)}</td><td>${c.anodPasteMass.toFixed(1)}</td><td>g</td></tr>
+    <tr><td><b>Capacity</b></td><td><b style="color:#3b82f6">${c.cathCapAh.toFixed(1)}</b></td><td><b style="color:#16a34a">${c.anodCapAh.toFixed(1)}</b></td><td>Ah</td></tr>
+    <tr><td>N:P ratio</td><td colspan="2" style="text-align:center"><b>${c.npRatio.toFixed(3)}</b></td><td></td></tr>
+    <tr><td>Cell capacity (1e⁻)</td><td colspan="2" style="text-align:center"><b>${c.cellCapAh.toFixed(1)}</b></td><td>Ah</td></tr>
+    <tr><td>Cell energy @1.2V</td><td colspan="2" style="text-align:center">${c.cellEnergy1e.toFixed(1)}</td><td>Wh</td></tr>
+    <tr><td>Total dry mass</td><td colspan="2" style="text-align:center">${c.totalDryMass.toFixed(1)}</td><td>g</td></tr>
+    </table>`;
+  }
+
+  // Open print window
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Jellyroll Design Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h1 { font-size: 18px; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; }
+    h2 { font-size: 14px; margin-top: 20px; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+    th, td { border: 1px solid #ddd; padding: 3px 6px; text-align: left; font-size: 10px; }
+    th { background: #f3f4f6; font-weight: bold; }
+    img { max-width: 100%; border: 1px solid #ddd; margin: 8px 0; }
+    .views { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .view-box { page-break-inside: avoid; }
+    .view-box h3 { font-size: 12px; margin: 4px 0; color: #555; }
+    .params { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }
+    .params div { display: flex; justify-content: space-between; border-bottom: 1px dotted #ddd; padding: 2px 0; }
+    .params span:first-child { color: #666; }
+    @media print { body { margin: 10px; } .views { grid-template-columns: 1fr 1fr; } }
+  </style></head><body>
+  <h1>Jellyroll Battery Cell Designer — Design Report</h1>
+  <p>Generated: ${new Date().toLocaleString()} | OD: ${(s.outerR*2).toFixed(1)}mm | Turns: ${s.turns.length} | Tabs: ${s.cTabs.length}C + ${s.aTabs.length}A</p>
+
+  <h2>Cell Parameters</h2>
+  <div class="params">
+    <div><span>Mandrel diameter</span><span>${params.mandrel_d} mm</span></div>
+    <div><span>Target OD</span><span>${params.target_od} mm</span></div>
+    <div><span>Cell height</span><span>${params.cell_h} mm</span></div>
+    <div><span>Cathode drill angle</span><span>${params.cath_angle}°</span></div>
+    <div><span>Anode drill angle</span><span>${params.anod_angle}°</span></div>
+    <div><span>Skip turns</span><span>${params.skip_turns}</span></div>
+    <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
+    <div><span>Pitch range</span><span>${s.minPitch.toFixed(2)}–${s.maxPitch.toFixed(2)} mm</span></div>
+  </div>
+
+  <h2>Views</h2>
+  <div class="views">
+    <div class="view-box"><h3>Side View</h3><img src="${images.side}"></div>
+    <div class="view-box"><h3>Top View</h3><img src="${images.top}"></div>
+    <div class="view-box"><h3>Unroll View</h3><img src="${images.unroll}"></div>
+    <div class="view-box"><h3>3D View</h3>${images['3d'] ? `<img src="${images['3d']}">` : '<p>N/A</p>'}</div>
+  </div>
+
+  <h2>Layer Stack</h2>
+  <table>
+    <tr><th>#</th><th>Name</th><th>Type</th><th>Thickness (mm)</th><th>Width (mm)</th><th>Length (mm)</th><th>Offset (mm)</th></tr>
+    ${layerRows}
+  </table>
+
+  ${capHtml}
+
+  <h2>Tab Positions</h2>
+  <table>
+    <tr><th>Electrode</th><th>Tab#</th><th>Turn</th><th>Radius (mm)</th><th>Pitch (mm)</th><th>Arc Length (mm)</th><th>Spacing (mm)</th><th>Angle</th></tr>
+    ${tabRows}
+  </table>
+
+  <script>setTimeout(() => window.print(), 500);<\/script>
+  </body></html>`);
+  win.document.close();
+});
 
 // ========== INIT ==========
 buildLayerUI();
