@@ -903,7 +903,7 @@ function renderTop() {
     // Place labels in a horizontal row
     // Cathode at 90° (top) → labels above circle; Anode at 270° (bottom) → labels below circle
     const isBottom = Math.sin(canvasAng) > 0.3; // positive sin = below center
-    const labelRowY = isBottom ? cy + outerR * sc + tabLen + 20 : 12;
+    const labelRowY = isBottom ? H - 8 : 12;
     const minSpacing = 18;
     const totalWidth = count * minSpacing;
     const startX = cx - totalWidth / 2;
