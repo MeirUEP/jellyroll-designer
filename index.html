@@ -93,6 +93,18 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .legend-item .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
 .legend-item.hidden { opacity: 0.4; }
 .legend-btns { display: flex; gap: 4px; margin-bottom: 4px; }
+.modal-overlay { position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; }
+.modal-overlay.hidden { display:none; }
+.modal-box { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; min-width:360px; max-width:600px; max-height:80vh; overflow-y:auto; }
+.modal-box h3 { font-size:14px; margin-bottom:10px; }
+.modal-box .close-btn { float:right; cursor:pointer; background:none; color:var(--fg2); font-size:16px; border:none; }
+.modal-box input[type="text"], .modal-box input[type="password"] { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:4px; background:var(--input-bg); color:var(--fg); font-size:12px; margin-bottom:8px; }
+.modal-box .design-row { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-bottom:1px solid var(--border); cursor:pointer; font-size:11px; }
+.modal-box .design-row:hover { background:var(--bg3); }
+.btn-cloud { background:#7c3aed; color:#fff; font-size:10px; padding:3px 8px; }
+.btn-cloud:hover { background:#6d28d9; }
+.toast { position:fixed; bottom:20px; right:20px; background:#16a34a; color:#fff; padding:8px 16px; border-radius:6px; font-size:12px; z-index:9999; transition:opacity 0.3s; }
+.toast.error { background:#ef4444; }
 </style>
 </head>
 <body>
@@ -164,6 +176,11 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       <button class="btn-sm" id="btnExport">Export CSV</button>
       <button class="btn-sm" id="btnPDF" style="background:#7c3aed;color:#fff">Export PDF</button>
     </div>
+    <div class="file-actions">
+      <button class="btn-cloud" id="btnCloudSave">&#9729; Save to Cloud</button>
+      <button class="btn-cloud" id="btnCloudOpen">&#9729; Open from Cloud</button>
+      <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881; API Settings</button>
+    </div>
   </div>
   <div class="right">
     <div class="info-bar" id="infoBar"></div>
@@ -185,7 +202,72 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     </div>
   </div>
 </div>
+
+<!-- API Settings Modal -->
+<div class="modal-overlay hidden" id="modalSettings">
+  <div class="modal-box">
+    <button class="close-btn" onclick="document.getElementById('modalSettings').classList.add('hidden')">&times;</button>
+    <h3>API Settings</h3>
+    <label style="font-size:10px;color:var(--fg2)">API URL</label>
+    <input type="text" id="settApiUrl" placeholder="http://localhost:8000">
+    <label style="font-size:10px;color:var(--fg2)">API Key</label>
+    <input type="password" id="settApiKey" placeholder="your-api-key">
+    <button class="btn-primary" onclick="saveApiSettings()" style="width:100%;margin-top:6px">Save</button>
+    <p style="font-size:9px;color:var(--fg2);margin-top:8px">Settings stored in browser localStorage. Cloud features are disabled when API URL is empty.</p>
+  </div>
+</div>
+
+<!-- Cloud Open Modal -->
+<div class="modal-overlay hidden" id="modalCloudOpen">
+  <div class="modal-box" style="min-width:500px">
+    <button class="close-btn" onclick="document.getElementById('modalCloudOpen').classList.add('hidden')">&times;</button>
+    <h3>Open Design from Cloud</h3>
+    <div id="cloudDesignList"><p style="color:var(--fg2);font-size:11px">Loading...</p></div>
+  </div>
+</div>
+
 <script>
+// ========== API CLIENT ==========
+function getApiUrl() { return localStorage.getItem('jr_api_url') || ''; }
+function getApiKey() { return localStorage.getItem('jr_api_key') || ''; }
+
+const api = {
+  async req(method, path, body) {
+    const base = getApiUrl();
+    if (!base) throw new Error('API URL not configured');
+    const opts = { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getApiKey()}` } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(`${base}${path}`, opts);
+    if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+    if (res.status === 204) return null;
+    return res.json();
+  },
+  listDesigns(skip=0, limit=50) { return this.req('GET', `/api/v1/designs?skip=${skip}&limit=${limit}`); },
+  getDesign(id) { return this.req('GET', `/api/v1/designs/${id}`); },
+  createDesign(data) { return this.req('POST', '/api/v1/designs', data); },
+  updateDesign(id, data) { return this.req('PUT', `/api/v1/designs/${id}`, data); },
+  deleteDesign(id) { return this.req('DELETE', `/api/v1/designs/${id}`); },
+  saveSimResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/simulation`, data); },
+  saveCapResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/capacity`, data); },
+};
+let currentDesignId = null;
+let currentDesignName = '';
+
+function showToast(msg, isError=false) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+
+function saveApiSettings() {
+  localStorage.setItem('jr_api_url', document.getElementById('settApiUrl').value.replace(/\/+$/, ''));
+  localStorage.setItem('jr_api_key', document.getElementById('settApiKey').value);
+  document.getElementById('modalSettings').classList.add('hidden');
+  showToast('API settings saved');
+}
+
 // ========== AUTH GATE ==========
 function checkAuth() {
   const p = document.getElementById('authPass').value;
@@ -1649,6 +1731,95 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   <script>setTimeout(() => window.print(), 500);<\/script>
   </body></html>`);
   win.document.close();
+});
+
+// ========== CLOUD BUTTONS ==========
+document.getElementById('btnApiSettings').addEventListener('click', () => {
+  document.getElementById('settApiUrl').value = getApiUrl();
+  document.getElementById('settApiKey').value = getApiKey();
+  document.getElementById('modalSettings').classList.remove('hidden');
+});
+
+document.getElementById('btnCloudSave').addEventListener('click', async () => {
+  if (!getApiUrl()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
+  try {
+    const designData = {
+      name: currentDesignName || prompt('Design name:', 'Jellyroll Design') || 'Untitled',
+      params, layers, elec_props: elecProps,
+    };
+    let saved;
+    if (currentDesignId) {
+      saved = await api.updateDesign(currentDesignId, designData);
+      showToast('Design updated in cloud');
+    } else {
+      saved = await api.createDesign(designData);
+      currentDesignId = saved.id;
+      currentDesignName = saved.name;
+      showToast('Design saved to cloud');
+    }
+    // Also save simulation + capacity results
+    if (simResult) {
+      await api.saveSimResult(currentDesignId, {
+        turns: simResult.turns, c_tabs: simResult.cTabs, a_tabs: simResult.aTabs,
+        outer_r: simResult.outerR, min_pitch: simResult.minPitch, max_pitch: simResult.maxPitch,
+      });
+    }
+    if (capResult) {
+      await api.saveCapResult(currentDesignId, {
+        cath_cap_ah: capResult.cathCapAh, anod_cap_ah: capResult.anodCapAh,
+        cell_cap_ah: capResult.cellCapAh, np_ratio: capResult.npRatio,
+        cell_energy_1e: capResult.cellEnergy1e, total_dry_mass: capResult.totalDryMass,
+        full_result: capResult,
+      });
+    }
+  } catch (e) { showToast('Save failed: ' + e.message, true); }
+});
+
+document.getElementById('btnCloudOpen').addEventListener('click', async () => {
+  if (!getApiUrl()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
+  document.getElementById('modalCloudOpen').classList.remove('hidden');
+  const list = document.getElementById('cloudDesignList');
+  list.innerHTML = '<p style="color:var(--fg2);font-size:11px">Loading...</p>';
+  try {
+    const data = await api.listDesigns();
+    if (data.items.length === 0) {
+      list.innerHTML = '<p style="color:var(--fg2);font-size:11px">No saved designs found.</p>';
+      return;
+    }
+    list.innerHTML = data.items.map(d => {
+      const date = new Date(d.updated_at).toLocaleDateString();
+      return `<div class="design-row" data-id="${d.id}">
+        <span><strong>${d.name}</strong></span>
+        <span style="color:var(--fg2)">${date}</span>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.design-row').forEach(row => {
+      row.addEventListener('click', async () => {
+        try {
+          const design = await api.getDesign(row.dataset.id);
+          params = design.params;
+          layers = design.layers;
+          if (design.elec_props) elecProps = design.elec_props;
+          currentDesignId = design.id;
+          currentDesignName = design.name;
+          for (const [k, v] of Object.entries(params)) {
+            const el = document.getElementById('p_' + k);
+            if (el) el.value = v;
+          }
+          for (const [k, v] of Object.entries(elecProps)) {
+            const el = document.getElementById('ep_' + k);
+            if (el) el.value = v;
+          }
+          buildLayerUI();
+          runSimulation();
+          document.getElementById('modalCloudOpen').classList.add('hidden');
+          showToast(`Loaded: ${design.name}`);
+        } catch (e) { showToast('Load failed: ' + e.message, true); }
+      });
+    });
+  } catch (e) {
+    list.innerHTML = `<p style="color:#ef4444;font-size:11px">Error: ${e.message}</p>`;
+  }
 });
 
 // ========== INIT ==========

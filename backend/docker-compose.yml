@@ -1,0 +1,34 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jellyroll
+      POSTGRES_PASSWORD: jellyroll
+      POSTGRES_DB: jellyroll
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jellyroll"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      JR_DATABASE_URL: postgresql+asyncpg://jellyroll:jellyroll@db:5432/jellyroll
+      JR_API_KEY: dev-key-change-me
+      JR_CORS_ORIGINS: '["http://localhost:8000","http://localhost:3000","https://meiruep.github.io"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
