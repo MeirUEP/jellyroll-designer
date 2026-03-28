@@ -453,9 +453,8 @@ document.getElementById('bottomToggle').addEventListener('click', () => {
 });
 
 // ========== STATE ==========
-const LAYER_TYPES = ['mandrel','anode','cathode','separator','collector','tape','other'];
+const LAYER_TYPES = ['anode','cathode','separator','collector','tape','other'];
 let layers = [
-  {name:'Mandrel',type:'mandrel',t:5.375,w:230,len:0,off:0,color:'#888899'},
   {name:'Anode',type:'anode',t:1.0,w:222,len:1800,off:30,color:'#16a34a'},
   {name:'Kraft paper',type:'separator',t:0.15,w:228,len:2600,off:0,color:'#b45309'},
   {name:'Cellophane A',type:'separator',t:0.05,w:226,len:2440,off:0,color:'#38bdf8'},
