@@ -997,24 +997,20 @@ function renderUnroll() {
   const RULER_H = 36;
   const sc = (W - PAD_L - PAD_R) / maxLen;
 
-  // Count electrodes for tab zones
+  // Scale strip sizes to fit: layer section + tab map section
   const electrodeCount = nonMandrel.filter(l => l.type === 'cathode' || l.type === 'anode').length;
-  // Scale strip sizes to fit available height
-  const availH = H - RULER_H - 10 - 30; // leave padding
-  const defaultStripH = 22, defaultGap = 6, defaultTabZone = 50;
-  const defaultTotal = nonMandrel.length * (defaultStripH + defaultGap) + electrodeCount * defaultTabZone;
+  const tabMapH = electrodeCount * 60 + 20; // space for tab map section
+  const availH = H - RULER_H - 10 - tabMapH - 10;
+  const defaultStripH = 22, defaultGap = 6;
+  const defaultTotal = nonMandrel.length * (defaultStripH + defaultGap);
   const vScale = defaultTotal > availH ? availH / defaultTotal : 1;
-  const stripH = Math.max(12, defaultStripH * vScale);
-  const stripGap = Math.max(3, defaultGap * vScale);
-  const tabZone = Math.max(25, defaultTabZone * vScale);
+  const stripH = Math.max(10, defaultStripH * vScale);
+  const stripGap = Math.max(2, defaultGap * vScale);
 
-  // Compute total height
+  // Compute total height (layers + tab map)
   let totalH = RULER_H + 10;
-  nonMandrel.forEach(l => {
-    if (l.type === 'cathode' || l.type === 'anode') totalH += tabZone;
-    totalH += stripH + stripGap;
-  });
-  totalH += 50;
+  nonMandrel.forEach(() => { totalH += stripH + stripGap; });
+  totalH += tabMapH + 60;
 
   canvas.width = W;
   canvas.height = Math.max(totalH, wrap.clientHeight);
@@ -1047,30 +1043,10 @@ function renderUnroll() {
     ctx.strokeStyle = 'rgba(100,100,100,0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
   });
 
-  // Strips
+  // === SECTION 1: Layer Strips (no tabs) ===
   let y = RULER_H + 10;
   nonMandrel.forEach(l => {
     const isElectrode = l.type === 'cathode' || l.type === 'anode';
-    if (isElectrode) {
-      const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
-      const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
-      const prefix = l.type === 'cathode' ? 'C' : 'A';
-      tabs.forEach((tab, ti) => {
-        const tx = PAD_L + tab.arcLen * sc;
-        // Tab line pointing down
-        ctx.beginPath(); ctx.moveTo(tx, y + 10); ctx.lineTo(tx, y + tabZone - 4);
-        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-        // Arrow tip pointing down
-        ctx.beginPath(); ctx.moveTo(tx, y + tabZone - 4); ctx.lineTo(tx - 3, y + tabZone - 10); ctx.lineTo(tx + 3, y + tabZone - 10); ctx.closePath();
-        ctx.fillStyle = color; ctx.fill();
-        // Label at top — stagger to avoid overlap
-        ctx.fillStyle = color; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-        const labelOff = (ti % 2) * 8;
-        ctx.fillText(`${prefix}${tab.idx}`, tx, y + 8 - labelOff);
-      });
-      y += tabZone;
-    }
-
     const stripY = y;
     const x0 = PAD_L + l.off * sc;
     const w = l.len * sc;
@@ -1080,7 +1056,7 @@ function renderUnroll() {
     ctx.fillRect(PAD_L, stripY, (W - PAD_L - PAD_R), stripH);
 
     // Strip
-    ctx.fillStyle = hexToRgba(l.color, 0.7);
+    ctx.fillStyle = hexToRgba(l.color, isElectrode ? 0.8 : 0.6);
     ctx.fillRect(x0, stripY, w, stripH);
     ctx.strokeStyle = l.color;
     ctx.lineWidth = 1;
@@ -1109,21 +1085,88 @@ function renderUnroll() {
     ctx.moveTo(x0 + w, stripY); ctx.lineTo(x0 + w - 5, stripY + stripH/2); ctx.lineTo(x0 + w, stripY + stripH);
     ctx.fillStyle = l.color; ctx.fill();
 
-    // Arc length annotations for tabs — stagger above/below
-    if (isElectrode) {
-      const tabs = l.type === 'cathode' ? s.cTabs : s.aTabs;
-      const color = l.type === 'cathode' ? '#3b82f6' : '#16a34a';
-      tabs.forEach((tab, ti) => {
-        const tx = PAD_L + tab.arcLen * sc;
-        ctx.fillStyle = color; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
-        // Alternate above/below to avoid overlap
-        const yOff = (ti % 2 === 0) ? stripY + stripH + 10 : stripY + stripH + 19;
-        ctx.fillText(`${tab.arcLen.toFixed(0)}`, tx, yOff);
-      });
-    }
-
     y += stripH + stripGap;
   });
+
+  // === SECTION 2: Tab Map — dedicated electrode strips with tab positions ===
+  y += 6;
+  // Separator line
+  ctx.strokeStyle = 'rgba(150,150,150,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+  y += 4;
+  // Section label
+  ctx.fillStyle = fg; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('TAB MAP', 8, y + 9);
+  y += 4;
+
+  const tabStripH = Math.max(16, stripH * 1.2);
+  const tabMarkerH = 20;
+
+  function drawTabMap(electrode, tabs, color, prefix) {
+    if (!electrode) return;
+    const mapY = y;
+    const x0 = PAD_L + electrode.off * sc;
+    const w = electrode.len * sc;
+
+    // Electrode strip
+    ctx.fillStyle = hexToRgba(color, 0.3);
+    ctx.fillRect(x0, mapY, w, tabStripH);
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.strokeRect(x0, mapY, w, tabStripH);
+
+    // Label
+    ctx.fillStyle = color; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(electrode.name, PAD_L - 6, mapY + tabStripH / 2 + 4);
+
+    // Tab markers — triangles pointing down into the strip + labels above
+    tabs.forEach((tab, ti) => {
+      const tx = PAD_L + tab.arcLen * sc;
+      if (tx < x0 || tx > x0 + w) return;
+
+      // Tab marker line above strip
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(tx, mapY - tabMarkerH); ctx.lineTo(tx, mapY); ctx.stroke();
+
+      // Triangle pointing down at strip top
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(tx, mapY + 4);
+      ctx.lineTo(tx - 3, mapY - 2);
+      ctx.lineTo(tx + 3, mapY - 2);
+      ctx.closePath(); ctx.fill();
+
+      // Label above — stagger heights
+      const labelY = mapY - tabMarkerH - 2 - (ti % 2) * 10;
+      ctx.fillStyle = color; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${prefix}${tab.idx}`, tx, labelY);
+
+      // Arc length below strip
+      ctx.fillStyle = color; ctx.font = '7px sans-serif';
+      const arcY = mapY + tabStripH + 9 + (ti % 2) * 8;
+      ctx.fillText(`${tab.arcLen.toFixed(0)}`, tx, arcY);
+    });
+
+    // Spacing annotations between tabs
+    for (let i = 1; i < tabs.length; i++) {
+      const x1 = PAD_L + tabs[i-1].arcLen * sc;
+      const x2 = PAD_L + tabs[i].arcLen * sc;
+      const midX = (x1 + x2) / 2;
+      const spY = mapY + tabStripH / 2;
+      if (x2 - x1 > 25) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(x1, spY); ctx.lineTo(x2, spY); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${tabs[i].spacing ? tabs[i].spacing.toFixed(0) : ''}`, midX, spY - 2);
+      }
+    }
+
+    y += tabStripH + tabMarkerH + 20;
+  }
+
+  const cathode = layers.find(l => l.type === 'cathode');
+  const anode = layers.find(l => l.type === 'anode');
+  drawTabMap(cathode, s.cTabs, '#3b82f6', 'C');
+  drawTabMap(anode, s.aTabs, '#16a34a', 'A');
 }
 
 // ========== 3D VIEW (improved) ==========
