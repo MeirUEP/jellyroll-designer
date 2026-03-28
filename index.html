@@ -641,16 +641,14 @@ function renderSide() {
   const s = simResult;
   const outerR = s.outerR;
   const cellH = params.cell_h;
-  const tabH = params.tab_h;
   const mandrelR = params.mandrel_d / 2;
   const fg = var_fg();
 
-  const PAD_L = 70, PAD_R = 70, PAD_BOT = 50;
-  const TAB_AREA = 70; // more space for tab labels above cell
-  // Scale to use full canvas height
-  const availW = W - PAD_L - PAD_R;
-  const availH = H - TAB_AREA - PAD_BOT;
-  const sc = Math.min(availW / (outerR * 2), availH / cellH);
+  // Layout: center cell with space for tabs above and dimensions below
+  const TAB_AREA = 50, DIM_AREA = 55, PAD_SIDE = 50;
+  const availW = W - PAD_SIDE * 2;
+  const availH = H - TAB_AREA - DIM_AREA;
+  const sc = Math.min(availW / (outerR * 2 + 40), availH / cellH);
 
   const cx = W / 2;
   const cellTop = TAB_AREA;
@@ -662,7 +660,7 @@ function renderSide() {
   ctx.strokeStyle = fg; ctx.lineWidth = 1.5;
   ctx.strokeRect(cellLeft, cellTop, outerR * 2 * sc, cellH * sc);
 
-  // Draw layer-colored rings for each turn
+  // Draw layer-colored rings for each turn with width differentiation
   s.turns.forEach((turn, ti) => {
     const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
     const innerR_t = prevR;
@@ -672,85 +670,74 @@ function renderSide() {
       const nActive = turn.active.length;
       const rInner = innerR_t + (bandW / nActive) * li;
       const rOuter = innerR_t + (bandW / nActive) * (li + 1);
-
-      // Left half
-      const lx = cx - rOuter * sc;
       const lw = (rOuter - rInner) * sc;
-      // Right half
-      const rx = cx + rInner * sc;
 
-      // Determine height based on layer width vs cell height
+      // Layer height based on its width vs cell height — more visible differentiation
       const layerH = layer.w * sc;
       const yOff = (cellH * sc - layerH) / 2;
+      const isElectrode = layer.type === 'cathode' || layer.type === 'anode';
 
-      ctx.fillStyle = hexToRgba(layer.color, 0.5);
+      ctx.fillStyle = hexToRgba(layer.color, isElectrode ? 0.7 : 0.4);
       // Left side
-      ctx.fillRect(lx, cellTop + yOff, lw, layerH);
+      ctx.fillRect(cx - rOuter * sc, cellTop + yOff, lw, layerH);
       // Right side
-      ctx.fillRect(rx, cellTop + yOff, lw, layerH);
+      ctx.fillRect(cx + rInner * sc, cellTop + yOff, lw, layerH);
+
+      // Draw overhang shading where electrode is shorter than cell height
+      if (isElectrode && yOff > 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(cx - rOuter * sc, cellTop, lw, yOff);
+        ctx.fillRect(cx - rOuter * sc, cellBot - yOff, lw, yOff);
+        ctx.fillRect(cx + rInner * sc, cellTop, lw, yOff);
+        ctx.fillRect(cx + rInner * sc, cellBot - yOff, lw, yOff);
+      }
     });
 
     // Faint turn boundary lines
-    const x1 = cx - turn.r * sc, x2 = cx + turn.r * sc;
-    ctx.strokeStyle = 'rgba(150,150,150,0.15)'; ctx.lineWidth = 0.5;
-    ctx.beginPath(); ctx.moveTo(x1, cellTop); ctx.lineTo(x1, cellBot); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x2, cellTop); ctx.lineTo(x2, cellBot); ctx.stroke();
+    ctx.strokeStyle = 'rgba(150,150,150,0.12)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(cx - turn.r * sc, cellTop); ctx.lineTo(cx - turn.r * sc, cellBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + turn.r * sc, cellTop); ctx.lineTo(cx + turn.r * sc, cellBot); ctx.stroke();
   });
 
   // Mandrel shading
   ctx.fillStyle = hexToRgba('#888899', 0.4);
   ctx.fillRect(cx - mandrelR * sc, cellTop, mandrelR * 2 * sc, cellH * sc);
 
-  // Tabs as uniform thin lines with fanned-out leader labels
-  // Spread labels across full canvas halves to prevent overlap
-  const tabLineH = 20;
+  // Tabs — spread labels across full halves
+  const tabLineH = 18;
   function drawSideTabs(tabs, color, prefix, side) {
     const count = tabs.length;
     if (count === 0) return;
-    // Use full canvas half for label spread (with padding)
-    const pad = 20;
-    const minLabelSpacing = 18; // minimum px between labels
-    const neededWidth = count * minLabelSpacing;
-    let areaStart, areaEnd;
-    if (side === 'left') {
-      areaEnd = cx - 10;
-      areaStart = Math.max(pad, areaEnd - neededWidth);
-    } else {
-      areaStart = cx + 10;
-      areaEnd = Math.min(W - pad, areaStart + neededWidth);
-    }
-    const labelSpacing = count > 1 ? (areaEnd - areaStart) / (count - 1) : 0;
+    const minSp = 18, pad = 20;
+    const needed = count * minSp;
+    let aS, aE;
+    if (side === 'left') { aE = cx - 10; aS = Math.max(pad, aE - needed); }
+    else { aS = cx + 10; aE = Math.min(W - pad, aS + needed); }
+    const sp = count > 1 ? (aE - aS) / (count - 1) : 0;
 
     tabs.forEach((tab, i) => {
       const x = side === 'left' ? cx - tab.r * sc : cx + tab.r * sc;
-      // Vertical line from cell top upward
       ctx.strokeStyle = color; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(x, cellTop); ctx.lineTo(x, cellTop - tabLineH); ctx.stroke();
-      // Dot at cell top
       ctx.fillStyle = color;
       ctx.beginPath(); ctx.arc(x, cellTop, 2, 0, Math.PI * 2); ctx.fill();
-      // Fan out label positions evenly across available space
-      const labelX = count > 1 ? areaStart + i * labelSpacing : (areaStart + areaEnd) / 2;
-      const labelY = 14;
-      // Leader line
-      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
-      ctx.beginPath(); ctx.moveTo(x, cellTop - tabLineH); ctx.lineTo(labelX, labelY + 4); ctx.stroke();
+      const lx = count > 1 ? aS + i * sp : (aS + aE) / 2;
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.35;
+      ctx.beginPath(); ctx.moveTo(x, cellTop - tabLineH); ctx.lineTo(lx, 18); ctx.stroke();
       ctx.globalAlpha = 1;
-      // Label
       ctx.fillStyle = color; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${prefix}${tab.idx}`, labelX, labelY);
+      ctx.fillText(`${prefix}${tab.idx}`, lx, 12);
     });
   }
-
   drawSideTabs(s.cTabs, '#3b82f6', 'C', 'left');
   drawSideTabs(s.aTabs, '#16a34a', 'A', 'right');
 
-  // Dimension annotations with bracket lines
+  // Dimension annotations
   ctx.strokeStyle = fg; ctx.fillStyle = fg; ctx.lineWidth = 0.8;
   ctx.font = '10px sans-serif';
 
-  // Cell height — right side bracket
-  const dimX = cellRight + 20;
+  // Cell height — right bracket
+  const dimX = cellRight + 15;
   ctx.beginPath();
   ctx.moveTo(dimX - 4, cellTop); ctx.lineTo(dimX, cellTop); ctx.lineTo(dimX, cellBot); ctx.lineTo(dimX - 4, cellBot);
   ctx.stroke();
@@ -758,40 +745,44 @@ function renderSide() {
   ctx.fillText(`${cellH}mm`, dimX + 4, (cellTop + cellBot) / 2 + 4);
 
   // OD — bottom bracket
-  const dimY = cellBot + 20;
+  const dimY = cellBot + 15;
   ctx.beginPath();
   ctx.moveTo(cellLeft, dimY - 4); ctx.lineTo(cellLeft, dimY); ctx.lineTo(cellRight, dimY); ctx.lineTo(cellRight, dimY - 4);
   ctx.stroke();
   ctx.textAlign = 'center';
-  ctx.fillText(`OD ${(outerR*2).toFixed(1)}mm`, cx, dimY + 14);
+  ctx.fillText(`OD ${(outerR*2).toFixed(1)}mm`, cx, dimY + 12);
 
   // Mandrel diameter — below OD
-  const mLeft = cx - mandrelR * sc, mRight = cx + mandrelR * sc;
-  const dimY2 = dimY + 24;
+  const mL = cx - mandrelR * sc, mR = cx + mandrelR * sc;
+  const dimY2 = dimY + 22;
   ctx.strokeStyle = '#888899';
   ctx.beginPath();
-  ctx.moveTo(mLeft, dimY2 - 4); ctx.lineTo(mLeft, dimY2); ctx.lineTo(mRight, dimY2); ctx.lineTo(mRight, dimY2 - 4);
+  ctx.moveTo(mL, dimY2 - 4); ctx.lineTo(mL, dimY2); ctx.lineTo(mR, dimY2); ctx.lineTo(mR, dimY2 - 4);
   ctx.stroke();
   ctx.fillStyle = '#888899';
-  ctx.fillText(`\u00D8${params.mandrel_d}mm`, cx, dimY2 + 14);
+  ctx.fillText(`\u00D8${params.mandrel_d}mm`, cx, dimY2 + 12);
 
-  // Layer legend for side view
-  ctx.textAlign = 'left'; ctx.font = '10px sans-serif';
+  // Legend as overlay in bottom-left corner
+  ctx.textAlign = 'left'; ctx.font = '9px sans-serif';
   const uniqueLayers = [];
   const seen = new Set();
   layers.filter(l => l.type !== 'mandrel').forEach(l => {
     const key = l.name.startsWith('Cellophane') ? 'Cellophane' : l.name;
     if (!seen.has(key)) { seen.add(key); uniqueLayers.push({name: key, color: l.color}); }
   });
-  const legX = 10, legY0 = cellTop + 10;
+  const legW = 90, legH = uniqueLayers.length * 14 + 8;
+  const legX = 8, legY0 = H - legH - 8;
+  // Legend background
+  ctx.fillStyle = 'rgba(17,24,39,0.85)';
+  ctx.fillRect(legX, legY0, legW, legH);
+  ctx.strokeStyle = 'rgba(75,85,99,0.5)'; ctx.lineWidth = 0.5;
+  ctx.strokeRect(legX, legY0, legW, legH);
   uniqueLayers.forEach((l, i) => {
-    const y = legY0 + i * 16;
+    const y = legY0 + 6 + i * 14;
     ctx.fillStyle = l.color;
-    ctx.fillRect(legX, y, 10, 10);
-    ctx.strokeStyle = var_fg(); ctx.lineWidth = 0.5;
-    ctx.strokeRect(legX, y, 10, 10);
+    ctx.fillRect(legX + 4, y, 8, 8);
     ctx.fillStyle = fg;
-    ctx.fillText(l.name, legX + 14, y + 9);
+    ctx.fillText(l.name, legX + 16, y + 7);
   });
 }
 
@@ -907,13 +898,15 @@ function renderTop() {
       ctx.beginPath(); ctx.arc(x1, y1, 2, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
 
-      // Tab line extending outward horizontally
+      // Tab line extending outward horizontally — slight vertical fan to avoid stacking
+      const fanOffset = (i - (count - 1) / 2) * 3; // spread ±N pixels from center
       const x2 = side === 'left' ? cx - outerR * sc - 10 : cx + outerR * sc + 10;
+      const y2 = cy + fanOffset;
       // White outline
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y1);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
       // Colored line
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y1);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
       ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
 
       // Label — spread vertically along the edge
@@ -999,12 +992,21 @@ function renderUnroll() {
   const maxLen = Math.max(...nonMandrel.map(l => l.off + l.len));
   const fg = var_fg();
 
+  const H = wrap.clientHeight;
   const PAD_L = 112, PAD_R = 20;
   const RULER_H = 36;
-  const stripH = 22;
-  const stripGap = 6;
-  const tabZone = 50;
   const sc = (W - PAD_L - PAD_R) / maxLen;
+
+  // Count electrodes for tab zones
+  const electrodeCount = nonMandrel.filter(l => l.type === 'cathode' || l.type === 'anode').length;
+  // Scale strip sizes to fit available height
+  const availH = H - RULER_H - 10 - 30; // leave padding
+  const defaultStripH = 22, defaultGap = 6, defaultTabZone = 50;
+  const defaultTotal = nonMandrel.length * (defaultStripH + defaultGap) + electrodeCount * defaultTabZone;
+  const vScale = defaultTotal > availH ? availH / defaultTotal : 1;
+  const stripH = Math.max(12, defaultStripH * vScale);
+  const stripGap = Math.max(3, defaultGap * vScale);
+  const tabZone = Math.max(25, defaultTabZone * vScale);
 
   // Compute total height
   let totalH = RULER_H + 10;
@@ -1298,24 +1300,30 @@ function update3DScene() {
   const tabW = params.tab_w;
 
   function addTabs(tabs, color, emissive, cellAngleDeg) {
-    // Convert to radians — in Three.js XZ plane, use sin for X and cos for Z
     const angRad = cellAngleDeg * Math.PI / 180;
     tabs.forEach(tab => {
       const r = tab.r * rScale;
-      // Tab box: wider and taller for visibility
-      const geo = new THREE.BoxGeometry(tabW * 0.4, tabH * 2, 1.5);
-      const mat = new THREE.MeshPhongMaterial({ color, emissive, side: THREE.DoubleSide });
+      // Tab: much taller (4x) and wider for clear visibility
+      const tH = tabH * 4;
+      const tW = Math.max(tabW * 0.6, 4);
+      const geo = new THREE.BoxGeometry(tW, tH, 2);
+      const mat = new THREE.MeshPhongMaterial({ color, emissive: emissive, emissiveIntensity: 0.4, side: THREE.DoubleSide });
       const mesh = new THREE.Mesh(geo, mat);
-      // Position: on the top face, at the correct angle
-      // X = r * sin(angle), Z = r * cos(angle) matches CylinderGeometry convention
       mesh.position.set(
         r * Math.sin(angRad),
-        cellH + tabH,
+        cellH + tH / 2,
         r * Math.cos(angRad)
       );
-      // Rotate tab to face tangent to the cylinder at this angle
       mesh.rotation.y = angRad;
       threeScene.add(mesh);
+
+      // Add a bright edge outline for visibility
+      const edgeGeo = new THREE.EdgesGeometry(geo);
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1 });
+      const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+      edges.position.copy(mesh.position);
+      edges.rotation.copy(mesh.rotation);
+      threeScene.add(edges);
     });
   }
 
