@@ -995,7 +995,7 @@ function renderUnroll() {
   const fg = var_fg();
 
   const H = wrap.clientHeight;
-  const PAD_L = 112, PAD_R = 20;
+  const PAD_L = 112, PAD_R = 50;
   const RULER_H = 36;
   const sc = (W - PAD_L - PAD_R) / maxLen;
 
@@ -1084,6 +1084,10 @@ function renderUnroll() {
     ctx.beginPath();
     ctx.moveTo(x0 + w, stripY); ctx.lineTo(x0 + w - 5, stripY + stripH/2); ctx.lineTo(x0 + w, stripY + stripH);
     ctx.fillStyle = l.color; ctx.fill();
+
+    // Thickness label on right side
+    ctx.fillStyle = fg; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(`${l.t}mm`, W - PAD_R + 4, stripY + stripH / 2 + 3);
 
     y += stripH + stripGap;
   });
