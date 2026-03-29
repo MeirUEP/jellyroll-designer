@@ -1266,38 +1266,42 @@ function renderTop() {
   // Looking down at the top face: tabs are welded on the electrode surface
   // and stick up vertically. In the top view they appear as thin radial lines
   // at each tab's radius, at the drill angle direction.
-  // Tabs as small individual fins at each ring, extending outward
-  // Each tab is a short rectangle sitting on the outer edge of its turn ring
+  // Tabs as individual small rectangles spread along the circumference
+  // Like looking down at the 3D view — each tab is a separate visible piece
   function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
     const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
-    const dx = Math.cos(canvasAng);
-    const dy = Math.sin(canvasAng);
 
-    // Get the pitch spacing in pixels to size tabs appropriately
-    const pitchPx = count > 1 ? Math.abs(tabs[1].r - tabs[0].r) * sc : 8;
-    const tabLenPx = Math.max(8, Math.min(15, pitchPx * 1.5)); // proportional to pitch
-    const tabWidthPx = Math.max(2, Math.min(4, pitchPx * 0.5)); // thin
+    // Tab dimensions
+    const tabLen = 12; // radial length outward
+    const tabArcDeg = 6; // angular width per tab in degrees
+    const tabArcRad = tabArcDeg * Math.PI / 180;
 
-    // Draw each tab as a small colored arc segment (bump on the ring)
+    // Spread tabs along circumference so they're individually visible
+    // like a fan of small rectangles around the drill angle
+    const gapDeg = 2; // gap between tabs
+    const totalDeg = count * (tabArcDeg + gapDeg) - gapDeg;
+    const totalRad = totalDeg * Math.PI / 180;
+    const startAng = canvasAng - totalRad / 2;
+
     tabs.forEach((tab, i) => {
       const r = tab.r * sc;
-      // Small arc bump at the drill angle
-      const arcSpan = tabWidthPx / r; // angular span in radians
-      const startAng = canvasAng - arcSpan / 2;
-      const endAng = canvasAng + arcSpan / 2;
+      const tabStart = startAng + i * (tabArcDeg + gapDeg) * Math.PI / 180;
+      const tabEnd = tabStart + tabArcRad;
 
-      // Draw filled wedge extending outward from ring
+      // Arc wedge from ring outward
       ctx.beginPath();
-      ctx.arc(cx, cy, r, startAng, endAng);
-      ctx.arc(cx, cy, r + tabLenPx, endAng, startAng, true);
+      ctx.arc(cx, cy, r, tabStart, tabEnd);
+      ctx.arc(cx, cy, r + tabLen, tabEnd, tabStart, true);
       ctx.closePath();
       ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
       ctx.fill();
-      ctx.strokeStyle = hexToRgba(color, 0.5);
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 0.3;
       ctx.stroke();
+      ctx.globalAlpha = 1;
     });
 
     // Angle label at the drill position
