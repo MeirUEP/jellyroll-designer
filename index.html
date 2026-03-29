@@ -1274,14 +1274,13 @@ function renderTop() {
     if (count === 0) return;
     const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
 
-    // Fixed pixel size for all tabs
-    const tabLen = 10;  // radial length
-    const tabW = 3;     // tangential width (pixels)
+    // Tab size proportional to cell radius for visibility
+    const outerRpx = outerR * sc;
+    const tabLen = Math.max(15, outerRpx * 0.15);  // 15% of radius
+    const tabW = Math.max(4, outerRpx * 0.02);     // 2% of radius
 
-    // Spread tabs so inner ones fan more, outer ones fan less
-    // Use a fixed pixel offset along the tangential direction
-    const tangentialSpacing = tabW + 2; // pixels between tab centers
-    const totalWidth = count * tangentialSpacing;
+    // Spread tabs tangentially with spacing
+    const tangentialSpacing = tabW + 3;
 
     tabs.forEach((tab, i) => {
       const r = tab.r * sc;
@@ -1303,7 +1302,7 @@ function renderTop() {
       const tx = cx + (r + tabLen) * dx;
       const ty = cy + (r + tabLen) * dy;
 
-      // Draw filled rectangle
+      // Draw filled rectangle with white outline
       ctx.beginPath();
       ctx.moveTo(bx + px, by + py);
       ctx.lineTo(tx + px, ty + py);
@@ -1311,9 +1310,10 @@ function renderTop() {
       ctx.lineTo(bx - px, by - py);
       ctx.closePath();
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.9;
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
     });
 
     // Angle label at the drill position
