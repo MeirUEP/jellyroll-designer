@@ -119,6 +119,84 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .btn-cloud:hover { background:#6d28d9; }
 .toast { position:fixed; bottom:20px; right:20px; background:#16a34a; color:#fff; padding:8px 16px; border-radius:6px; font-size:12px; z-index:9999; transition:opacity 0.3s; }
 .toast.error { background:#ef4444; }
+
+/* Mobile toggle button — hidden on desktop */
+.mobile-panel-toggle { display: none; }
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+  body { overflow: auto; height: auto; }
+  .app { display: flex; flex-direction: column; height: auto; min-height: 100vh; }
+
+  /* Left panel becomes collapsible top section */
+  .left { border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; overflow: hidden; transition: max-height 0.3s ease; }
+  .left.collapsed { max-height: 0; border-bottom: none; }
+  .left-tabs { overflow-x: auto; }
+  .left-tab { padding: 10px 8px; font-size: 12px; white-space: nowrap; }
+  .left-tab-content { padding: 10px; }
+
+  /* Toggle button visible on mobile */
+  .mobile-panel-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px; background: var(--bg2); border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--fg2); cursor: pointer; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-panel-toggle:active { background: var(--bg3); }
+
+  /* Right panel fills remaining space */
+  .right { min-height: 60vh; }
+  .canvas-wrap { min-height: 300px; height: 50vh; }
+
+  /* Info bar wraps nicely */
+  .info-bar { font-size: 10px; padding: 6px 8px; gap: 4px; }
+
+  /* View tabs scroll horizontally */
+  .view-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .view-tab { padding: 10px 12px; font-size: 12px; white-space: nowrap; }
+
+  /* Larger touch targets for inputs */
+  .param-item input, .param-item select { padding: 6px 8px; font-size: 13px; min-height: 36px; }
+  .comp-table input { padding: 4px 6px; font-size: 12px; min-height: 32px; }
+  button { min-height: 36px; padding: 8px 12px; font-size: 12px; }
+  .btn-sm { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+
+  /* Layer cards more spacious */
+  .layer-card { padding: 8px; }
+  .layer-props { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .layer-header input[type="text"] { font-size: 13px; padding: 4px 6px; }
+
+  /* Bottom section */
+  .bottom-section { max-height: none; }
+  .summary-cards { flex-wrap: wrap; }
+  .summary-card { min-width: 80px; }
+  .results-area table { font-size: 10px; }
+  .results-area th, .results-area td { padding: 4px; }
+
+  /* File action buttons wrap */
+  .file-actions { flex-wrap: wrap; }
+  .run-bar { flex-wrap: wrap; }
+  .run-bar button { flex: 1; }
+
+  /* Legend repositioned */
+  .legend { bottom: 4px; right: 4px; max-height: 150px; font-size: 9px; }
+
+  /* Modal full-width */
+  .modal-box { min-width: auto; width: 90vw; max-width: 90vw; }
+
+  /* Auth gate input larger */
+  #authGate input { font-size: 16px; padding: 12px 14px; }
+  #authGate button { font-size: 16px; padding: 12px; }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .param-grid { grid-template-columns: 1fr; }
+  .layer-props { grid-template-columns: 1fr 1fr; }
+  .summary-cards { gap: 4px; }
+  .summary-card .val { font-size: 12px; }
+  .info-bar { font-size: 9px; }
+}
 </style>
 </head>
 <body>
@@ -131,7 +209,10 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
   </div>
 </div>
 <div class="app" style="display:none" id="appMain">
-  <div class="left">
+  <div class="mobile-panel-toggle" id="mobileToggle" onclick="toggleMobilePanel()">
+    &#9660; Controls
+  </div>
+  <div class="left" id="leftPanel">
     <div class="left-tabs">
       <button class="left-tab active" data-ltab="formulation">Formulation</button>
       <button class="left-tab" data-ltab="cellparams">Cell Params</button>
@@ -344,6 +425,14 @@ function saveApiSettings() {
 }
 
 // ========== AUTH GATE ==========
+// Mobile panel toggle
+function toggleMobilePanel() {
+  const panel = document.getElementById('leftPanel');
+  const btn = document.getElementById('mobileToggle');
+  panel.classList.toggle('collapsed');
+  btn.innerHTML = panel.classList.contains('collapsed') ? '&#9650; Controls' : '&#9660; Controls';
+}
+
 function checkAuth() {
   const p = document.getElementById('authPass').value;
   if (p === atob('WmluY0Fub2Rl')) {
