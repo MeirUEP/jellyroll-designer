@@ -673,14 +673,30 @@ function runSimulation() {
     arc += circ;
     r += pitch;
 
-    const active = nonMandrel.filter(l => arcStart >= l.off && arcStart < l.off + l.len);
+    // Include any layer that overlaps this turn's arc range [arcStart, arc]
+    const active = nonMandrel.filter(l => {
+      const lStart = l.off;
+      const lEnd = l.off + l.len;
+      return lStart < arc && lEnd > arcStart;  // overlaps
+    });
     turns.push({ turn: n, r, arc, pitch, circ, arcStart, active });
   }
 
-  // Tab placement
+  // Tab placement — compute electrode mid-radius within each turn band
   const cathode = layers.find(l => l.type === 'cathode');
   const anode = layers.find(l => l.type === 'anode');
   const cTabs = [], aTabs = [];
+
+  // Helper: find the mid-radius of a specific layer within a turn's band
+  function layerMidR(turnIdx, targetLayer) {
+    const t = turns[turnIdx];
+    const prevR = turnIdx > 0 ? turns[turnIdx-1].r : r0;
+    const bandW = t.r - prevR;
+    const nActive = t.active.length;
+    const li = t.active.indexOf(targetLayer);
+    if (li < 0) return t.r; // fallback
+    return prevR + (bandW / nActive) * (li + 0.5);
+  }
 
   if (cathode) {
     for (let ti = 0; ti < turns.length; ti++) {
@@ -688,7 +704,8 @@ function runSimulation() {
       const t = turns[ti];
       const tS = t.arc - t.circ;
       if (tS >= cathode.off && tS < cathode.off + cathode.len && t.arc <= cathode.off + cathode.len) {
-        cTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: t.arc, idx: cTabs.length + 1, circ: t.circ });
+        const cathInActive = t.active.find(l => l.name === cathode.name);
+        cTabs.push({ turn: t.turn, r: cathInActive ? layerMidR(ti, cathInActive) : t.r, pitch: t.pitch, arcLen: t.arc, idx: cTabs.length + 1, circ: t.circ });
       }
     }
   }
@@ -701,7 +718,8 @@ function runSimulation() {
       const half = Math.PI * t.r;
       const aArc = t.arc + half;
       if (tS >= anode.off && tS < anode.off + anode.len && aArc <= anode.off + anode.len) {
-        aTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: aArc, idx: aTabs.length + 1, circ: t.circ });
+        const anodInActive = t.active.find(l => l.name === anode.name);
+        aTabs.push({ turn: t.turn, r: anodInActive ? layerMidR(ti, anodInActive) : t.r, pitch: t.pitch, arcLen: aArc, idx: aTabs.length + 1, circ: t.circ });
       }
     }
   }
