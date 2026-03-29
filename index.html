@@ -1251,13 +1251,42 @@ function renderTop() {
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // Endpoint markers
-      const sx = cx + rMid * sc * Math.cos(angStart);
-      const sy = cy + rMid * sc * Math.sin(angStart);
-      const ex = cx + rMid * sc * Math.cos(angEnd);
-      const ey = cy + rMid * sc * Math.sin(angEnd);
-      ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
-      ctx.beginPath(); ctx.arc(ex, ey, 2.5, 0, Math.PI*2); ctx.fillStyle=layer.color; ctx.fill();
+      // Endpoint markers — only show on partial arcs (not full 360°)
+      const isPartial = (fracEnd - fracStart) < 0.98;
+      if (isPartial && isElectrode) {
+        const rPx = rMid * sc;
+        const tickLen = 6;
+        // Start tick — perpendicular white line
+        const sdx = Math.cos(angStart), sdy = Math.sin(angStart);
+        const sx = cx + rPx * sdx, sy = cy + rPx * sdy;
+        ctx.beginPath();
+        ctx.moveTo(sx - sdy * tickLen, sy + sdx * tickLen);
+        ctx.lineTo(sx + sdy * tickLen, sy - sdx * tickLen);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        // "S" label
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('S', sx + sdy * 11, sy - sdx * 11);
+
+        // End tick — perpendicular colored line with arrowhead
+        const edx = Math.cos(angEnd), edy = Math.sin(angEnd);
+        const ex = cx + rPx * edx, ey = cy + rPx * edy;
+        ctx.beginPath();
+        ctx.moveTo(ex - edy * tickLen, ey + edx * tickLen);
+        ctx.lineTo(ex + edy * tickLen, ey - edx * tickLen);
+        ctx.strokeStyle = layer.color; ctx.lineWidth = 2.5; ctx.stroke();
+        // "E" label
+        ctx.fillStyle = layer.color;
+        ctx.fillText('E', ex + edy * 11, ey - edx * 11);
+      } else if (isPartial) {
+        // Non-electrode partial arcs: small dots
+        const sx = cx + rMid * sc * Math.cos(angStart);
+        const sy = cy + rMid * sc * Math.sin(angStart);
+        const ex = cx + rMid * sc * Math.cos(angEnd);
+        const ey = cy + rMid * sc * Math.sin(angEnd);
+        ctx.beginPath(); ctx.arc(sx, sy, 1.5, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex, ey, 1.5, 0, Math.PI*2); ctx.fillStyle=layer.color; ctx.fill();
+      }
     });
   });
 
