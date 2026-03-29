@@ -1222,8 +1222,8 @@ function renderTop() {
       const turnArcLen = turn.circ;
       const fracStart = (layerArcStart - turn.arcStart) / turnArcLen;
       const fracEnd = (layerArcEnd - turn.arcStart) / turnArcLen;
-      const angStart = -Math.PI/2 + fracStart * Math.PI * 2;
-      const angEnd = -Math.PI/2 + fracEnd * Math.PI * 2;
+      const angStart = fracStart * Math.PI * 2;
+      const angEnd = fracEnd * Math.PI * 2;
 
       ctx.beginPath();
       ctx.arc(cx, cy, rMid * sc, angStart, angEnd);
@@ -1252,8 +1252,8 @@ function renderTop() {
   if (s.turns.length > 0) {
     ctx.font = '8px sans-serif'; ctx.fillStyle = fg; ctx.textAlign = 'center';
     s.turns.forEach((t, i) => {
-      // Place at bottom-right area to avoid tab overlap
-      const ang = Math.PI / 4 + (i / s.turns.length) * Math.PI; // bottom-right quadrant
+      // Place in bottom half to avoid tab overlap (tabs now on left/right)
+      const ang = Math.PI / 4 + Math.PI / 2 + (i / s.turns.length) * Math.PI; // bottom quadrants
       const lx = cx + (t.r * sc + 10) * Math.cos(ang);
       const ly = cy + (t.r * sc + 10) * Math.sin(ang);
       if (i % 2 === 0 || s.turns.length <= 6) { // skip some if too many
@@ -1262,69 +1262,55 @@ function renderTop() {
     });
   }
 
-  // Tabs as thin rectangles radiating outward at the drill angle
-  // Looking down at the top face: tabs are welded on the electrode surface
-  // and stick up vertically. In the top view they appear as thin radial lines
-  // at each tab's radius, at the drill angle direction.
-  // Tabs as uniform small rectangles, each at its ring radius
-  // Spread slightly along circumference so each is individually visible
-  // All tabs same pixel size, pointing radially outward
+  // Tabs viewed from above — match 3D appearance.
+  // In 3D, tabs are thin vertical strips at each ring radius, all at the same
+  // drill angle, rotated so they sit perpendicular to the radial direction.
+  // From the top they look like short tangential dashes at each radius.
   function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
-    const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
+    // 0° = 3 o'clock (right). Canvas angle 0 = right, increases CW.
+    const canvasAng = -cellAngleDeg * Math.PI / 180;
+    const dx = Math.cos(canvasAng);
+    const dy = Math.sin(canvasAng);
 
-    // Tab size proportional to cell radius for visibility
-    const outerRpx = outerR * sc;
-    const tabLen = Math.max(15, outerRpx * 0.15);  // 15% of radius
-    const tabW = Math.max(4, outerRpx * 0.02);     // 2% of radius
+    // Tab dimensions: match 3D BoxGeometry(tW, tH, 0.5)
+    // From top-down, the box appears as tW × 0.5 rectangle.
+    // tW = max(tabW*0.3, 2), depth = 0.5mm — scale to canvas pixels.
+    const tW = Math.max(params.tab_w * 0.3, 2) * sc;  // tangential width
+    const tD = Math.max(1.5, 0.5 * sc);                // radial depth (0.5mm)
+    const halfW = Math.max(tW / 2, 3);  // min 3px half-width for visibility
+    const halfD = Math.max(tD / 2, 1.5);
 
-    // Spread tabs tangentially with spacing
-    const tangentialSpacing = tabW + 3;
+    // Perpendicular (tangential) direction
+    const px = -dy, py = dx;
 
-    tabs.forEach((tab, i) => {
+    tabs.forEach(tab => {
       const r = tab.r * sc;
-      // Offset along tangential direction (perpendicular to radius)
-      const offset = (i - (count - 1) / 2) * tangentialSpacing;
-      // Convert tangential pixel offset to angle at this radius
-      const angOffset = offset / (r + tabLen / 2);
-      const tabAng = canvasAng + angOffset;
+      const tcx = cx + r * dx;
+      const tcy = cy + r * dy;
 
-      const dx = Math.cos(tabAng);
-      const dy = Math.sin(tabAng);
-      // Perpendicular for tab width
-      const px = -dy * tabW / 2;
-      const py = dx * tabW / 2;
-
-      // Base and tip of tab
-      const bx = cx + r * dx;
-      const by = cy + r * dy;
-      const tx = cx + (r + tabLen) * dx;
-      const ty = cy + (r + tabLen) * dy;
-
-      // Draw filled rectangle with white outline
+      // Rectangle corners: tangential ± halfW, radial ± halfD
       ctx.beginPath();
-      ctx.moveTo(bx + px, by + py);
-      ctx.lineTo(tx + px, ty + py);
-      ctx.lineTo(tx - px, ty - py);
-      ctx.lineTo(bx - px, by - py);
+      ctx.moveTo(tcx + px * halfW + dx * halfD, tcy + py * halfW + dy * halfD);
+      ctx.lineTo(tcx + px * halfW - dx * halfD, tcy + py * halfW - dy * halfD);
+      ctx.lineTo(tcx - px * halfW - dx * halfD, tcy - py * halfW - dy * halfD);
+      ctx.lineTo(tcx - px * halfW + dx * halfD, tcy - py * halfW + dy * halfD);
       ctx.closePath();
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
       ctx.lineWidth = 0.5;
       ctx.stroke();
     });
 
-    // Angle label at the drill position
-    const angR = outerR * sc + tabLenPx + 8;
+    // Angle label outside the outermost ring
+    const lblR = outerR * sc + 12;
     ctx.fillStyle = fg; ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`${cellAngleDeg}°`, cx + angR * dx, cy + angR * dy);
-
-    // Tab count label next to angle
+    ctx.fillText(`${cellAngleDeg}°`, cx + lblR * dx, cy + lblR * dy);
     ctx.fillStyle = color; ctx.font = '8px sans-serif';
-    ctx.fillText(`${count}× ${prefix}`, cx + (angR + 14) * dx, cy + (angR + 14) * dy);
+    ctx.fillText(`${count}× ${prefix}`, cx + (lblR + 12) * dx, cy + (lblR + 12) * dy);
   }
 
   drawTabsTopView(s.cTabs, '#3b82f6', 'C', params.cath_angle);
