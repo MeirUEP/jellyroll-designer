@@ -1266,48 +1266,38 @@ function renderTop() {
   // Looking down at the top face: tabs are welded on the electrode surface
   // and stick up vertically. In the top view they appear as thin radial lines
   // at each tab's radius, at the drill angle direction.
-  // Tabs as thin rectangular fins radiating outward at the drill angle
-  // Like the 3D view: individual thin strips at each turn radius
+  // Tabs as small individual fins at each ring, extending outward
+  // Each tab is a short rectangle sitting on the outer edge of its turn ring
   function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
     const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
     const dx = Math.cos(canvasAng);
     const dy = Math.sin(canvasAng);
-    const tabLenPx = 20;  // visible fins extending beyond outer ring
-    const tabWidthPx = 3; // thin but visible
 
-    // Draw each tab as a thin rectangle with white outline
+    // Get the pitch spacing in pixels to size tabs appropriately
+    const pitchPx = count > 1 ? Math.abs(tabs[1].r - tabs[0].r) * sc : 8;
+    const tabLenPx = Math.max(8, Math.min(15, pitchPx * 1.5)); // proportional to pitch
+    const tabWidthPx = Math.max(2, Math.min(4, pitchPx * 0.5)); // thin
+
+    // Draw each tab as a small colored arc segment (bump on the ring)
     tabs.forEach((tab, i) => {
       const r = tab.r * sc;
-      // Base at the ring, extend outward past the outer ring
-      const bx = cx + r * dx;
-      const by = cy + r * dy;
-      const tx = cx + (r + tabLenPx) * dx;
-      const ty = cy + (r + tabLenPx) * dy;
-      const px = -dy * tabWidthPx / 2;
-      const py = dx * tabWidthPx / 2;
+      // Small arc bump at the drill angle
+      const arcSpan = tabWidthPx / r; // angular span in radians
+      const startAng = canvasAng - arcSpan / 2;
+      const endAng = canvasAng + arcSpan / 2;
 
-      // White outline for visibility
+      // Draw filled wedge extending outward from ring
       ctx.beginPath();
-      ctx.moveTo(bx + px, by + py);
-      ctx.lineTo(tx + px, ty + py);
-      ctx.lineTo(tx - px, ty - py);
-      ctx.lineTo(bx - px, by - py);
-      ctx.closePath();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Filled rectangle
-      ctx.beginPath();
-      ctx.moveTo(bx + px, by + py);
-      ctx.lineTo(tx + px, ty + py);
-      ctx.lineTo(tx - px, ty - py);
-      ctx.lineTo(bx - px, by - py);
+      ctx.arc(cx, cy, r, startAng, endAng);
+      ctx.arc(cx, cy, r + tabLenPx, endAng, startAng, true);
       ctx.closePath();
       ctx.fillStyle = color;
       ctx.fill();
+      ctx.strokeStyle = hexToRgba(color, 0.5);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
     });
 
     // Angle label at the drill position
