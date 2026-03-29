@@ -1266,41 +1266,53 @@ function renderTop() {
   // Looking down at the top face: tabs are welded on the electrode surface
   // and stick up vertically. In the top view they appear as thin radial lines
   // at each tab's radius, at the drill angle direction.
-  // Tabs as individual small rectangles spread along the circumference
-  // Like looking down at the 3D view — each tab is a separate visible piece
+  // Tabs as uniform small rectangles, each at its ring radius
+  // Spread slightly along circumference so each is individually visible
+  // All tabs same pixel size, pointing radially outward
   function drawTabsTopView(tabs, color, prefix, cellAngleDeg) {
     const count = tabs.length;
     if (count === 0) return;
     const canvasAng = -Math.PI / 2 - cellAngleDeg * Math.PI / 180;
 
-    // Tab dimensions
-    const tabLen = 12; // radial length outward
-    const tabArcDeg = 6; // angular width per tab in degrees
-    const tabArcRad = tabArcDeg * Math.PI / 180;
+    // Fixed pixel size for all tabs
+    const tabLen = 10;  // radial length
+    const tabW = 3;     // tangential width (pixels)
 
-    // Spread tabs along circumference so they're individually visible
-    // like a fan of small rectangles around the drill angle
-    const gapDeg = 2; // gap between tabs
-    const totalDeg = count * (tabArcDeg + gapDeg) - gapDeg;
-    const totalRad = totalDeg * Math.PI / 180;
-    const startAng = canvasAng - totalRad / 2;
+    // Spread tabs so inner ones fan more, outer ones fan less
+    // Use a fixed pixel offset along the tangential direction
+    const tangentialSpacing = tabW + 2; // pixels between tab centers
+    const totalWidth = count * tangentialSpacing;
 
     tabs.forEach((tab, i) => {
       const r = tab.r * sc;
-      const tabStart = startAng + i * (tabArcDeg + gapDeg) * Math.PI / 180;
-      const tabEnd = tabStart + tabArcRad;
+      // Offset along tangential direction (perpendicular to radius)
+      const offset = (i - (count - 1) / 2) * tangentialSpacing;
+      // Convert tangential pixel offset to angle at this radius
+      const angOffset = offset / (r + tabLen / 2);
+      const tabAng = canvasAng + angOffset;
 
-      // Arc wedge from ring outward
+      const dx = Math.cos(tabAng);
+      const dy = Math.sin(tabAng);
+      // Perpendicular for tab width
+      const px = -dy * tabW / 2;
+      const py = dx * tabW / 2;
+
+      // Base and tip of tab
+      const bx = cx + r * dx;
+      const by = cy + r * dy;
+      const tx = cx + (r + tabLen) * dx;
+      const ty = cy + (r + tabLen) * dy;
+
+      // Draw filled rectangle
       ctx.beginPath();
-      ctx.arc(cx, cy, r, tabStart, tabEnd);
-      ctx.arc(cx, cy, r + tabLen, tabEnd, tabStart, true);
+      ctx.moveTo(bx + px, by + py);
+      ctx.lineTo(tx + px, ty + py);
+      ctx.lineTo(tx - px, ty - py);
+      ctx.lineTo(bx - px, by - py);
       ctx.closePath();
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = 0.9;
       ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 0.3;
-      ctx.stroke();
       ctx.globalAlpha = 1;
     });
 
