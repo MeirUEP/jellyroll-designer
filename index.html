@@ -829,7 +829,18 @@ const presetStores = {
 };
 
 function getPresets(type) { return presetStores[type]; }
-function savePresets(type) { /* no-op until cloud DB */ }
+// Persist user-saved presets to localStorage (seeds always re-applied on load)
+const LS_PRESET_KEYS = { design: 'jr2_design', cathode: 'jr2_cathode', anode: 'jr2_anode', layers: 'jr2_layers' };
+function savePresets(type) {
+  try { localStorage.setItem(LS_PRESET_KEYS[type], JSON.stringify(presetStores[type])); } catch(e) {}
+}
+// On load: merge localStorage presets into seeded stores (user additions override seeds if same name)
+Object.keys(LS_PRESET_KEYS).forEach(type => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_PRESET_KEYS[type]));
+    if (saved && typeof saved === 'object') Object.assign(presetStores[type], saved);
+  } catch(e) {}
+});
 
 function loadPresetList(type) {
   const sel = document.getElementById(PRESET_SELECTS[type]);
@@ -935,6 +946,7 @@ document.querySelectorAll('.preset-save').forEach(btn => {
     const name = prompt(`Save ${PRESET_LABELS[type]} as:`, sel.value || '');
     if (!name) return;
     presetStores[type][name] = PRESET_GETTERS[type]();
+    savePresets(type);
     loadPresetList(type);
     sel.value = name;
     showToast(`Saved ${PRESET_LABELS[type]}: ${name}`);
@@ -949,6 +961,7 @@ document.querySelectorAll('.preset-del').forEach(btn => {
     if (!name) { showToast('Select a preset first', true); return; }
     if (!confirm(`Delete "${name}"?`)) return;
     delete presetStores[type][name];
+    savePresets(type);
     loadPresetList(type);
     showToast(`Deleted: ${name}`);
   });
