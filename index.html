@@ -232,10 +232,17 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <button class="btn-sm preset-del" data-preset-type="cathode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
         </div>
         <table class="comp-table" id="cathMixTable">
-          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th></tr></thead>
+          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th><th></th></tr></thead>
           <tbody id="cathMixBody"></tbody>
         </table>
         <div class="comp-total" id="cathMixTotal">Total: 0%</div>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <select id="cathCompLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add from library...</option>
+          </select>
+          <button class="btn-sm" onclick="addCompFromLib('cathode')">Add</button>
+          <button class="btn-sm" onclick="addBlankComp('cathode')">+ New</button>
+        </div>
       </div>
       <div class="panel">
         <h3>Cathode Electrode</h3>
@@ -263,10 +270,17 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <button class="btn-sm preset-del" data-preset-type="anode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
         </div>
         <table class="comp-table" id="anodMixTable">
-          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th></tr></thead>
+          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th><th></th></tr></thead>
           <tbody id="anodMixBody"></tbody>
         </table>
         <div class="comp-total" id="anodMixTotal">Total: 0%</div>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <select id="anodCompLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add from library...</option>
+          </select>
+          <button class="btn-sm" onclick="addCompFromLib('anode')">Add</button>
+          <button class="btn-sm" onclick="addBlankComp('anode')">+ New</button>
+        </div>
       </div>
       <div class="panel">
         <h3>Anode Electrode</h3>
@@ -337,7 +351,13 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <button class="btn-sm preset-del" data-preset-type="layers" title="Delete" style="background:var(--red);color:#fff">&times;</button>
         </div>
         <div id="layerList"></div>
-        <button class="btn-sm" id="btnAddLayer" style="margin-top:4px;width:100%">+ Add Layer</button>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <select id="layerLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add from library...</option>
+          </select>
+          <button class="btn-sm" onclick="addLayerFromLib()">Add</button>
+          <button class="btn-sm" id="btnAddLayer">+ New</button>
+        </div>
       </div>
     </div>
 
@@ -510,10 +530,14 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
   components.forEach((c, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="font-size:9px">${c.name}</td>
+      <td><input type="text" value="${c.name}" data-ci="${i}" data-field="name" style="width:90px;font-size:9px;border:1px solid var(--border);border-radius:2px;background:var(--input-bg);color:var(--fg);padding:1px 2px"></td>
       <td><input type="number" step="0.01" value="${c.wt}" data-ci="${i}" data-field="wt" style="width:50px"></td>
       <td><input type="number" step="0.01" value="${c.density}" data-ci="${i}" data-field="density" style="width:50px"></td>
-      <td><input type="number" step="1" value="${c.cap}" data-ci="${i}" data-field="cap" style="width:50px"></td>`;
+      <td><input type="number" step="1" value="${c.cap}" data-ci="${i}" data-field="cap" style="width:50px"></td>
+      <td style="white-space:nowrap">
+        <button class="btn-sm" data-save-comp="${i}" data-electrode="${electrode}" title="Save to library" style="padding:1px 3px;font-size:8px">&#128190;</button>
+        <button class="btn-sm" data-del-comp="${i}" data-electrode="${electrode}" title="Remove" style="padding:1px 3px;font-size:8px;background:var(--red);color:#fff">&times;</button>
+      </td>`;
     body.appendChild(tr);
   });
 
@@ -521,8 +545,29 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
     inp.addEventListener('change', e => {
       const ci = +e.target.dataset.ci;
       const field = e.target.dataset.field;
-      components[ci][field] = +e.target.value;
+      if (field === 'name') components[ci][field] = e.target.value;
+      else components[ci][field] = +e.target.value;
       updateFormulation(components, totalId, solidDensId, compCapId, electrode);
+      markDirty();
+    });
+  });
+
+  // Save component to library
+  body.querySelectorAll('[data-save-comp]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.saveComp;
+      const c = components[ci];
+      saveCompToLib(c);
+    });
+  });
+
+  // Delete component from mix
+  body.querySelectorAll('[data-del-comp]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.delComp;
+      const elec = btn.dataset.electrode;
+      components.splice(ci, 1);
+      buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec);
       markDirty();
     });
   });
@@ -571,6 +616,136 @@ function initFormulation() {
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
   ['design', 'cathode', 'anode', 'layers'].forEach(loadPresetList);
+  refreshCompLibDropdowns();
+  refreshLayerLibDropdown();
+}
+
+// ========== LIBRARIES (shared pools of reusable components/layers) ==========
+const COMP_LIB_KEY = 'jr_component_library';
+const LAYER_LIB_KEY = 'jr_layer_library';
+
+// Default component library — seeded on first use
+const DEFAULT_COMP_LIB = {
+  'EMD (MnO2)': { density: 4.5, cap: 250 },
+  'Graphite (MX-25)': { density: 2.25, cap: 0 },
+  'Carbon Black (BNB-90)': { density: 1.8, cap: 0 },
+  'PTFE': { density: 2.15, cap: 0 },
+  'Bi2O3': { density: 8.9, cap: 0 },
+  'ZrO2': { density: 5.68, cap: 0 },
+  'Zinc (Zn)': { density: 7.14, cap: 820 },
+  'ZnO': { density: 5.61, cap: 660 },
+  'Ca(OH)2': { density: 2.24, cap: 0 },
+  'Laponite': { density: 2.53, cap: 0 },
+  'In(OH)3': { density: 4.39, cap: 0 },
+};
+
+const DEFAULT_LAYER_LIB = {
+  'Kraft paper': { type: 'separator', t: 0.15, w: 228, color: '#b45309' },
+  'Cellophane': { type: 'separator', t: 0.05, w: 226, color: '#38bdf8' },
+  'PVA laminate': { type: 'separator', t: 0.1, w: 224, color: '#a855f7' },
+  'Cathode (2mm)': { type: 'cathode', t: 2.0, w: 188, color: '#3b82f6' },
+  'Anode (1mm)': { type: 'anode', t: 1.0, w: 222, color: '#16a34a' },
+};
+
+function getCompLib() {
+  const s = localStorage.getItem(COMP_LIB_KEY);
+  if (s) { try { return JSON.parse(s); } catch(e) {} }
+  localStorage.setItem(COMP_LIB_KEY, JSON.stringify(DEFAULT_COMP_LIB));
+  return { ...DEFAULT_COMP_LIB };
+}
+
+function getLayerLib() {
+  const s = localStorage.getItem(LAYER_LIB_KEY);
+  if (s) { try { return JSON.parse(s); } catch(e) {} }
+  localStorage.setItem(LAYER_LIB_KEY, JSON.stringify(DEFAULT_LAYER_LIB));
+  return { ...DEFAULT_LAYER_LIB };
+}
+
+function saveCompToLib(comp) {
+  const lib = getCompLib();
+  const name = prompt('Save component as:', comp.name);
+  if (!name) return;
+  lib[name] = { density: comp.density, cap: comp.cap };
+  localStorage.setItem(COMP_LIB_KEY, JSON.stringify(lib));
+  refreshCompLibDropdowns();
+  showToast(`Saved to library: ${name}`);
+}
+
+function saveLayerToLib(layer) {
+  const lib = getLayerLib();
+  const name = prompt('Save layer as:', layer.name);
+  if (!name) return;
+  lib[name] = { type: layer.type, t: layer.t, w: layer.w, color: layer.color };
+  localStorage.setItem(LAYER_LIB_KEY, JSON.stringify(lib));
+  refreshLayerLibDropdown();
+  showToast(`Saved to library: ${name}`);
+}
+
+function refreshCompLibDropdowns() {
+  const lib = getCompLib();
+  ['cathCompLib', 'anodCompLib'].forEach(id => {
+    const sel = document.getElementById(id);
+    while (sel.options.length > 1) sel.remove(1);
+    Object.keys(lib).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name} (${lib[name].density} g/cm³${lib[name].cap ? ', ' + lib[name].cap + ' mAh/g' : ''})`;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function refreshLayerLibDropdown() {
+  const lib = getLayerLib();
+  const sel = document.getElementById('layerLib');
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(lib).sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = `${name} (${lib[name].type}, ${lib[name].t}mm)`;
+    sel.appendChild(opt);
+  });
+}
+
+function addCompFromLib(electrode) {
+  const selId = electrode === 'cathode' ? 'cathCompLib' : 'anodCompLib';
+  const sel = document.getElementById(selId);
+  const name = sel.value;
+  if (!name) { showToast('Select a component from the library', true); return; }
+  const lib = getCompLib();
+  const c = lib[name];
+  if (!c) return;
+  const comps = electrode === 'cathode' ? cathComponents : anodComponents;
+  comps.push({ name, wt: 0, density: c.density, cap: c.cap });
+  const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
+    ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
+    : ['anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap'];
+  buildMixTable(comps, bodyId, totalId, solidDensId, compCapId, electrode);
+  sel.value = '';
+  markDirty();
+}
+
+function addBlankComp(electrode) {
+  const comps = electrode === 'cathode' ? cathComponents : anodComponents;
+  comps.push({ name: 'New Component', wt: 0, density: 1.0, cap: 0 });
+  const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
+    ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
+    : ['anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap'];
+  buildMixTable(comps, bodyId, totalId, solidDensId, compCapId, electrode);
+  markDirty();
+}
+
+function addLayerFromLib() {
+  const sel = document.getElementById('layerLib');
+  const name = sel.value;
+  if (!name) { showToast('Select a layer from the library', true); return; }
+  const lib = getLayerLib();
+  const l = lib[name];
+  if (!l) return;
+  layers.push({ name, type: l.type, t: l.t, w: l.w, len: 1000, startTurn: 1, color: l.color });
+  buildLayerUI();
+  sel.value = '';
+  markDirty();
 }
 
 // ========== PRESET SYSTEM (localStorage) ==========
@@ -1164,6 +1339,7 @@ function buildLayerUI() {
         <select data-i="${i}" data-f="type">${LAYER_TYPES.map(t=>`<option value="${t}"${t===l.type?' selected':''}>${t}</option>`).join('')}</select>
         ${l.type==='cathode'?`<span class="badge">${params.cath_angle}&deg;</span>`:l.type==='anode'?`<span class="badge">${params.anod_angle}&deg;</span>`:''}
         <div class="layer-actions">
+          <button class="btn-sm" data-save-layer="${i}" title="Save to library" style="padding:1px 3px;font-size:8px">&#128190;</button>
           <button class="btn-sm" data-move="${i}" data-dir="-1" ${i===0?'disabled':''}>&#9650;</button>
           <button class="btn-sm" data-move="${i}" data-dir="1" ${i===layers.length-1?'disabled':''}>&#9660;</button>
           <button class="btn-danger" data-del="${i}">&times;</button>
@@ -1202,6 +1378,13 @@ function buildLayerUI() {
       const btn = e.target.closest('[data-del]');
       layers.splice(+btn.dataset.del, 1);
       buildLayerUI(); markDirty();
+    });
+  });
+  list.querySelectorAll('[data-save-layer]').forEach(el => {
+    el.addEventListener('click', e => {
+      const btn = e.target.closest('[data-save-layer]');
+      const l = layers[+btn.dataset.saveLayer];
+      saveLayerToLib(l);
     });
   });
 }
