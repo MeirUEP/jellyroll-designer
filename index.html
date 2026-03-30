@@ -410,7 +410,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <label style="font-size:10px;color:var(--fg2)">API Key</label>
     <input type="password" id="settApiKey" placeholder="your-api-key">
     <button class="btn-primary" onclick="saveApiSettings()" style="width:100%;margin-top:6px">Save</button>
-    <p style="font-size:9px;color:var(--fg2);margin-top:8px">Settings stored in browser localStorage. Cloud features are disabled when API URL is empty.</p>
+    <p style="font-size:9px;color:var(--fg2);margin-top:8px">Cloud features are disabled when API URL is empty. Use JSON file Save/Load to persist designs locally.</p>
   </div>
 </div>
 
@@ -620,12 +620,9 @@ function initFormulation() {
   refreshLayerLibDropdown();
 }
 
-// ========== LIBRARIES (shared pools of reusable components/layers) ==========
-const COMP_LIB_KEY = 'jr_component_library';
-const LAYER_LIB_KEY = 'jr_layer_library';
-
-// Default component library — seeded on first use
-const DEFAULT_COMP_LIB = {
+// ========== LIBRARIES (in-memory, will move to cloud DB later) ==========
+// Shared pools of reusable components and layers — session-scoped
+const compLib = {
   'EMD (MnO2)': { density: 4.5, cap: 250 },
   'Graphite (MX-25)': { density: 2.25, cap: 0 },
   'Carbon Black (BNB-90)': { density: 1.8, cap: 0 },
@@ -639,7 +636,7 @@ const DEFAULT_COMP_LIB = {
   'In(OH)3': { density: 4.39, cap: 0 },
 };
 
-const DEFAULT_LAYER_LIB = {
+const layerLib = {
   'Kraft paper': { type: 'separator', t: 0.15, w: 228, color: '#b45309' },
   'Cellophane': { type: 'separator', t: 0.05, w: 226, color: '#38bdf8' },
   'PVA laminate': { type: 'separator', t: 0.1, w: 224, color: '#a855f7' },
@@ -647,38 +644,23 @@ const DEFAULT_LAYER_LIB = {
   'Anode (1mm)': { type: 'anode', t: 1.0, w: 222, color: '#16a34a' },
 };
 
-function getCompLib() {
-  const s = localStorage.getItem(COMP_LIB_KEY);
-  if (s) { try { return JSON.parse(s); } catch(e) {} }
-  localStorage.setItem(COMP_LIB_KEY, JSON.stringify(DEFAULT_COMP_LIB));
-  return { ...DEFAULT_COMP_LIB };
-}
-
-function getLayerLib() {
-  const s = localStorage.getItem(LAYER_LIB_KEY);
-  if (s) { try { return JSON.parse(s); } catch(e) {} }
-  localStorage.setItem(LAYER_LIB_KEY, JSON.stringify(DEFAULT_LAYER_LIB));
-  return { ...DEFAULT_LAYER_LIB };
-}
+function getCompLib() { return compLib; }
+function getLayerLib() { return layerLib; }
 
 function saveCompToLib(comp) {
-  const lib = getCompLib();
   const name = prompt('Save component as:', comp.name);
   if (!name) return;
-  lib[name] = { density: comp.density, cap: comp.cap };
-  localStorage.setItem(COMP_LIB_KEY, JSON.stringify(lib));
+  compLib[name] = { density: comp.density, cap: comp.cap };
   refreshCompLibDropdowns();
-  showToast(`Saved to library: ${name}`);
+  showToast(`Added to library: ${name}`);
 }
 
 function saveLayerToLib(layer) {
-  const lib = getLayerLib();
   const name = prompt('Save layer as:', layer.name);
   if (!name) return;
-  lib[name] = { type: layer.type, t: layer.t, w: layer.w, color: layer.color };
-  localStorage.setItem(LAYER_LIB_KEY, JSON.stringify(lib));
+  layerLib[name] = { type: layer.type, t: layer.t, w: layer.w, color: layer.color };
   refreshLayerLibDropdown();
-  showToast(`Saved to library: ${name}`);
+  showToast(`Added to library: ${name}`);
 }
 
 function refreshCompLibDropdowns() {
@@ -748,14 +730,8 @@ function addLayerFromLib() {
   markDirty();
 }
 
-// ========== PRESET SYSTEM (localStorage) ==========
+// ========== PRESET SYSTEM (in-memory, will move to cloud DB later) ==========
 // 4 independent preset types: design (full), cathode, anode, layers
-const PRESET_KEYS = {
-  design:  'jr_design_presets',
-  cathode: 'jr_cathode_presets',
-  anode:   'jr_anode_presets',
-  layers:  'jr_layer_presets',
-};
 const PRESET_SELECTS = {
   design:  'designPreset',
   cathode: 'cathPreset',
@@ -763,72 +739,43 @@ const PRESET_SELECTS = {
   layers:  'layerPreset',
 };
 
-// Default cathode formulation
-const DEFAULT_CATHODE = {
-  'Mix-1 (Rev 3 Can)': {
-    components: [
-      { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
-      { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
-      { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
-      { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
-      { name: 'Bi2O3', wt: 4, density: 8.9, cap: 0 },
-      { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
-      { name: 'Other', wt: 0, density: 3, cap: 0 },
-    ],
-    bulk_density: 2.41, mesh_dens: 0.16, cc_material: 'Nickel mesh',
-  }
-};
-const DEFAULT_ANODE = {
-  'Anode B2 (Rev 3 Can)': {
-    components: [
-      { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
-      { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
-      { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
-      { name: 'Bi2O3', wt: 2, density: 8.9, cap: 0 },
-      { name: 'Laponite', wt: 0.01, density: 2.53, cap: 0 },
-      { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
-      { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
-      { name: 'Other', wt: 0, density: 3, cap: 0 },
-    ],
-    bulk_density: 4.062, mesh_dens: 0.149, cc_material: 'Copper mesh',
-  }
-};
-
-// Migrate old combined presets to new split format
-(function migrateOldPresets() {
-  const old = localStorage.getItem('jr_formulation_presets');
-  if (!old) return;
-  try {
-    const oldPresets = JSON.parse(old);
-    // Migrate to design presets (full cell)
-    const designs = {};
-    for (const [name, p] of Object.entries(oldPresets)) {
-      designs[name] = {
-        cathode: { components: p.cathComponents, bulk_density: p.elecProps?.cath_bulk_density, mesh_dens: p.elecProps?.cath_mesh_dens, cc_material: p.elecProps?.cath_cc_material },
-        anode: { components: p.anodComponents, bulk_density: p.elecProps?.anod_bulk_density, mesh_dens: p.elecProps?.anod_mesh_dens, cc_material: p.elecProps?.anod_cc_material },
-        layers: p.layers || null,
-        params: p.params || null,
-      };
+// In-memory preset stores — seeded with defaults
+const presetStores = {
+  cathode: {
+    'Mix-1 (Rev 3 Can)': {
+      components: [
+        { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
+        { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
+        { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
+        { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+        { name: 'Bi2O3', wt: 4, density: 8.9, cap: 0 },
+        { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
+        { name: 'Other', wt: 0, density: 3, cap: 0 },
+      ],
+      bulk_density: 2.41, mesh_dens: 0.16, cc_material: 'Nickel mesh',
     }
-    if (!localStorage.getItem(PRESET_KEYS.design)) {
-      localStorage.setItem(PRESET_KEYS.design, JSON.stringify(designs));
+  },
+  anode: {
+    'Anode B2 (Rev 3 Can)': {
+      components: [
+        { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
+        { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
+        { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
+        { name: 'Bi2O3', wt: 2, density: 8.9, cap: 0 },
+        { name: 'Laponite', wt: 0.01, density: 2.53, cap: 0 },
+        { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+        { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
+        { name: 'Other', wt: 0, density: 3, cap: 0 },
+      ],
+      bulk_density: 4.062, mesh_dens: 0.149, cc_material: 'Copper mesh',
     }
-    localStorage.removeItem('jr_formulation_presets');
-  } catch(e) {}
-})();
+  },
+  layers: {},
+  design: {},
+};
 
-function getPresets(type) {
-  const stored = localStorage.getItem(PRESET_KEYS[type]);
-  if (stored) { try { return JSON.parse(stored); } catch(e) {} }
-  // Seed defaults
-  if (type === 'cathode') { localStorage.setItem(PRESET_KEYS[type], JSON.stringify(DEFAULT_CATHODE)); return { ...DEFAULT_CATHODE }; }
-  if (type === 'anode') { localStorage.setItem(PRESET_KEYS[type], JSON.stringify(DEFAULT_ANODE)); return { ...DEFAULT_ANODE }; }
-  return {};
-}
-
-function savePresets(type, presets) {
-  localStorage.setItem(PRESET_KEYS[type], JSON.stringify(presets));
-}
+function getPresets(type) { return presetStores[type]; }
+function savePresets(type) { /* no-op until cloud DB */ }
 
 function loadPresetList(type) {
   const sel = document.getElementById(PRESET_SELECTS[type]);
@@ -933,9 +880,7 @@ document.querySelectorAll('.preset-save').forEach(btn => {
     const sel = document.getElementById(PRESET_SELECTS[type]);
     const name = prompt(`Save ${PRESET_LABELS[type]} as:`, sel.value || '');
     if (!name) return;
-    const presets = getPresets(type);
-    presets[name] = PRESET_GETTERS[type]();
-    savePresets(type, presets);
+    presetStores[type][name] = PRESET_GETTERS[type]();
     loadPresetList(type);
     sel.value = name;
     showToast(`Saved ${PRESET_LABELS[type]}: ${name}`);
@@ -949,9 +894,7 @@ document.querySelectorAll('.preset-del').forEach(btn => {
     const name = sel.value;
     if (!name) { showToast('Select a preset first', true); return; }
     if (!confirm(`Delete "${name}"?`)) return;
-    const presets = getPresets(type);
-    delete presets[name];
-    savePresets(type, presets);
+    delete presetStores[type][name];
     loadPresetList(type);
     showToast(`Deleted: ${name}`);
   });
