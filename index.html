@@ -841,6 +841,20 @@ Object.keys(LS_PRESET_KEYS).forEach(type => {
     if (saved && typeof saved === 'object') Object.assign(presetStores[type], saved);
   } catch(e) {}
 });
+// One-time migration of old jr_ localStorage data into new jr2_ format
+if (!localStorage.getItem('jr2_migrated')) {
+  const OLD_KEYS = { 'jr_design_presets':'design', 'jr_cathode_presets':'cathode', 'jr_anode_presets':'anode' };
+  Object.entries(OLD_KEYS).forEach(([oldKey, type]) => {
+    try {
+      const old = JSON.parse(localStorage.getItem(oldKey));
+      if (old && typeof old === 'object') {
+        Object.entries(old).forEach(([name, data]) => { if (!presetStores[type][name]) presetStores[type][name] = data; });
+        savePresets(type);
+      }
+    } catch(e) {}
+  });
+  localStorage.setItem('jr2_migrated', '1');
+}
 
 function loadPresetList(type) {
   const sel = document.getElementById(PRESET_SELECTS[type]);
