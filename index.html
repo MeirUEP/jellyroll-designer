@@ -222,18 +222,15 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <!-- TAB 1: Formulation -->
     <div class="left-tab-content active" id="ltab-formulation">
       <div class="panel">
-        <h3>Cell Design Preset</h3>
-        <div style="display:flex;gap:4px;align-items:center">
-          <select id="formulationPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:11px">
-            <option value="">-- Select preset --</option>
-          </select>
-          <button class="btn-sm" id="btnLoadPreset" title="Load">Load</button>
-          <button class="btn-sm" id="btnSavePreset" title="Save current as preset" style="background:#16a34a;color:#fff">Save</button>
-          <button class="btn-sm" id="btnDeletePreset" title="Delete selected preset" style="background:var(--red);color:#fff">&times;</button>
-        </div>
-      </div>
-      <div class="panel">
         <h3>Cathode Mix</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="cathPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Cathode preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="cathode" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="cathode" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="cathode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
         <table class="comp-table" id="cathMixTable">
           <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th></tr></thead>
           <tbody id="cathMixBody"></tbody>
@@ -257,6 +254,14 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       </div>
       <div class="panel">
         <h3>Anode Mix</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="anodPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Anode preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="anode" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="anode" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="anode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
         <table class="comp-table" id="anodMixTable">
           <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th></tr></thead>
           <tbody id="anodMixBody"></tbody>
@@ -282,6 +287,17 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 
     <!-- TAB 2: Cell Parameters -->
     <div class="left-tab-content" id="ltab-cellparams">
+      <div class="panel">
+        <h3>Full Cell Design</h3>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="designPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Load/save full design --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="design" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="design" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="design" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+      </div>
       <div class="panel">
         <h3>Cell Geometry</h3>
         <div class="param-grid">
@@ -312,6 +328,14 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <div class="left-tab-content" id="ltab-layers">
       <div class="panel" style="flex:1">
         <h3>Layer Stack</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="layerPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Layer preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="layers" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="layers" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="layers" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
         <div id="layerList"></div>
         <button class="btn-sm" id="btnAddLayer" style="margin-top:4px;width:100%">+ Add Layer</button>
       </div>
@@ -546,14 +570,28 @@ function updateFormulation(components, totalId, solidDensId, compCapId, electrod
 function initFormulation() {
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
-  loadFormulationPresetList();
+  ['design', 'cathode', 'anode', 'layers'].forEach(loadPresetList);
 }
 
-// ========== FORMULATION PRESETS (localStorage) ==========
-const PRESETS_KEY = 'jr_formulation_presets';
-const DEFAULT_PRESETS = {
-  'Rev 3 Can (Cathode Mix-1 / Anode B2)': {
-    cathComponents: [
+// ========== PRESET SYSTEM (localStorage) ==========
+// 4 independent preset types: design (full), cathode, anode, layers
+const PRESET_KEYS = {
+  design:  'jr_design_presets',
+  cathode: 'jr_cathode_presets',
+  anode:   'jr_anode_presets',
+  layers:  'jr_layer_presets',
+};
+const PRESET_SELECTS = {
+  design:  'designPreset',
+  cathode: 'cathPreset',
+  anode:   'anodPreset',
+  layers:  'layerPreset',
+};
+
+// Default cathode formulation
+const DEFAULT_CATHODE = {
+  'Mix-1 (Rev 3 Can)': {
+    components: [
       { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
       { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
       { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
@@ -562,7 +600,12 @@ const DEFAULT_PRESETS = {
       { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
       { name: 'Other', wt: 0, density: 3, cap: 0 },
     ],
-    anodComponents: [
+    bulk_density: 2.41, mesh_dens: 0.16, cc_material: 'Nickel mesh',
+  }
+};
+const DEFAULT_ANODE = {
+  'Anode B2 (Rev 3 Can)': {
+    components: [
       { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
       { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
       { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
@@ -572,31 +615,49 @@ const DEFAULT_PRESETS = {
       { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
       { name: 'Other', wt: 0, density: 3, cap: 0 },
     ],
-    elecProps: {
-      cath_bulk_density: 2.41, cath_mesh_dens: 0.16, cath_cc_material: 'Nickel mesh',
-      anod_bulk_density: 4.062, anod_mesh_dens: 0.149, anod_cc_material: 'Copper mesh',
-    }
+    bulk_density: 4.062, mesh_dens: 0.149, cc_material: 'Copper mesh',
   }
 };
 
-function getFormulationPresets() {
-  const stored = localStorage.getItem(PRESETS_KEY);
-  if (stored) {
-    try { return JSON.parse(stored); } catch(e) {}
-  }
-  // First time: seed with defaults
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(DEFAULT_PRESETS));
-  return { ...DEFAULT_PRESETS };
+// Migrate old combined presets to new split format
+(function migrateOldPresets() {
+  const old = localStorage.getItem('jr_formulation_presets');
+  if (!old) return;
+  try {
+    const oldPresets = JSON.parse(old);
+    // Migrate to design presets (full cell)
+    const designs = {};
+    for (const [name, p] of Object.entries(oldPresets)) {
+      designs[name] = {
+        cathode: { components: p.cathComponents, bulk_density: p.elecProps?.cath_bulk_density, mesh_dens: p.elecProps?.cath_mesh_dens, cc_material: p.elecProps?.cath_cc_material },
+        anode: { components: p.anodComponents, bulk_density: p.elecProps?.anod_bulk_density, mesh_dens: p.elecProps?.anod_mesh_dens, cc_material: p.elecProps?.anod_cc_material },
+        layers: p.layers || null,
+        params: p.params || null,
+      };
+    }
+    if (!localStorage.getItem(PRESET_KEYS.design)) {
+      localStorage.setItem(PRESET_KEYS.design, JSON.stringify(designs));
+    }
+    localStorage.removeItem('jr_formulation_presets');
+  } catch(e) {}
+})();
+
+function getPresets(type) {
+  const stored = localStorage.getItem(PRESET_KEYS[type]);
+  if (stored) { try { return JSON.parse(stored); } catch(e) {} }
+  // Seed defaults
+  if (type === 'cathode') { localStorage.setItem(PRESET_KEYS[type], JSON.stringify(DEFAULT_CATHODE)); return { ...DEFAULT_CATHODE }; }
+  if (type === 'anode') { localStorage.setItem(PRESET_KEYS[type], JSON.stringify(DEFAULT_ANODE)); return { ...DEFAULT_ANODE }; }
+  return {};
 }
 
-function saveFormulationPresets(presets) {
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+function savePresets(type, presets) {
+  localStorage.setItem(PRESET_KEYS[type], JSON.stringify(presets));
 }
 
-function loadFormulationPresetList() {
-  const sel = document.getElementById('formulationPreset');
-  const presets = getFormulationPresets();
-  // Keep first option, remove rest
+function loadPresetList(type) {
+  const sel = document.getElementById(PRESET_SELECTS[type]);
+  const presets = getPresets(type);
   while (sel.options.length > 1) sel.remove(1);
   Object.keys(presets).forEach(name => {
     const opt = document.createElement('option');
@@ -605,99 +666,120 @@ function loadFormulationPresetList() {
   });
 }
 
-function getCurrentFormulation() {
+// --- Get current state for each type ---
+function getCathodePreset() {
   return {
-    // Formulation
-    cathComponents: cathComponents.map(c => ({ ...c })),
-    anodComponents: anodComponents.map(c => ({ ...c })),
-    elecProps: {
-      cath_bulk_density: elecProps.cath_bulk_density,
-      cath_mesh_dens: elecProps.cath_mesh_dens,
-      cath_cc_material: document.getElementById('ep_cath_cc_material').value,
-      anod_bulk_density: elecProps.anod_bulk_density,
-      anod_mesh_dens: elecProps.anod_mesh_dens,
-      anod_cc_material: document.getElementById('ep_anod_cc_material').value,
-    },
-    // Full cell design
+    components: cathComponents.map(c => ({ ...c })),
+    bulk_density: elecProps.cath_bulk_density,
+    mesh_dens: elecProps.cath_mesh_dens,
+    cc_material: document.getElementById('ep_cath_cc_material').value,
+  };
+}
+function getAnodePreset() {
+  return {
+    components: anodComponents.map(c => ({ ...c })),
+    bulk_density: elecProps.anod_bulk_density,
+    mesh_dens: elecProps.anod_mesh_dens,
+    cc_material: document.getElementById('ep_anod_cc_material').value,
+  };
+}
+function getLayersPreset() {
+  return { layers: layers.map(l => ({ ...l })) };
+}
+function getDesignPreset() {
+  return {
+    cathode: getCathodePreset(),
+    anode: getAnodePreset(),
     layers: layers.map(l => ({ ...l })),
     params: { ...params },
   };
 }
 
-function applyFormulation(preset) {
-  // Apply cathode components
+// --- Apply presets ---
+function applyCathodePreset(p) {
   cathComponents.length = 0;
-  preset.cathComponents.forEach(c => cathComponents.push({ ...c }));
-  // Apply anode components
+  p.components.forEach(c => cathComponents.push({ ...c }));
+  if (p.bulk_density !== undefined) { elecProps.cath_bulk_density = p.bulk_density; document.getElementById('ep_cath_bulk_density').value = p.bulk_density; }
+  if (p.mesh_dens !== undefined) { elecProps.cath_mesh_dens = p.mesh_dens; document.getElementById('ep_cath_mesh_dens').value = p.mesh_dens; }
+  if (p.cc_material) document.getElementById('ep_cath_cc_material').value = p.cc_material;
+  buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
+  markDirty();
+}
+function applyAnodePreset(p) {
   anodComponents.length = 0;
-  preset.anodComponents.forEach(c => anodComponents.push({ ...c }));
-  // Apply electrode properties
-  if (preset.elecProps) {
-    elecProps.cath_bulk_density = preset.elecProps.cath_bulk_density;
-    elecProps.cath_mesh_dens = preset.elecProps.cath_mesh_dens;
-    elecProps.anod_bulk_density = preset.elecProps.anod_bulk_density;
-    elecProps.anod_mesh_dens = preset.elecProps.anod_mesh_dens;
-    document.getElementById('ep_cath_bulk_density').value = elecProps.cath_bulk_density;
-    document.getElementById('ep_cath_mesh_dens').value = elecProps.cath_mesh_dens;
-    document.getElementById('ep_anod_bulk_density').value = elecProps.anod_bulk_density;
-    document.getElementById('ep_anod_mesh_dens').value = elecProps.anod_mesh_dens;
-    if (preset.elecProps.cath_cc_material) document.getElementById('ep_cath_cc_material').value = preset.elecProps.cath_cc_material;
-    if (preset.elecProps.anod_cc_material) document.getElementById('ep_anod_cc_material').value = preset.elecProps.anod_cc_material;
-  }
-  // Apply layers (full cell design)
-  if (preset.layers && preset.layers.length > 0) {
-    layers.length = 0;
-    preset.layers.forEach(l => {
-      const ll = { ...l };
-      if (ll.startTurn === undefined) ll.startTurn = (ll.off > 0) ? 2 : 1;
-      layers.push(ll);
-    });
-    buildLayerUI();
-  }
-  // Apply cell params
-  if (preset.params) {
-    Object.assign(params, preset.params);
+  p.components.forEach(c => anodComponents.push({ ...c }));
+  if (p.bulk_density !== undefined) { elecProps.anod_bulk_density = p.bulk_density; document.getElementById('ep_anod_bulk_density').value = p.bulk_density; }
+  if (p.mesh_dens !== undefined) { elecProps.anod_mesh_dens = p.mesh_dens; document.getElementById('ep_anod_mesh_dens').value = p.mesh_dens; }
+  if (p.cc_material) document.getElementById('ep_anod_cc_material').value = p.cc_material;
+  buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
+  markDirty();
+}
+function applyLayersPreset(p) {
+  const src = p.layers || p;
+  if (!Array.isArray(src) || src.length === 0) return;
+  layers.length = 0;
+  src.forEach(l => { const ll = { ...l }; if (ll.startTurn === undefined) ll.startTurn = (ll.off > 0) ? 2 : 1; layers.push(ll); });
+  buildLayerUI();
+  markDirty();
+}
+function applyDesignPreset(p) {
+  if (p.cathode) applyCathodePreset(p.cathode);
+  if (p.anode) applyAnodePreset(p.anode);
+  if (p.layers) applyLayersPreset(p);
+  if (p.params) {
+    Object.assign(params, p.params);
     for (const [k, v] of Object.entries(params)) {
       const el = document.getElementById('p_' + k);
       if (el) el.value = v;
     }
+    markDirty();
   }
-  // Rebuild tables
-  buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
-  buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
-  markDirty();
 }
 
-document.getElementById('btnLoadPreset').addEventListener('click', () => {
-  const name = document.getElementById('formulationPreset').value;
-  if (!name) { showToast('Select a preset first', true); return; }
-  const presets = getFormulationPresets();
-  if (presets[name]) {
-    applyFormulation(presets[name]);
-    showToast(`Loaded: ${name}`);
-  }
+// --- Unified preset button handlers ---
+const PRESET_GETTERS = { design: getDesignPreset, cathode: getCathodePreset, anode: getAnodePreset, layers: getLayersPreset };
+const PRESET_APPLIERS = { design: applyDesignPreset, cathode: applyCathodePreset, anode: applyAnodePreset, layers: applyLayersPreset };
+const PRESET_LABELS = { design: 'cell design', cathode: 'cathode formulation', anode: 'anode formulation', layers: 'layer stack' };
+
+document.querySelectorAll('.preset-load').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const type = btn.dataset.presetType;
+    const sel = document.getElementById(PRESET_SELECTS[type]);
+    const name = sel.value;
+    if (!name) { showToast('Select a preset first', true); return; }
+    const presets = getPresets(type);
+    if (presets[name]) { PRESET_APPLIERS[type](presets[name]); showToast(`Loaded ${PRESET_LABELS[type]}: ${name}`); }
+  });
 });
 
-document.getElementById('btnSavePreset').addEventListener('click', () => {
-  const name = prompt('Design name:', document.getElementById('formulationPreset').value || 'My Cell Design');
-  if (!name) return;
-  const presets = getFormulationPresets();
-  presets[name] = getCurrentFormulation();
-  saveFormulationPresets(presets);
-  loadFormulationPresetList();
-  document.getElementById('formulationPreset').value = name;
-  showToast(`Saved: ${name}`);
+document.querySelectorAll('.preset-save').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const type = btn.dataset.presetType;
+    const sel = document.getElementById(PRESET_SELECTS[type]);
+    const name = prompt(`Save ${PRESET_LABELS[type]} as:`, sel.value || '');
+    if (!name) return;
+    const presets = getPresets(type);
+    presets[name] = PRESET_GETTERS[type]();
+    savePresets(type, presets);
+    loadPresetList(type);
+    sel.value = name;
+    showToast(`Saved ${PRESET_LABELS[type]}: ${name}`);
+  });
 });
 
-document.getElementById('btnDeletePreset').addEventListener('click', () => {
-  const name = document.getElementById('formulationPreset').value;
-  if (!name) { showToast('Select a preset first', true); return; }
-  if (!confirm(`Delete preset "${name}"?`)) return;
-  const presets = getFormulationPresets();
-  delete presets[name];
-  saveFormulationPresets(presets);
-  loadFormulationPresetList();
-  showToast(`Deleted: ${name}`);
+document.querySelectorAll('.preset-del').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const type = btn.dataset.presetType;
+    const sel = document.getElementById(PRESET_SELECTS[type]);
+    const name = sel.value;
+    if (!name) { showToast('Select a preset first', true); return; }
+    if (!confirm(`Delete "${name}"?`)) return;
+    const presets = getPresets(type);
+    delete presets[name];
+    savePresets(type, presets);
+    loadPresetList(type);
+    showToast(`Deleted: ${name}`);
+  });
 });
 
 // Bottom section toggle
