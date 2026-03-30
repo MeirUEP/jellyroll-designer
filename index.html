@@ -770,8 +770,62 @@ const presetStores = {
       bulk_density: 4.062, mesh_dens: 0.149, cc_material: 'Copper mesh',
     }
   },
-  layers: {},
-  design: {},
+  layers: {
+    'Rev 3 Can Stack': {
+      layers: [
+        {name:'Anode',type:'anode',t:1.0,w:222,len:1800,startTurn:2,color:'#16a34a'},
+        {name:'Kraft paper',type:'separator',t:0.15,w:228,len:2600,startTurn:1,color:'#b45309'},
+        {name:'Cellophane A',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#38bdf8'},
+        {name:'Cellophane B',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#7dd3fc'},
+        {name:'Cathode',type:'cathode',t:2.0,w:188,len:1920,startTurn:1,color:'#3b82f6'},
+        {name:'Cellophane C',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#38bdf8'},
+        {name:'Cellophane D',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#7dd3fc'},
+        {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
+        {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
+      ]
+    }
+  },
+  design: {
+    'Rev 3 Can (220Ah Zn-MnO2)': {
+      cathode: {
+        components: [
+          { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
+          { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
+          { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
+          { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+          { name: 'Bi2O3', wt: 4, density: 8.9, cap: 0 },
+          { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
+          { name: 'Other', wt: 0, density: 3, cap: 0 },
+        ],
+        bulk_density: 2.41, mesh_dens: 0.16, cc_material: 'Nickel mesh',
+      },
+      anode: {
+        components: [
+          { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
+          { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
+          { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
+          { name: 'Bi2O3', wt: 2, density: 8.9, cap: 0 },
+          { name: 'Laponite', wt: 0.01, density: 2.53, cap: 0 },
+          { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
+          { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
+          { name: 'Other', wt: 0, density: 3, cap: 0 },
+        ],
+        bulk_density: 4.062, mesh_dens: 0.149, cc_material: 'Copper mesh',
+      },
+      layers: [
+        {name:'Anode',type:'anode',t:1.0,w:222,len:1800,startTurn:2,color:'#16a34a'},
+        {name:'Kraft paper',type:'separator',t:0.15,w:228,len:2600,startTurn:1,color:'#b45309'},
+        {name:'Cellophane A',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#38bdf8'},
+        {name:'Cellophane B',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#7dd3fc'},
+        {name:'Cathode',type:'cathode',t:2.0,w:188,len:1920,startTurn:1,color:'#3b82f6'},
+        {name:'Cellophane C',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#38bdf8'},
+        {name:'Cellophane D',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#7dd3fc'},
+        {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
+        {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
+      ],
+      params: { mandrel_d: 10.75, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, skip_turns: 2, cath_angle: 0, anod_angle: 180 },
+    }
+  },
 };
 
 function getPresets(type) { return presetStores[type]; }
