@@ -222,7 +222,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <!-- TAB 1: Formulation -->
     <div class="left-tab-content active" id="ltab-formulation">
       <div class="panel">
-        <h3>Formulation Preset</h3>
+        <h3>Cell Design Preset</h3>
         <div style="display:flex;gap:4px;align-items:center">
           <select id="formulationPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:11px">
             <option value="">-- Select preset --</option>
@@ -607,6 +607,7 @@ function loadFormulationPresetList() {
 
 function getCurrentFormulation() {
   return {
+    // Formulation
     cathComponents: cathComponents.map(c => ({ ...c })),
     anodComponents: anodComponents.map(c => ({ ...c })),
     elecProps: {
@@ -616,7 +617,10 @@ function getCurrentFormulation() {
       anod_bulk_density: elecProps.anod_bulk_density,
       anod_mesh_dens: elecProps.anod_mesh_dens,
       anod_cc_material: document.getElementById('ep_anod_cc_material').value,
-    }
+    },
+    // Full cell design
+    layers: layers.map(l => ({ ...l })),
+    params: { ...params },
   };
 }
 
@@ -640,6 +644,24 @@ function applyFormulation(preset) {
     if (preset.elecProps.cath_cc_material) document.getElementById('ep_cath_cc_material').value = preset.elecProps.cath_cc_material;
     if (preset.elecProps.anod_cc_material) document.getElementById('ep_anod_cc_material').value = preset.elecProps.anod_cc_material;
   }
+  // Apply layers (full cell design)
+  if (preset.layers && preset.layers.length > 0) {
+    layers.length = 0;
+    preset.layers.forEach(l => {
+      const ll = { ...l };
+      if (ll.startTurn === undefined) ll.startTurn = (ll.off > 0) ? 2 : 1;
+      layers.push(ll);
+    });
+    buildLayerUI();
+  }
+  // Apply cell params
+  if (preset.params) {
+    Object.assign(params, preset.params);
+    for (const [k, v] of Object.entries(params)) {
+      const el = document.getElementById('p_' + k);
+      if (el) el.value = v;
+    }
+  }
   // Rebuild tables
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
@@ -657,7 +679,7 @@ document.getElementById('btnLoadPreset').addEventListener('click', () => {
 });
 
 document.getElementById('btnSavePreset').addEventListener('click', () => {
-  const name = prompt('Preset name:', document.getElementById('formulationPreset').value || 'My Formulation');
+  const name = prompt('Design name:', document.getElementById('formulationPreset').value || 'My Cell Design');
   if (!name) return;
   const presets = getFormulationPresets();
   presets[name] = getCurrentFormulation();
