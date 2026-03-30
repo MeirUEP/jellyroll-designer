@@ -316,6 +316,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <h3>Cell Geometry</h3>
         <div class="param-grid">
           <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
+          <div class="param-item"><label>Separator overhang (mm)</label><input type="number" id="p_sep_overhang" step="0.1" value="101.6" title="Excess separator length that folds over the split mandrel before winding begins (~4 inches = 101.6mm)"></div>
         </div>
       </div>
       <div class="panel">
@@ -823,7 +824,7 @@ const presetStores = {
         {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
         {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
       ],
-      params: { mandrel_d: 10.75, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, skip_turns: 2, cath_angle: 0, anod_angle: 180 },
+      params: { mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, skip_turns: 2, cath_angle: 0, anod_angle: 180 },
     }
   },
 };
@@ -1005,7 +1006,7 @@ let layers = [
 ];
 
 let params = {
-  mandrel_d: 10.75, target_od: 94, cell_h: 222,
+  mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222,
   tab_w: 10, tab_h: 15, skip_turns: 2,
   cath_angle: 0, anod_angle: 180
 };
@@ -1049,23 +1050,60 @@ function runSimulation() {
   });
 
   // Two-pass simulation: compute arc offsets from startTurn, then wind
-  // Pass 1: Wind turn by turn. Each turn, check which layers are active based on
-  // their startTurn. A layer becomes active at the START of its startTurn.
-  // Once active, it stays active for its full length (mm).
+  // Pre-wind: separator overhang folds over the split mandrel, adding
+  // separator-only wraps before regular turn counting begins.
   let r = r0;
   let arc = 0;
   const turns = [];
   let n = 0;
 
-  // Compute off (arc offset) for each layer based on startTurn
-  // We set off = arc at the beginning of that turn (computed during winding)
-  // Initialize: layers starting at turn 1 get off = 0
-  nonMandrel.forEach(l => { l.off = (l.startTurn <= 1) ? 0 : -1; }); // -1 = not yet computed
+  // Pre-wind separator overhang: all separator layers wrap for overhang length
+  const sepOverhang = params.sep_overhang || 0;
+  if (sepOverhang > 0) {
+    const sepLayers = nonMandrel.filter(l => l.type === 'separator');
+    const sepPitch = sepLayers.reduce((sum, l) => sum + l.t, 0);
+    if (sepPitch > 0) {
+      let ohRemaining = sepOverhang;
+      while (ohRemaining > 0 && r < params.target_od / 2) {
+        const circ = 2 * Math.PI * (r + sepPitch / 2);
+        if (ohRemaining >= circ) {
+          // Full overhang turn
+          r += sepPitch;
+          arc += circ;
+          ohRemaining -= circ;
+          n++;
+          const active = sepLayers.map(l => l); // all separators active
+          turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart: arc - circ, active, isOverhang: true });
+        } else {
+          // Partial last overhang wrap — fraction of a turn
+          const frac = ohRemaining / circ;
+          const partialArc = ohRemaining;
+          r += sepPitch * frac;
+          arc += partialArc;
+          ohRemaining = 0;
+          n++;
+          const active = sepLayers.map(l => l);
+          turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart: arc - partialArc, active, isOverhang: true });
+        }
+      }
+    }
+  }
+
+  // Set separator layer offsets: separators start at arc=0 (they participate in overhang)
+  // Non-separator layers use startTurn-based activation
+  // startTurn counts include overhang turns (overhang IS turn 1, 2, etc.)
+  nonMandrel.forEach(l => {
+    if (l.type === 'separator') {
+      l.off = 0; // separators start from the very beginning (overhang)
+    } else {
+      l.off = (l.startTurn <= 1) ? 0 : -1; // -1 = not yet computed
+    }
+  });
 
   while (r < params.target_od / 2 && n < 500) {
-    // Check if any new layers join at this turn
+    // Check if any new non-separator layers join at this turn
     nonMandrel.forEach(l => {
-      if (l.startTurn === n + 1 && l.off < 0) {
+      if (l.type !== 'separator' && l.startTurn === n + 1 && l.off < 0) {
         l.off = arc;  // Layer starts at current arc position
       }
     });
@@ -1077,7 +1115,7 @@ function runSimulation() {
         pitch += l.t;
       }
     }
-    if (pitch < 0.001) pitch = 0.001;
+    if (pitch < 0.01) break;  // no real layers active — stop winding
     if (r + pitch > params.target_od / 2) break;
 
     const circ = 2 * Math.PI * (r + pitch / 2);
