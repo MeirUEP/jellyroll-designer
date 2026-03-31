@@ -1110,13 +1110,12 @@ function runSimulation() {
   }
 
   // Set separator layer offsets: separators start at arc=0 (they participate in overhang)
-  // Non-separator layers use startTurn-based activation
-  // startTurn counts include overhang turns (overhang IS turn 1, 2, etc.)
+  // Non-separator layers use startTurn-based activation in the main winding loop
   nonMandrel.forEach(l => {
     if (l.type === 'separator') {
       l.off = 0; // separators start from the very beginning (overhang)
     } else {
-      l.off = (l.startTurn <= 1) ? 0 : -1; // -1 = not yet computed
+      l.off = -1; // all non-separators activate via the winding loop
     }
   });
 
@@ -1221,25 +1220,31 @@ function runSimulation() {
     return openEndedTypes.has(l.type) ? (l.computedLen || l.len) : l.len;
   }
 
-  // Place cathode tabs: at every turn where the drill angle intersects the cathode
+  // Place cathode tabs: at every turn where the drill angle intersects the cathode,
+  // but only starting from the requested first tab position (no earlier tabs).
+  let firstCathTabTurn = 0;
   if (cathode) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
       const fracC = drillAngleDeg / 360;
       const tabArc = t.arcStart + fracC * t.circ;
+      if (tabArc < firstCathArcAbs) continue; // skip tabs before requested position
       if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
         const cathInActive = t.active.find(l => l.name === cathode.name);
         if (cathInActive) {
+          if (cTabs.length === 0) firstCathTabTurn = t.turn;
           cTabs.push({ turn: t.turn, r: layerMidR(ti, cathInActive), pitch: t.pitch, arcLen: tabArc, idx: cTabs.length + 1, circ: t.circ, angleDeg: drillAngleDeg });
         }
       }
     }
   }
 
-  // Place anode tabs: 180° opposite cathode drill angle
+  // Place anode tabs: 180° opposite cathode drill angle,
+  // starting from the same turn as the first cathode tab (not earlier).
   if (anode) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
+      if (t.turn < firstCathTabTurn) continue; // anode tabs start from first cathode tab turn
       const fracA = anodAngleDeg / 360;
       const tabArc = t.arcStart + fracA * t.circ;
       if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
@@ -1275,10 +1280,8 @@ function runSimulation() {
       }
     }
     if (tooClose && extendTo > anodeEnd) {
-      // Need to wind more turns to accommodate the extension
-      const extraArc = extendTo - anodeEnd;
-      // Continue winding until we've added enough arc
-      windUntil(r + 100, 550);  // generous ceiling
+      // Wind a few extra turns to get past the tab
+      windUntil(r + 5, n + 5);
       // Recompute all open-ended lengths
       nonMandrel.forEach(l => {
         if (openEndedTypes.has(l.type) && l.off >= 0) {
