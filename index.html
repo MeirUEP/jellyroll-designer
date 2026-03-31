@@ -318,7 +318,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Target OD (mm)</label><input type="number" id="p_target_od" step="0.1" value="94"></div>
           <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
           <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
-          <div class="param-item"><label>Separator overhang (mm)</label><input type="number" id="p_sep_overhang" step="0.1" value="101.6" title="Excess separator length that folds over the split mandrel before winding begins (~4 inches = 101.6mm)"></div>
+          <!-- Separator overhang is auto-computed: mandrel_d + 0.5 * π * mandrel_d -->
         </div>
       </div>
       <div class="panel">
@@ -835,7 +835,7 @@ const presetStores = {
         {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
         {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
       ],
-      params: { mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, first_cath_arc: 200 },
+      params: { mandrel_d: 10.75, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, first_cath_arc: 200 },
     }
   },
 };
@@ -1017,7 +1017,7 @@ let layers = [
 ];
 
 let params = {
-  mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222,
+  mandrel_d: 10.75, target_od: 94, cell_h: 222,
   cath_start_turn: 1, anod_start_turn: 2, sep_start_turn: 1,
   tab_w: 10, tab_h: 15,
   first_cath_arc: 200,
@@ -1078,7 +1078,8 @@ function runSimulation() {
   let n = 0;
 
   // Pre-wind separator overhang: all separator layers wrap for overhang length
-  const sepOverhang = params.sep_overhang || 0;
+  // Separator overhang = mandrel diameter + half circumference
+  const sepOverhang = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
   if (sepOverhang > 0) {
     const sepLayers = nonMandrel.filter(l => l.type === 'separator');
     const sepPitch = sepLayers.reduce((sum, l) => sum + l.t, 0);
