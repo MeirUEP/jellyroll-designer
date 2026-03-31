@@ -1885,7 +1885,7 @@ function renderTop() {
     const lblR = outerR * sc + 12;
     ctx.fillStyle = fg; ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`${cellAngleDeg}°`, cx + lblR * dx, cy + lblR * dy);
+    ctx.fillText(`${cellAngleDeg.toFixed(1)}°`, cx + lblR * dx, cy + lblR * dy);
     ctx.fillStyle = color; ctx.font = '8px sans-serif';
     ctx.fillText(`${count}× ${prefix}`, cx + (lblR + 12) * dx, cy + (lblR + 12) * dy);
   }
