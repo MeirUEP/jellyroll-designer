@@ -1145,7 +1145,13 @@ function runSimulation() {
         }
       }
       if (pitch < 0.01) break;
-      if (r + pitch > targetR) break;
+      // Closest-fit: if adding this turn overshoots, check which is closer to target
+      if (r + pitch > targetR) {
+        const undershoot = targetR - r;
+        const overshoot = (r + pitch) - targetR;
+        if (undershoot <= overshoot) break; // stopping here is closer
+        // else: fall through and wind this turn (overshoot is closer)
+      }
 
       const circ = 2 * Math.PI * (r + pitch / 2);
       n++;
