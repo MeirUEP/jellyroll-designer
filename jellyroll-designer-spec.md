@@ -54,13 +54,12 @@ Listed innermost to outermost. These are the defaults loaded on startup.
 
 ### Core Parameters (user-editable)
 - `mandrel_d` — mandrel diameter in mm (default 10.75)
+- `sep_overhang` — separator overhang length in mm (default 101.6 = 4 inches)
 - `target_od` — finished cell OD in mm (default 94)
 - `cell_h` — cell height in mm (default 222)
 - `tab_w` — tab width in mm (default 10)
 - `tab_h` — tab height in mm (default 15)
-- `skip_turns` — number of inner turns to skip before placing tabs (default 2)
-- `cath_angle` — cathode drill angle in degrees (default 90)
-- `anod_angle` — anode drill angle in degrees (default 270)
+- `first_cath_arc` — arc length (mm) from winding start to the first cathode tab (default 200)
 
 ### Variable-Pitch Spiral Algorithm
 
@@ -70,67 +69,125 @@ r = r0
 arc = 0   // cumulative arc length in mm
 turns = []
 
+// Phase 1: Separator overhang pre-wind
+// Before main winding, separator layers fold over the split mandrel.
+// Only separator layers are active. Supports partial final wraps.
+sepPitch = sum of all separator thicknesses
+ohRemaining = sep_overhang
+WHILE ohRemaining > 0:
+    circ = 2π(r + sepPitch/2)
+    IF ohRemaining >= circ:
+        full turn: r += sepPitch, arc += circ, n++
+    ELSE:
+        partial: frac = ohRemaining/circ, r += sepPitch*frac, arc += ohRemaining, n++
+    ohRemaining -= min(ohRemaining, circ)
+
+// Phase 2: Main winding
 WHILE r < target_od/2 AND n < 500:
+    // Activate layers whose startTurn matches this turn
+    FOR each non-separator layer l:
+        IF l.startTurn == n+1 AND not yet activated:
+            l.off = arc   // record where this layer begins
+
     pitch = 0
     FOR each non-mandrel layer l:
-        IF arc >= l.off AND arc < l.off + l.len:
+        IF l.off >= 0 AND arc >= l.off AND arc < l.off + l.len:
             pitch += l.t
-    IF pitch < 0.001: pitch = 0.001
+    IF pitch < 0.01: BREAK     // no real layers active
     IF r + pitch > target_od/2: BREAK
-    
-    circ = 2 * PI * (r + pitch/2)   // circumference at midpoint of pitch band
+
+    circ = 2π(r + pitch/2)    // circumference at midpoint of pitch band
     n += 1
+    arcStart = arc
     arc += circ
     r += pitch
-    
-    active = [layers where (arc-circ) >= l.off AND (arc-circ) < l.off+l.len]
-    turns.push({ turn: n, r, arc, pitch, circ, active })
+
+    active = [layers where l.off < arc AND l.off+l.len > arcStart]  // overlaps
+    turns.push({ turn: n, r, arc, arcStart, pitch, circ, active })
 ```
 
-### Tab Placement Physics
+### Tab Placement — Angular Alignment Model
 
-The physical process is: wind the cell → drill holes on both sides at the drill angles → unwind → mark tab locations → re-wind with tabs attached.
+**Design principle (March 2026 revision):** The physical tab placement process uses a drill that passes straight through the entire wound cell at a single angular position. This means:
 
-**Cathode tabs** (at `cath_angle`, e.g. 90°):
-- One tab per turn (after skipping `skip_turns` inner turns)
-- Tab arc length = `turn.arc` (cumulative arc at end of that turn)
-- Only place tab if the cathode layer is active at that turn
+1. **The first cathode tab position is a designed input** — the engineer specifies exactly where along the winding arc the first cathode tab should land, regardless of separator package or electrode thicknesses.
+2. **All cathode tabs are at the same drill angle** — because the drill passes through every turn at the same angle, every cathode tab is angularly aligned.
+3. **Anode tabs are always 180° opposite** — the drill exits the other side of the cell. This is not independently configurable; it is a physical constraint.
 
-**Anode tabs** (at `anod_angle`, e.g. 270°):
-- Same turns as cathode
-- Tab arc length = `turn.arc + π × turn.r`
-- The `π × r` offset = half circumference, because the drill exits the opposite side of the jellyroll
-- Result: cathode and anode tabs at the same turn are physically on opposite sides of the cell
+**Previous model (removed):** The old implementation used `cath_angle`, `anod_angle`, and `skip_turns` as three independent user inputs. This was physically incorrect because (a) the two angles are always 180° apart (single drill), and (b) `skip_turns` was an arbitrary count rather than a designed arc position. The anode offset was computed as `arc + π×r` bolted onto the turn's end arc, rather than being a proper angular position within each turn.
 
-```javascript
-// Cathode tabs
-for (ti = 0; ti < turns.length; ti++) {
-    if (ti < skip_turns) continue;
-    t = turns[ti];
-    tS = t.arc - t.circ;
-    if (tS >= cathode.off && tS < cathode.off + cathode.len && t.arc <= cathode.off + cathode.len) {
-        cTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: t.arc, idx: cTabs.length + 1 });
-    }
-}
+**Algorithm:**
 
-// Anode tabs
-for (ti = 0; ti < turns.length; ti++) {
-    if (ti < skip_turns) continue;
-    t = turns[ti];
-    tS = t.arc - t.circ;
-    half = Math.PI * t.r;
-    aArc = t.arc + half;
-    if (tS >= anode.off && tS < anode.off + anode.len && aArc <= anode.off + anode.len) {
-        aTabs.push({ turn: t.turn, r: t.r, pitch: t.pitch, arcLen: aArc, idx: aTabs.length + 1 });
-    }
-}
+```
+// Step 1: User specifies first_cath_arc (mm from winding start)
+
+// Step 2: Find which turn contains the first cathode tab
+FOR each turn t:
+    IF first_cath_arc >= t.arcStart AND first_cath_arc < t.arc:
+        fracInTurn = (first_cath_arc - t.arcStart) / t.circ
+        drillAngleDeg = fracInTurn × 360°
+        BREAK
+
+// Step 3: Anode angle is always 180° opposite
+anodAngleDeg = (drillAngleDeg + 180) mod 360
+
+// Step 4: Place cathode tabs at every turn where the drill intersects the cathode
+FOR each turn t:
+    fracC = drillAngleDeg / 360
+    tabArc = t.arcStart + fracC × t.circ    // exact arc position of drill in this turn
+    IF tabArc >= cathode.off AND tabArc < cathode.off + cathode.len:
+        IF cathode is active in this turn:
+            place cathode tab at { arcLen: tabArc, r: layerMidR(cathode), ... }
+
+// Step 5: Place anode tabs at every turn where the drill intersects the anode
+FOR each turn t:
+    fracA = anodAngleDeg / 360
+    tabArc = t.arcStart + fracA × t.circ
+    IF tabArc >= anode.off AND tabArc < anode.off + anode.len:
+        IF anode is active in this turn:
+            place anode tab at { arcLen: tabArc, r: layerMidR(anode), ... }
 ```
 
-### Expected Simulation Output (default params)
-- ~11 turns
-- Computed OD ~88mm
-- Pitch range: 2.60–3.60mm (variable because layers have different start offsets and lengths)
-- 9 cathode tabs, 9 anode tabs, 18 total
+**Key properties of this model:**
+- The drill angle is a **computed output**, not a user input
+- Changing `first_cath_arc` changes the drill angle and repositions all tabs
+- The number of tabs is determined by how many turns have the electrode active at the drill angle — no `skip_turns` needed
+- Tab arc positions are geometrically exact for each turn's circumference
+- Cathode and anode tabs are guaranteed to be 180° apart in every turn
+
+### Proportional Radial Allocation
+
+**Design principle (March 2026 revision):** When multiple layers are active in a turn, the radial space within that turn's band should be allocated **proportionally to layer thickness**, not equally by count.
+
+**Previous model (removed):** Each active layer got `bandW / nActive` radial space regardless of thickness. A 0.05mm cellophane and a 2.0mm cathode each got 25% of the band. This was visually misleading and caused tab radius errors.
+
+**Algorithm:**
+
+```
+// For a turn with active layers [L1, L2, L3, ...]:
+bandW = turn.r - prevTurn.r          // total radial width of this turn
+totalThick = sum(Li.t for all active layers)
+
+// Layer i gets radial space proportional to its thickness:
+cumThick = sum of thicknesses of layers before Li
+rInner_i = prevR + bandW × (cumThick / totalThick)
+rOuter_i = prevR + bandW × ((cumThick + Li.t) / totalThick)
+rMid_i   = (rInner_i + rOuter_i) / 2
+
+// Example: bandW=3.35mm, layers=[Anode 1.0, Kraft 0.15, Cello 0.05, Cathode 2.0, Cello 0.05]
+// totalThick = 3.25
+// Anode:   30.8% of band = 1.03mm radial space
+// Kraft:    4.6% of band = 0.15mm radial space
+// Cello:    1.5% of band = 0.05mm radial space
+// Cathode: 61.5% of band = 2.06mm radial space
+// Cello:    1.5% of band = 0.05mm radial space
+```
+
+This proportional allocation is used in:
+- **Tab radius computation** (`layerMidR` function) — determines where tabs sit radially
+- **Side view** — layer ring widths are proportional to thickness
+- **Top view** — arc stroke widths and radial positions are proportional
+- **3D view** — cylinder geometry inner/outer radii are proportional
 
 ---
 
@@ -172,7 +229,7 @@ Looking straight down at the top face of the cell.
 
 **What to draw:**
 - Mandrel as a filled grey circle at center
-- For each turn, subdivide the pitch band among active layers. Each active layer gets an arc at `rMid = innerR + (bandW / nActive) * (layerPos + 0.5)` with `lw = bandW / nActive * arcThickMult`
+- For each turn, subdivide the pitch band among active layers **proportionally to thickness**. Each active layer gets an arc at its proportional mid-radius within the band.
 - The arcs should show the actual START and END of each layer (not full circles) — partial arcs where the layer begins/ends mid-turn, with endpoint markers (white dot = start, colored dot = end)
 - Outer cell boundary circle
 - **Tab lines**: Both cathode and anode tabs point straight UP in canvas coordinates
@@ -291,7 +348,7 @@ mesh.rotation.y = -cAngRad
     
     <!-- LEFT PANEL: parameters + layer stack -->
     <div class="left">
-      Cell parameters panel (mandrel_d, target_od, cell_h, tab_w, tab_h, skip_turns, cath_angle, anod_angle)
+      Cell parameters panel (mandrel_d, sep_overhang, target_od, cell_h, tab_w, tab_h, first_cath_arc)
       3D display panel (cut slider, rscale slider, spin/reset buttons)  -- only shown in 3D view
       Layer stack panel (layer cards, add button)
       Run simulation button + last-run timestamp
@@ -325,8 +382,8 @@ Each layer has a card in the left panel with:
 - Up/Down reorder buttons
 - Delete button (×)
 - Three number inputs in a 3-column grid: Thickness (mm), Width (mm), Length (mm)
-- Start offset input (mm)
-- Badge showing drill angle if type is cathode or anode
+- Start turn input (integer, 1-indexed; includes overhang turns)
+- Badge showing computed drill angle if type is cathode or anode (derived from simulation, not user-editable)
 
 Changes to layer parameters should highlight the Run button (yellow) to indicate re-simulation is needed. After running, all yellow highlights clear.
 
@@ -339,12 +396,14 @@ Button labeled "Export CSV" in the results area. Downloads a file named `jellyro
 Format:
 ```csv
 Type,Tab#,Turn,Radius_mm,Pitch_mm,ArcLen_mm,Spacing_mm,Angle_deg
-Cathode,1,3,18.432,3.12,187.4,—,90
-Cathode,2,4,21.552,3.24,294.1,106.7,90
+Cathode,1,4,12.50,3.35,210.5,—,18.7
+Cathode,2,5,15.85,3.35,315.2,104.7,18.7
 ...
-Anode,1,3,18.432,3.12,235.1,—,270
+Anode,1,4,11.75,3.35,178.3,—,198.7
 ...
 ```
+
+Note: The Angle_deg column now shows the **computed** drill angle (derived from `first_cath_arc`), not a user-set value. Cathode angle + 180° = anode angle always.
 
 ---
 
@@ -353,20 +412,22 @@ Anode,1,3,18.432,3.12,235.1,—,270
 **Save:** Serialises the full app state to JSON and triggers a browser download.
 ```json
 {
-  "version": "1.0",
+  "version": "1.1",
   "params": {
     "mandrel_d": 10.75,
+    "sep_overhang": 101.6,
     "target_od": 94,
     "cell_h": 222,
     "tab_w": 10,
     "tab_h": 15,
-    "skip_turns": 2,
-    "cath_angle": 90,
-    "anod_angle": 270
+    "first_cath_arc": 200
   },
-  "layers": [ ...full layer array... ]
+  "layers": [ ...full layer array with startTurn per layer... ],
+  "elecProps": { ...electrode material properties... }
 }
 ```
+
+**Backward compatibility:** When loading old v1.0 files with `cath_angle`/`anod_angle`/`skip_turns`, those fields are deleted and `first_cath_arc` defaults to 200mm.
 
 **Load:** `<input type="file" accept=".json">` — reads the file, validates version, restores params and layers, rebuilds UI, auto-runs simulation.
 
@@ -404,11 +465,17 @@ jobs:
 **Repo structure:**
 ```
 jellyroll-designer/
-├── index.html          # entire app — single file
-├── README.md           # brief description + screenshot
-└── .github/
-    └── workflows/
-        └── deploy.yml
+├── index.html                    # entire frontend app — single file
+├── jellyroll-designer-spec.md    # this specification document
+├── README.md                     # brief description
+├── .github/
+│   └── workflows/
+│       └── deploy.yml            # GitHub Pages deployment
+└── backend/                      # optional FastAPI cloud persistence
+    ├── app/                      # FastAPI app (models, routers, auth)
+    ├── alembic/                  # database migrations
+    ├── docker-compose.yml        # PostgreSQL + API
+    └── requirements.txt
 ```
 
 ---
@@ -464,6 +531,31 @@ Spacing column = arc length difference from previous tab of same type. First tab
 5. **Canvas height clipping in Unroll view** — canvas must be sized to its natural content height. The parent container scrolls; the canvas does not have a fixed height.
 
 6. **Tab width in Side view** — tabs should be auto-sized to `avgPitchSpacing * 0.6` so they align with their turn ring, not a fixed pixel width.
+
+---
+
+## Geometry Model — Revision History
+
+### March 2026: Angular Alignment + Proportional Radial Allocation
+
+**Problem with old model:**
+1. `cath_angle` and `anod_angle` were independent user inputs — but physically the drill always exits 180° opposite from where it enters. These should never be independently set.
+2. `skip_turns` was an arbitrary count. In reality, the first tab position is a specific designed arc position that the engineer chooses, independent of separator package or electrode thicknesses.
+3. Radial allocation divided the turn's band equally by layer count. A 0.05mm cellophane got the same radial space as a 2.0mm cathode, which distorted visualization and tab radius computation.
+4. Anode arc was computed as `turn.arc + π×r` (half-circumference offset from turn end), which is not the same as "the drill at 180° within this turn."
+
+**New model:**
+- **One input** (`first_cath_arc`) replaces three (`cath_angle`, `anod_angle`, `skip_turns`)
+- **Drill angle is derived** from where `first_cath_arc` falls within its turn: `drillAngle = (first_cath_arc - turnStart) / turnCirc × 360°`
+- **All cathode tabs** are placed at `turnStart + (drillAngle/360) × turnCirc` in every turn where cathode is active
+- **All anode tabs** are placed at `turnStart + ((drillAngle+180)/360) × turnCirc` in every turn where anode is active
+- **Radial allocation** is proportional to layer thickness: `layerRadialSpace = bandWidth × (layerThickness / totalActiveThickness)`
+
+**Why it matters:**
+- Tabs are now angularly aligned across all turns (matching the physical drill process)
+- Changing electrode or separator thickness changes the drill angle (because the turn geometry changes) but tabs remain aligned
+- Visualization accurately shows thick electrodes as thick and thin separators as thin
+- Tab radius is computed at the correct proportional position within the turn band
 
 ---
 
