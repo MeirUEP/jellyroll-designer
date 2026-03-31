@@ -1024,8 +1024,11 @@ function loadPresetList(type) {
   const presets = getPresets(type);
   while (sel.options.length > 1) sel.remove(1);
   Object.keys(presets).forEach(name => {
+    const entry = presets[name];
+    // When API is configured, only show cloud presets
+    if (isApiConfigured() && !entry._cloud) return;
     const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
+    opt.value = name; opt.textContent = name.replace('☁ ', '');
     sel.appendChild(opt);
   });
 }
@@ -1176,6 +1179,11 @@ document.querySelectorAll('.preset-save').forEach(btn => {
           presetStores.layers['☁ ' + name] = { _cloudId: saved.id, _cloud: true };
         }
         showToast(`Saved to cloud: ${name}`);
+        // Remove local-only entry so only cloud version shows
+        delete presetStores[type][name];
+        loadPresetList(type);
+        sel.value = '☁ ' + name;
+        return;
       } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
     }
     loadPresetList(type);
