@@ -1418,8 +1418,8 @@ function updateInfoBar() {
   let html =
     `<span>Turns: <strong>${s.turns.length}</strong></span>` +
     odLabel +
-    `<span>Cath L: <strong style="color:#3b82f6">${Math.round(s.cathodeLen)}mm</strong></span>` +
-    `<span>Anod L: <strong style="color:#16a34a">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}</span>` +
+    `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
+    `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Tabs: <strong style="color:#3b82f6">${s.cTabs.length}C</strong>+<strong style="color:#16a34a">${s.aTabs.length}A</strong></span>`;
   if (capResult) {
     html += `<span>Cell cap: <strong>${capResult.cellCapAh.toFixed(1)}Ah</strong></span>` +
@@ -1437,8 +1437,8 @@ function updateSummary() {
   const cards = [
     { lbl: 'Actual OD', val: odVal },
     { lbl: 'Total turns', val: s.turns.length },
-    { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm`, cls: 'color:#3b82f6' },
-    { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}`, cls: 'color:#16a34a' },
+    { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm${s.cathodeLen > 2000 ? ' !' : ''}`, cls: s.cathodeLen > 2000 ? 'color:var(--red)' : 'color:#3b82f6' },
+    { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}${s.anodeLen > 2000 ? ' !' : ''}`, cls: s.anodeLen > 2000 ? 'color:var(--red)' : 'color:#16a34a' },
     { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
     { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
     { lbl: 'Anode tabs', val: s.aTabs.length, cls: 'color:#16a34a' },
@@ -1542,7 +1542,7 @@ function buildLayerUI() {
         <div class="param-item"><label>Thick</label><input type="number" step="0.01" value="${l.t}" data-i="${i}" data-f="t"></div>
         <div class="param-item"><label>Width</label><input type="number" step="0.1" value="${l.w}" data-i="${i}" data-f="w"></div>
         ${(['anode','cathode','separator'].includes(l.type))
-          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : l.len}" data-i="${i}" data-f="len" readonly style="background:var(--bg3);color:var(--fg2);cursor:not-allowed" title="Computed from target OD"></div>`
+          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : l.len}" data-i="${i}" data-f="len" readonly style="background:var(--bg3);color:${(l.type==='anode'||l.type==='cathode') && l.computedLen > 2000 ? 'var(--red)' : 'var(--fg2)'};cursor:not-allowed" title="${(l.type==='anode'||l.type==='cathode') && l.computedLen > 2000 ? 'Exceeds 2m coater limit!' : 'Computed from target OD'}"></div>`
           : `<div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len}" data-i="${i}" data-f="len"></div>`}
         <div class="param-item"><label>Start turn</label><input type="number" step="1" min="1" value="${l.startTurn || 1}" data-i="${i}" data-f="startTurn"></div>
       </div>`;
