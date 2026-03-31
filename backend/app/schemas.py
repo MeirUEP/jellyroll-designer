@@ -4,58 +4,121 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-# ========== Cell Parameters ==========
+# ========== Chemical ==========
+class ChemicalCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    density: float
+    capacity: float = 0
+    is_active_mat: bool = False
+    category: str | None = None
+
+
+class ChemicalSchema(ChemicalCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# ========== Material ==========
+class MaterialCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    type: Literal["separator", "tape", "collector", "other"]
+    thickness: float
+    width: float
+    color: str | None = None
+
+
+class MaterialSchema(MaterialCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# ========== Mix ==========
+class MixComponent(BaseModel):
+    chemical_id: UUID
+    wt_pct: float
+    is_active: bool = False
+
+
+class MixCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    type: Literal["cathode", "anode"]
+    bulk_density: float
+    mesh_density: float = 0
+    cc_material: str | None = None
+    components: list[MixComponent]
+
+
+class MixSchema(MixCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class MixDetail(MixSchema):
+    """Mix with resolved chemical names for display."""
+    resolved_components: list[dict] | None = None
+
+
+# ========== Layer Stack ==========
+class LayerStackItem(BaseModel):
+    material_id: UUID
+    position: int
+    role: Literal["cathode", "anode", "separator", "tape", "collector", "other"]
+
+
+class LayerStackCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    items: list[LayerStackItem]
+
+
+class LayerStackSchema(LayerStackCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class LayerStackDetail(LayerStackSchema):
+    """Stack with resolved material details for display."""
+    resolved_items: list[dict] | None = None
+
+
+# ========== Cell Parameters (JSONB in designs) ==========
 class CellParams(BaseModel):
     mandrel_d: float
     target_od: float
     cell_h: float
-    tab_w: float
-    tab_h: float
-    skip_turns: int
-    cath_angle: float
-    anod_angle: float
-
-
-# ========== Layer ==========
-class Layer(BaseModel):
-    name: str
-    type: Literal["mandrel", "anode", "cathode", "separator", "collector", "tape", "other"]
-    t: float
-    w: float
-    len: float
-    off: float
-    color: str
-
-
-# ========== Electrode Properties ==========
-class ElecProps(BaseModel):
-    cath_bulk_density: float
-    cath_active_wt: float
-    cath_spec_cap: float
-    cath_mesh_dens: float
-    anod_bulk_density: float
-    anod_zn_wt: float
-    anod_zno_wt: float
-    anod_zn_cap: float
-    anod_zno_cap: float
-    anod_mesh_dens: float
+    tab_w: float = 10
+    tab_h: float = 15
+    first_cath_arc: float = 200
+    anode_end_tab_clearance: float = 10
+    cath_start_turn: int = 1
+    anod_start_turn: int = 2
+    sep_start_turn: int = 1
 
 
 # ========== Design ==========
 class DesignCreate(BaseModel):
     name: str = Field(..., max_length=255)
     description: str | None = None
-    params: CellParams
-    layers: list[Layer]
-    elec_props: ElecProps
+    cathode_mix_id: UUID | None = None
+    anode_mix_id: UUID | None = None
+    layer_stack_id: UUID | None = None
+    cell_params: CellParams
 
 
 class DesignUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    params: CellParams | None = None
-    layers: list[Layer] | None = None
-    elec_props: ElecProps | None = None
+    cathode_mix_id: UUID | None = None
+    anode_mix_id: UUID | None = None
+    layer_stack_id: UUID | None = None
+    cell_params: CellParams | None = None
 
 
 class DesignSummary(BaseModel):
@@ -65,7 +128,6 @@ class DesignSummary(BaseModel):
     version: str
     created_at: datetime
     updated_at: datetime
-
     model_config = {"from_attributes": True}
 
 
@@ -77,8 +139,9 @@ class SimResultSchema(BaseModel):
     outer_r: float
     min_pitch: float
     max_pitch: float
+    cathode_len: float | None = None
+    anode_len: float | None = None
     created_at: datetime
-
     model_config = {"from_attributes": True}
 
 
@@ -92,14 +155,17 @@ class CapResultSchema(BaseModel):
     total_dry_mass: float
     full_result: dict
     created_at: datetime
-
     model_config = {"from_attributes": True}
 
 
 class DesignDetail(DesignSummary):
-    params: CellParams
-    layers: list[Layer]
-    elec_props: ElecProps
+    cathode_mix_id: UUID | None = None
+    anode_mix_id: UUID | None = None
+    layer_stack_id: UUID | None = None
+    cell_params: CellParams
+    cathode_mix: MixSchema | None = None
+    anode_mix: MixSchema | None = None
+    layer_stack: LayerStackSchema | None = None
     sim_result: SimResultSchema | None = None
     cap_result: CapResultSchema | None = None
 
@@ -117,6 +183,8 @@ class SimResultCreate(BaseModel):
     outer_r: float
     min_pitch: float
     max_pitch: float
+    cathode_len: float | None = None
+    anode_len: float | None = None
 
 
 # ========== Capacity Result ==========
@@ -128,12 +196,3 @@ class CapResultCreate(BaseModel):
     cell_energy_1e: float
     total_dry_mass: float
     full_result: dict
-
-
-# ========== Import (matches frontend JSON save format) ==========
-class DesignImport(BaseModel):
-    version: str = "1.1"
-    params: CellParams
-    layers: list[Layer]
-    elecProps: ElecProps | None = None
-    name: str | None = None

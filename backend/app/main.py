@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import get_settings
 from app.database import engine
-from app.routers import designs, simulations
+from app.routers import chemicals, materials, mixes, layer_stacks, designs, simulations
 
 
 @asynccontextmanager
@@ -31,6 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(chemicals.router, prefix="/api/v1")
+app.include_router(materials.router, prefix="/api/v1")
+app.include_router(mixes.router, prefix="/api/v1")
+app.include_router(layer_stacks.router, prefix="/api/v1")
 app.include_router(designs.router, prefix="/api/v1")
 app.include_router(simulations.router, prefix="/api/v1")
 
