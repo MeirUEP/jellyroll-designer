@@ -324,9 +324,9 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <div class="param-grid">
           <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
           <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
-          <div class="param-item"><label>Cathode angle (&deg;)</label><input type="number" id="p_cath_angle" step="1" value="0"></div>
-          <div class="param-item"><label>Anode angle (&deg;)</label><input type="number" id="p_anod_angle" step="1" value="180"></div>
+          <div class="param-item"><label>1st cathode tab arc (mm)</label><input type="number" id="p_first_cath_arc" step="1" value="200" title="Arc length from winding start to the first cathode tab position. All subsequent cathode tabs align at the same drill angle. Anode tabs are always 180° opposite."></div>
         </div>
+        <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
       </div>
       <div class="panel" id="panel3d" style="display:none">
         <h3>3D Display</h3>
@@ -824,7 +824,7 @@ const presetStores = {
         {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
         {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
       ],
-      params: { mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, skip_turns: 2, cath_angle: 0, anod_angle: 180 },
+      params: { mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222, tab_w: 10, tab_h: 15, first_cath_arc: 200 },
     }
   },
 };
@@ -1007,8 +1007,8 @@ let layers = [
 
 let params = {
   mandrel_d: 10.75, sep_overhang: 101.6, target_od: 94, cell_h: 222,
-  tab_w: 10, tab_h: 15, skip_turns: 2,
-  cath_angle: 0, anod_angle: 180
+  tab_w: 10, tab_h: 15,
+  first_cath_arc: 200
 };
 
 let simResult = null;
@@ -1137,44 +1137,84 @@ function runSimulation() {
   // Any layers that never started (startTurn beyond total turns) — set off = 0 as fallback
   nonMandrel.forEach(l => { if (l.off < 0) l.off = 0; });
 
-  // Tab placement — compute electrode mid-radius within each turn band
+  // Tab placement — angular-alignment model
+  // The drill passes through the entire wound cell at a single angle.
+  // The first cathode tab position (arc length) determines the drill angle.
+  // All subsequent cathode tabs are at the same angle. Anode tabs are always 180° opposite.
   const cathode = layers.find(l => l.type === 'cathode');
   const anode = layers.find(l => l.type === 'anode');
   const cTabs = [], aTabs = [];
 
   // Helper: find the mid-radius of a specific layer within a turn's band
+  // Uses PROPORTIONAL allocation based on layer thickness (not equal split)
   function layerMidR(turnIdx, targetLayer) {
     const t = turns[turnIdx];
     const prevR = turnIdx > 0 ? turns[turnIdx-1].r : r0;
     const bandW = t.r - prevR;
-    const nActive = t.active.length;
-    const li = t.active.indexOf(targetLayer);
-    if (li < 0) return t.r; // fallback
-    return prevR + (bandW / nActive) * (li + 0.5);
+    const totalThick = t.active.reduce((sum, l) => sum + l.t, 0);
+    if (totalThick <= 0) return t.r;
+    let cumThick = 0;
+    for (const l of t.active) {
+      if (l === targetLayer) {
+        return prevR + bandW * (cumThick + l.t / 2) / totalThick;
+      }
+      cumThick += l.t;
+    }
+    return t.r; // fallback
   }
 
+  // Determine drill angle from first cathode tab arc position
+  let drillAngleDeg = 0;  // computed drill angle for cathode
+  const firstCathArc = params.first_cath_arc || 200;
+
+  // Find which turn contains the first cathode tab arc position
+  let drillAngleFound = false;
+  for (let ti = 0; ti < turns.length; ti++) {
+    const t = turns[ti];
+    if (firstCathArc >= t.arcStart && firstCathArc < t.arc) {
+      // This turn contains the first tab position
+      const fracInTurn = (firstCathArc - t.arcStart) / t.circ;
+      drillAngleDeg = fracInTurn * 360;
+      drillAngleFound = true;
+      break;
+    }
+  }
+  // Fallback: if first_cath_arc is beyond all turns, use last turn
+  if (!drillAngleFound && turns.length > 0) {
+    drillAngleDeg = 0;
+  }
+
+  const anodAngleDeg = (drillAngleDeg + 180) % 360;
+
+  // Place cathode tabs: at every turn where the drill angle intersects the cathode
   if (cathode) {
     for (let ti = 0; ti < turns.length; ti++) {
-      if (ti < params.skip_turns) continue;
       const t = turns[ti];
-      const tS = t.arc - t.circ;
-      if (tS >= cathode.off && tS < cathode.off + cathode.len && t.arc <= cathode.off + cathode.len) {
+      // Arc position of the drill angle within this turn
+      const fracC = drillAngleDeg / 360;
+      const tabArc = t.arcStart + fracC * t.circ;
+      // Check if cathode is active at this arc position
+      if (tabArc >= cathode.off && tabArc < cathode.off + cathode.len) {
         const cathInActive = t.active.find(l => l.name === cathode.name);
-        cTabs.push({ turn: t.turn, r: cathInActive ? layerMidR(ti, cathInActive) : t.r, pitch: t.pitch, arcLen: t.arc, idx: cTabs.length + 1, circ: t.circ });
+        if (cathInActive) {
+          cTabs.push({ turn: t.turn, r: layerMidR(ti, cathInActive), pitch: t.pitch, arcLen: tabArc, idx: cTabs.length + 1, circ: t.circ, angleDeg: drillAngleDeg });
+        }
       }
     }
   }
 
+  // Place anode tabs: same turns, 180° opposite
   if (anode) {
     for (let ti = 0; ti < turns.length; ti++) {
-      if (ti < params.skip_turns) continue;
       const t = turns[ti];
-      const tS = t.arc - t.circ;
-      const half = Math.PI * t.r;
-      const aArc = t.arc + half;
-      if (tS >= anode.off && tS < anode.off + anode.len && aArc <= anode.off + anode.len) {
+      const fracA = anodAngleDeg / 360;
+      const tabArc = t.arcStart + fracA * t.circ;
+      // Check if anode is active at this arc position
+      if (tabArc >= anode.off && tabArc < anode.off + anode.len) {
         const anodInActive = t.active.find(l => l.name === anode.name);
-        aTabs.push({ turn: t.turn, r: anodInActive ? layerMidR(ti, anodInActive) : t.r, pitch: t.pitch, arcLen: aArc, idx: aTabs.length + 1, circ: t.circ });
+        if (anodInActive) {
+          aTabs.push({ turn: t.turn, r: layerMidR(ti, anodInActive), pitch: t.pitch, arcLen: tabArc, idx: aTabs.length + 1, circ: t.circ, angleDeg: anodAngleDeg });
+        }
       }
     }
   }
@@ -1189,7 +1229,14 @@ function runSimulation() {
     turns, cTabs, aTabs, outerR,
     minPitch: pitches.length ? Math.min(...pitches) : 0,
     maxPitch: pitches.length ? Math.max(...pitches) : 0,
+    drillAngleDeg, anodAngleDeg,
   };
+
+  // Update drill angle info display
+  const drillInfo = document.getElementById('drillAngleInfo');
+  if (drillInfo) {
+    drillInfo.innerHTML = `Drill angle: <strong>${drillAngleDeg.toFixed(1)}°</strong> (cathode) / <strong>${anodAngleDeg.toFixed(1)}°</strong> (anode, +180°) &bull; ${cTabs.length}C + ${aTabs.length}A tabs`;
+  }
 
   document.getElementById('btnRun').classList.remove('needs-run');
   document.getElementById('runTs').textContent = new Date().toLocaleTimeString();
@@ -1331,11 +1378,11 @@ function updateTable() {
   for (let i = 0; i < maxLen; i++) {
     if (i < s.cTabs.length) {
       const t = s.cTabs[i];
-      rows += `<tr><td style="color:#3b82f6;font-weight:bold">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.cath_angle}&deg;</td></tr>`;
+      rows += `<tr><td style="color:#3b82f6;font-weight:bold">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${s.drillAngleDeg.toFixed(1)}&deg;</td></tr>`;
     }
     if (i < s.aTabs.length) {
       const t = s.aTabs[i];
-      rows += `<tr><td style="color:#16a34a;font-weight:bold">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${params.anod_angle}&deg;</td></tr>`;
+      rows += `<tr><td style="color:#16a34a;font-weight:bold">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${s.anodAngleDeg.toFixed(1)}&deg;</td></tr>`;
     }
   }
   // Winding sequence summary
@@ -1399,7 +1446,7 @@ function buildLayerUI() {
         <input type="color" value="${l.color}" data-i="${i}" data-f="color">
         <input type="text" value="${l.name}" data-i="${i}" data-f="name">
         <select data-i="${i}" data-f="type">${LAYER_TYPES.map(t=>`<option value="${t}"${t===l.type?' selected':''}>${t}</option>`).join('')}</select>
-        ${l.type==='cathode'?`<span class="badge">${params.cath_angle}&deg;</span>`:l.type==='anode'?`<span class="badge">${params.anod_angle}&deg;</span>`:''}
+        ${l.type==='cathode'?`<span class="badge">${simResult ? simResult.drillAngleDeg.toFixed(1) : '—'}&deg;</span>`:l.type==='anode'?`<span class="badge">${simResult ? simResult.anodAngleDeg.toFixed(1) : '—'}&deg;</span>`:''}
         <div class="layer-actions">
           <button class="btn-sm" data-save-layer="${i}" title="Save to library" style="padding:1px 3px;font-size:8px">&#128190;</button>
           <button class="btn-sm" data-move="${i}" data-dir="-1" ${i===0?'disabled':''}>&#9650;</button>
@@ -1541,15 +1588,18 @@ function renderSide() {
   ctx.strokeRect(cellLeft, cellTop, outerR * 2 * sc, cellH * sc);
 
   // Draw layer-colored rings for each turn with width differentiation
+  // Uses proportional radial allocation based on layer thickness
   s.turns.forEach((turn, ti) => {
     const prevR = ti > 0 ? s.turns[ti-1].r : mandrelR;
     const innerR_t = prevR;
     const bandW = turn.r - innerR_t;
+    const totalThick = turn.active.reduce((sum, l) => sum + l.t, 0);
 
+    let cumThick = 0;
     turn.active.forEach((layer, li) => {
-      const nActive = turn.active.length;
-      const rInner = innerR_t + (bandW / nActive) * li;
-      const rOuter = innerR_t + (bandW / nActive) * (li + 1);
+      const rInner = totalThick > 0 ? innerR_t + bandW * cumThick / totalThick : innerR_t;
+      const rOuter = totalThick > 0 ? innerR_t + bandW * (cumThick + layer.t) / totalThick : turn.r;
+      cumThick += layer.t;
       const lw = (rOuter - rInner) * sc;
 
       // Layer height based on its width vs cell height — more visible differentiation
@@ -1699,11 +1749,16 @@ function renderTop() {
     const nActive = turn.active.length;
     if (nActive === 0) return;
 
+    const totalThick = turn.active.reduce((sum, l) => sum + l.t, 0);
+    let cumThick = 0;
     turn.active.forEach((layer, li) => {
       const vis = layerVisibility[layer.name] !== false;
-      if (!vis) return;
-      const rMid = innerR + (bandW / nActive) * (li + 0.5);
-      const baseThick = bandW / nActive * 0.85;
+      if (!vis) { cumThick += layer.t; return; }
+      const layerFrac = totalThick > 0 ? layer.t / totalThick : 1 / nActive;
+      const cumFrac = totalThick > 0 ? cumThick / totalThick : li / nActive;
+      const rMid = innerR + bandW * (cumFrac + layerFrac / 2);
+      const baseThick = bandW * layerFrac * 0.85;
+      cumThick += layer.t;
       // Electrodes get thicker strokes
       const isElectrode = layer.type === 'cathode' || layer.type === 'anode';
       const lw = isElectrode ? Math.max(2.5, baseThick * sc * 1.2) : Math.max(1, baseThick * sc);
@@ -1834,8 +1889,8 @@ function renderTop() {
     ctx.fillText(`${count}× ${prefix}`, cx + (lblR + 12) * dx, cy + (lblR + 12) * dy);
   }
 
-  drawTabsTopView(s.cTabs, '#3b82f6', 'C', params.cath_angle);
-  drawTabsTopView(s.aTabs, '#16a34a', 'A', params.anod_angle);
+  drawTabsTopView(s.cTabs, '#3b82f6', 'C', s.drillAngleDeg);
+  drawTabsTopView(s.aTabs, '#16a34a', 'A', s.anodAngleDeg);
   ctx.textBaseline = 'alphabetic';
 
   renderLegend();
@@ -2235,9 +2290,12 @@ function update3DScene() {
     const nActive = turn.active.length;
     if (nActive === 0) return;
 
+    const totalThick3d = turn.active.reduce((sum, l) => sum + l.t, 0);
+    let cumThick3d = 0;
     turn.active.forEach((layer, li) => {
-      const rInner = (innerR + (bandW / nActive) * li) * rScale;
-      const rOuter = (innerR + (bandW / nActive) * (li + 1)) * rScale;
+      const rInner = (totalThick3d > 0 ? innerR + bandW * cumThick3d / totalThick3d : innerR) * rScale;
+      const rOuter = (totalThick3d > 0 ? innerR + bandW * (cumThick3d + layer.t) / totalThick3d : turn.r) * rScale;
+      cumThick3d += layer.t;
       const isElectrode = layer.type === 'cathode' || layer.type === 'anode';
 
       const mat = new THREE.MeshPhongMaterial({
@@ -2332,8 +2390,8 @@ function update3DScene() {
     });
   }
 
-  addTabs(s.cTabs, 0x3b82f6, 0x1a3a6b, params.cath_angle);
-  addTabs(s.aTabs, 0x16a34a, 0x0a4a22, params.anod_angle);
+  addTabs(s.cTabs, 0x3b82f6, 0x1a3a6b, s.drillAngleDeg);
+  addTabs(s.aTabs, 0x16a34a, 0x0a4a22, s.anodAngleDeg);
 
   // Set camera distance
   const outerScaledR = s.outerR * rScale;
@@ -2364,10 +2422,10 @@ document.getElementById('btnExport').addEventListener('click', () => {
   const s = simResult;
   let csv = 'Type,Tab#,Turn,Radius_mm,Pitch_mm,ArcLen_mm,Spacing_mm,Angle_deg\n';
   s.cTabs.forEach(t => {
-    csv += `Cathode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${params.cath_angle}\n`;
+    csv += `Cathode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${s.drillAngleDeg.toFixed(1)}\n`;
   });
   s.aTabs.forEach(t => {
-    csv += `Anode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${params.anod_angle}\n`;
+    csv += `Anode,${t.idx},${t.turn},${t.r.toFixed(3)},${t.pitch.toFixed(2)},${t.arcLen.toFixed(1)},${t.spacing ? t.spacing.toFixed(1) : '—'},${s.anodAngleDeg.toFixed(1)}\n`;
   });
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -2399,6 +2457,13 @@ document.getElementById('fileLoad').addEventListener('change', e => {
         layers = data.layers;
         // Backward compat: convert old off-based layers to startTurn
         layers.forEach(l => { if (l.startTurn === undefined) l.startTurn = (l.off > 0) ? 2 : 1; });
+        // Backward compat: migrate old cath_angle/anod_angle/skip_turns to first_cath_arc
+        if (params.first_cath_arc === undefined) {
+          params.first_cath_arc = 200; // sensible default
+          delete params.cath_angle;
+          delete params.anod_angle;
+          delete params.skip_turns;
+        }
         if (data.elecProps) elecProps = data.elecProps;
         for (const [k, v] of Object.entries(params)) {
           const el = document.getElementById('p_' + k);
@@ -2464,8 +2529,8 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   let tabRows = '';
   const maxT = Math.max(s.cTabs.length, s.aTabs.length);
   for (let i = 0; i < maxT; i++) {
-    if (i < s.cTabs.length) { const t = s.cTabs[i]; tabRows += `<tr><td style="color:#3b82f6">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${params.cath_angle}°</td></tr>`; }
-    if (i < s.aTabs.length) { const t = s.aTabs[i]; tabRows += `<tr><td style="color:#16a34a">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${params.anod_angle}°</td></tr>`; }
+    if (i < s.cTabs.length) { const t = s.cTabs[i]; tabRows += `<tr><td style="color:#3b82f6">Cathode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${s.drillAngleDeg.toFixed(1)}°</td></tr>`; }
+    if (i < s.aTabs.length) { const t = s.aTabs[i]; tabRows += `<tr><td style="color:#16a34a">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing?t.spacing.toFixed(1):'—'}</td><td>${s.anodAngleDeg.toFixed(1)}°</td></tr>`; }
   }
 
   // Capacity info
@@ -2516,8 +2581,9 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   <div class="params">
     <div><span>Mandrel diameter</span><span>${params.mandrel_d} mm</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
-    <div><span>Cathode drill angle</span><span>${params.cath_angle}°</span></div>
-    <div><span>Anode drill angle</span><span>${params.anod_angle}°</span></div>
+    <div><span>1st cathode tab arc</span><span>${params.first_cath_arc} mm</span></div>
+    <div><span>Cathode drill angle</span><span>${s.drillAngleDeg.toFixed(1)}°</span></div>
+    <div><span>Anode drill angle</span><span>${s.anodAngleDeg.toFixed(1)}° (+180°)</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
     <div><span>Pitch range</span><span>${s.minPitch.toFixed(2)}–${s.maxPitch.toFixed(2)} mm</span></div>
   </div>
@@ -2616,6 +2682,11 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
           params = design.params;
           layers = design.layers;
           layers.forEach(l => { if (l.startTurn === undefined) l.startTurn = (l.off > 0) ? 2 : 1; });
+          // Backward compat: migrate old angle-based params
+          if (params.first_cath_arc === undefined) {
+            params.first_cath_arc = 200;
+            delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
+          }
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
