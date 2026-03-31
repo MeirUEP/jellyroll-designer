@@ -1102,8 +1102,9 @@ function runSimulation() {
 
   while (r < params.target_od / 2 && n < 500) {
     // Check if any new non-separator layers join at this turn
+    // A layer activates if its startTurn <= current turn number (n+1) and it hasn't started yet
     nonMandrel.forEach(l => {
-      if (l.type !== 'separator' && l.startTurn === n + 1 && l.off < 0) {
+      if (l.type !== 'separator' && l.off < 0 && l.startTurn <= n + 1) {
         l.off = arc;  // Layer starts at current arc position
       }
     });
