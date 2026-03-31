@@ -1126,12 +1126,14 @@ function runSimulation() {
 
   function windUntil(targetR, maxTurns) {
     while (r < targetR && n < maxTurns) {
-      // Check if any new non-separator layers join at this turn
-      nonMandrel.forEach(l => {
-        if (l.type !== 'separator' && l.off < 0 && l.startTurn <= n + 1) {
-          l.off = arc;
-        }
-      });
+      // Activate non-separator layers based on startTurn.
+      // Only ONE layer activates per turn, in order of startTurn (lowest first).
+      // This ensures proper staggering even when startTurns fall during pre-wind.
+      const pending = nonMandrel.filter(l => l.type !== 'separator' && l.off < 0 && l.startTurn <= n + 1);
+      if (pending.length > 0) {
+        pending.sort((a, b) => a.startTurn - b.startTurn);
+        pending[0].off = arc; // Activate only one per turn
+      }
 
       // Compute pitch from currently active layers
       let pitch = 0;
