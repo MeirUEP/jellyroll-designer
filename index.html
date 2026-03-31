@@ -451,6 +451,29 @@ const api = {
     if (res.status === 204) return null;
     return res.json();
   },
+  // Chemicals
+  listChemicals() { return this.req('GET', '/api/v1/chemicals'); },
+  createChemical(data) { return this.req('POST', '/api/v1/chemicals', data); },
+  updateChemical(id, data) { return this.req('PUT', `/api/v1/chemicals/${id}`, data); },
+  deleteChemical(id) { return this.req('DELETE', `/api/v1/chemicals/${id}`); },
+  // Materials
+  listMaterials() { return this.req('GET', '/api/v1/materials'); },
+  createMaterial(data) { return this.req('POST', '/api/v1/materials', data); },
+  updateMaterial(id, data) { return this.req('PUT', `/api/v1/materials/${id}`, data); },
+  deleteMaterial(id) { return this.req('DELETE', `/api/v1/materials/${id}`); },
+  // Mixes
+  listMixes(type) { return this.req('GET', type ? `/api/v1/mixes?type=${type}` : '/api/v1/mixes'); },
+  getMix(id) { return this.req('GET', `/api/v1/mixes/${id}`); },
+  createMix(data) { return this.req('POST', '/api/v1/mixes', data); },
+  updateMix(id, data) { return this.req('PUT', `/api/v1/mixes/${id}`, data); },
+  deleteMix(id) { return this.req('DELETE', `/api/v1/mixes/${id}`); },
+  // Layer Stacks
+  listLayerStacks() { return this.req('GET', '/api/v1/layer-stacks'); },
+  getLayerStack(id) { return this.req('GET', `/api/v1/layer-stacks/${id}`); },
+  createLayerStack(data) { return this.req('POST', '/api/v1/layer-stacks', data); },
+  updateLayerStack(id, data) { return this.req('PUT', `/api/v1/layer-stacks/${id}`, data); },
+  deleteLayerStack(id) { return this.req('DELETE', `/api/v1/layer-stacks/${id}`); },
+  // Designs
   listDesigns(skip=0, limit=50) { return this.req('GET', `/api/v1/designs?skip=${skip}&limit=${limit}`); },
   getDesign(id) { return this.req('GET', `/api/v1/designs/${id}`); },
   createDesign(data) { return this.req('POST', '/api/v1/designs', data); },
@@ -459,6 +482,132 @@ const api = {
   saveSimResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/simulation`, data); },
   saveCapResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/capacity`, data); },
 };
+
+// ========== CLOUD COMPONENT CACHE ==========
+// Lookup maps populated on load when API is configured
+let cloudChemicals = [];   // [{id, name, density, capacity, ...}]
+let cloudMaterials = [];   // [{id, name, type, thickness, width, color, ...}]
+let cloudMixes = [];       // [{id, name, type, components, ...}]
+let cloudLayerStacks = []; // [{id, name, items, ...}]
+
+function chemByName(name) { return cloudChemicals.find(c => c.name === name); }
+function chemById(id) { return cloudChemicals.find(c => c.id === id); }
+function matByName(name) { return cloudMaterials.find(m => m.name === name); }
+function matById(id) { return cloudMaterials.find(m => m.id === id); }
+
+function isApiConfigured() { return !!getApiUrl() && !!getApiKey(); }
+
+async function loadCloudCache() {
+  if (!isApiConfigured()) return;
+  try {
+    [cloudChemicals, cloudMaterials, cloudMixes, cloudLayerStacks] = await Promise.all([
+      api.listChemicals(),
+      api.listMaterials(),
+      api.listMixes(),
+      api.listLayerStacks(),
+    ]);
+    // Populate preset dropdowns from cloud data
+    refreshCloudPresets();
+  } catch(e) { console.warn('Cloud cache load failed:', e); }
+}
+
+function refreshCloudPresets() {
+  // Merge cloud mixes into cathode/anode preset dropdowns
+  cloudMixes.forEach(m => {
+    const type = m.type; // 'cathode' or 'anode'
+    if (!presetStores[type]['☁ ' + m.name]) {
+      presetStores[type]['☁ ' + m.name] = { _cloudId: m.id, _cloud: true };
+    }
+  });
+  // Merge cloud layer stacks
+  cloudLayerStacks.forEach(s => {
+    if (!presetStores.layers['☁ ' + s.name]) {
+      presetStores.layers['☁ ' + s.name] = { _cloudId: s.id, _cloud: true };
+    }
+  });
+  // Refresh all dropdowns
+  ['cathode', 'anode', 'layers', 'design'].forEach(loadPresetList);
+}
+
+// Convert frontend mix components → API format
+function mixToApi(presetData, type) {
+  const components = (presetData.components || []).map(c => {
+    let chem = chemByName(c.name);
+    return {
+      chemical_id: chem ? chem.id : null,
+      wt_pct: c.wt,
+      is_active: !!c.isActive,
+    };
+  }).filter(c => c.chemical_id); // skip unknown chemicals
+  return {
+    name: '', // caller sets this
+    type: type,
+    bulk_density: presetData.bulk_density || 0,
+    mesh_density: presetData.mesh_dens || 0,
+    cc_material: presetData.cc_material || null,
+    components,
+  };
+}
+
+// Convert API mix → frontend preset format
+function mixFromApi(mix) {
+  const components = (mix.components || []).map(c => {
+    const chem = chemById(c.chemical_id);
+    return {
+      name: chem ? chem.name : 'Unknown',
+      wt: c.wt_pct,
+      density: chem ? chem.density : 0,
+      cap: chem ? chem.capacity : 0,
+      isActive: !!c.is_active,
+    };
+  });
+  return {
+    components,
+    bulk_density: mix.bulk_density,
+    mesh_dens: mix.mesh_density,
+    cc_material: mix.cc_material,
+  };
+}
+
+// Convert frontend layers → API layer stack format
+async function layerStackToApi(layersArr) {
+  const items = [];
+  for (let i = 0; i < layersArr.length; i++) {
+    const l = layersArr[i];
+    if (l.type === 'mandrel') continue;
+    let mat = matByName(l.name);
+    // Auto-create material if not in cloud
+    if (!mat && isApiConfigured()) {
+      try {
+        const matType = ['cathode','anode'].includes(l.type) ? 'other' : (l.type || 'other');
+        mat = await api.createMaterial({ name: l.name, type: matType, thickness: l.t, width: l.w, color: l.color || '#888' });
+        cloudMaterials.push(mat);
+      } catch(e) { console.warn('Could not create material:', l.name, e); continue; }
+    }
+    if (mat) {
+      items.push({ material_id: mat.id, position: i, role: l.type || 'other' });
+    }
+  }
+  return { name: '', items };
+}
+
+// Convert API layer stack → frontend layers format
+function layerStackFromApi(stack) {
+  return (stack.items || [])
+    .sort((a, b) => a.position - b.position)
+    .map(item => {
+      const mat = matById(item.material_id);
+      return {
+        name: mat ? mat.name : 'Unknown',
+        type: item.role || (mat ? mat.type : 'other'),
+        t: mat ? mat.thickness : 0.1,
+        w: mat ? mat.width : 200,
+        len: 2000,
+        startTurn: 1,
+        color: mat ? (mat.color || '#888') : '#888',
+      };
+    });
+}
 let currentDesignId = null;
 let currentDesignName = '';
 
@@ -630,6 +779,8 @@ function initFormulation() {
   ['design', 'cathode', 'anode', 'layers'].forEach(loadPresetList);
   refreshCompLibDropdowns();
   refreshLayerLibDropdown();
+  // Load cloud components if API is configured
+  loadCloudCache();
 }
 
 // ========== LIBRARIES (in-memory, will move to cloud DB later) ==========
@@ -955,24 +1106,78 @@ const PRESET_APPLIERS = { design: applyDesignPreset, cathode: applyCathodePreset
 const PRESET_LABELS = { design: 'cell design', cathode: 'cathode formulation', anode: 'anode formulation', layers: 'layer stack' };
 
 document.querySelectorAll('.preset-load').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const type = btn.dataset.presetType;
     const sel = document.getElementById(PRESET_SELECTS[type]);
     const name = sel.value;
     if (!name) { showToast('Select a preset first', true); return; }
     const presets = getPresets(type);
-    if (presets[name]) { PRESET_APPLIERS[type](presets[name]); showToast(`Loaded ${PRESET_LABELS[type]}: ${name}`); }
+    const entry = presets[name];
+    if (!entry) return;
+    // Cloud preset: fetch from API and convert
+    if (entry._cloud && isApiConfigured()) {
+      try {
+        if (type === 'cathode' || type === 'anode') {
+          const mix = await api.getMix(entry._cloudId);
+          PRESET_APPLIERS[type](mixFromApi(mix));
+        } else if (type === 'layers') {
+          const stack = await api.getLayerStack(entry._cloudId);
+          const layersArr = layerStackFromApi(stack);
+          applyLayersPreset({ layers: layersArr });
+        }
+        showToast(`Loaded ${PRESET_LABELS[type]}: ${name.replace('☁ ', '')}`);
+      } catch(e) { showToast('Cloud load failed: ' + e.message, true); }
+    } else {
+      PRESET_APPLIERS[type](entry);
+      showToast(`Loaded ${PRESET_LABELS[type]}: ${name}`);
+    }
   });
 });
 
 document.querySelectorAll('.preset-save').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const type = btn.dataset.presetType;
     const sel = document.getElementById(PRESET_SELECTS[type]);
-    const name = prompt(`Save ${PRESET_LABELS[type]} as:`, sel.value || '');
+    const rawName = sel.value ? sel.value.replace('☁ ', '') : '';
+    const name = prompt(`Save ${PRESET_LABELS[type]} as:`, rawName);
     if (!name) return;
+    // Always save locally
     presetStores[type][name] = PRESET_GETTERS[type]();
     savePresets(type);
+    // Also save to cloud if API configured
+    if (isApiConfigured() && (type === 'cathode' || type === 'anode' || type === 'layers')) {
+      try {
+        if (type === 'cathode' || type === 'anode') {
+          const payload = mixToApi(PRESET_GETTERS[type](), type);
+          payload.name = name;
+          // Check if updating existing cloud mix
+          const existing = cloudMixes.find(m => m.name === name && m.type === type);
+          let saved;
+          if (existing) {
+            saved = await api.updateMix(existing.id, payload);
+            Object.assign(existing, saved);
+          } else {
+            saved = await api.createMix(payload);
+            cloudMixes.push(saved);
+          }
+          presetStores[type]['☁ ' + name] = { _cloudId: saved.id, _cloud: true };
+        } else if (type === 'layers') {
+          const payload = await layerStackToApi(layers);
+          payload.name = name;
+          const existing = cloudLayerStacks.find(s => s.name === name);
+          let saved;
+          if (existing) {
+            saved = await api.updateLayerStack(existing.id, payload);
+            Object.assign(existing, saved);
+          } else {
+            saved = await api.createLayerStack(payload);
+            cloudLayerStacks.push(saved);
+          }
+          presetStores.layers['☁ ' + name] = { _cloudId: saved.id, _cloud: true };
+        }
+        showToast(`Saved to cloud: ${name}`);
+      } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
+    }
     loadPresetList(type);
     sel.value = name;
     showToast(`Saved ${PRESET_LABELS[type]}: ${name}`);
@@ -980,12 +1185,25 @@ document.querySelectorAll('.preset-save').forEach(btn => {
 });
 
 document.querySelectorAll('.preset-del').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const type = btn.dataset.presetType;
     const sel = document.getElementById(PRESET_SELECTS[type]);
     const name = sel.value;
     if (!name) { showToast('Select a preset first', true); return; }
     if (!confirm(`Delete "${name}"?`)) return;
+    const entry = presetStores[type][name];
+    // Delete from cloud if it's a cloud preset
+    if (entry && entry._cloud && isApiConfigured()) {
+      try {
+        if (type === 'cathode' || type === 'anode') {
+          await api.deleteMix(entry._cloudId);
+          cloudMixes = cloudMixes.filter(m => m.id !== entry._cloudId);
+        } else if (type === 'layers') {
+          await api.deleteLayerStack(entry._cloudId);
+          cloudLayerStacks = cloudLayerStacks.filter(s => s.id !== entry._cloudId);
+        }
+      } catch(e) { showToast('Cloud delete failed: ' + e.message, true); }
+    }
     delete presetStores[type][name];
     savePresets(type);
     loadPresetList(type);
