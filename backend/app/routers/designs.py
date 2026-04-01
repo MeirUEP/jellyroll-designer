@@ -54,6 +54,17 @@ async def get_design(design_id: UUID, db: AsyncSession = Depends(get_db)):
     return DesignDetail.model_validate(design)
 
 
+def _extract_cell_params(body):
+    """Extract cell_params from body — frontend may send 'params' instead of 'cell_params'."""
+    if body.cell_params:
+        return body.cell_params.model_dump()
+    # Frontend sends 'params' as extra field
+    extra = getattr(body, 'params', None)
+    if extra:
+        return extra if isinstance(extra, dict) else extra.model_dump()
+    return {}
+
+
 @router.post("/designs", response_model=DesignDetail, status_code=201)
 async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
     design = Design(
@@ -62,7 +73,7 @@ async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
         cathode_mix_id=body.cathode_mix_id,
         anode_mix_id=body.anode_mix_id,
         layer_stack_id=body.layer_stack_id,
-        cell_params=body.cell_params.model_dump(),
+        cell_params=_extract_cell_params(body),
     )
     db.add(design)
     await db.commit()
@@ -85,7 +96,7 @@ async def update_design(design_id: UUID, body: DesignCreate, db: AsyncSession = 
     design.cathode_mix_id = body.cathode_mix_id
     design.anode_mix_id = body.anode_mix_id
     design.layer_stack_id = body.layer_stack_id
-    design.cell_params = body.cell_params.model_dump()
+    design.cell_params = _extract_cell_params(body)
     design.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
@@ -113,8 +124,9 @@ async def patch_design(design_id: UUID, body: DesignUpdate, db: AsyncSession = D
         design.anode_mix_id = body.anode_mix_id
     if body.layer_stack_id is not None:
         design.layer_stack_id = body.layer_stack_id
-    if body.cell_params is not None:
-        design.cell_params = body.cell_params.model_dump()
+    cp = _extract_cell_params(body)
+    if cp:
+        design.cell_params = cp
     design.updated_at = datetime.now(timezone.utc)
 
     await db.commit()

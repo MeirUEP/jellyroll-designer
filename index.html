@@ -334,6 +334,8 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
           <div class="param-item"><label>1st cathode tab (mm)</label><input type="number" id="p_first_cath_tab" step="1" value="98" title="Distance along cathode strip to first tab. All subsequent cathode tabs align at the same drill angle. Anode tabs are always 180° opposite."></div>
           <div class="param-item"><label>Anode end tab clearance (mm)</label><input type="number" id="p_anode_end_tab_clearance" step="1" value="10" title="Minimum arc distance between anode end and nearest tab. If too close, anode is extended past the tab."></div>
+          <div class="param-item"><label>Cathode weld from tab #</label><input type="number" id="p_cath_weld_from_tab" step="1" min="1" value="1" title="Skip inner cathode tabs — start welding from this tab number"></div>
+          <div class="param-item"><label>Anode weld from tab #</label><input type="number" id="p_anod_weld_from_tab" step="1" min="1" value="1" title="Skip inner anode tabs — start welding from this tab number"></div>
         </div>
         <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
       </div>
@@ -1122,6 +1124,8 @@ let params = {
   pre_turns: 1.5,               // insulation pre-turns (separator-only before cathode)
   tab_w: 10, tab_h: 15,
   first_cath_tab: 98,           // mm along cathode strip to first tab
+  cath_weld_from_tab: 1,        // start cathode welding from tab N (skip inner tabs)
+  anod_weld_from_tab: 1,        // start anode welding from tab N (skip inner tabs)
   anode_end_tab_clearance: 10,
 };
 
@@ -1336,6 +1340,15 @@ function runSimulation() {
     }
   }
 
+  // Filter tabs based on weld-from-tab setting (skip unwelded inner tabs)
+  const cathWeldFrom = Math.max(1, params.cath_weld_from_tab || 1);
+  const anodWeldFrom = Math.max(1, params.anod_weld_from_tab || 1);
+  const cTabsSkipped = cTabs.splice(0, cathWeldFrom - 1);
+  const aTabsSkipped = aTabs.splice(0, anodWeldFrom - 1);
+  // Renumber remaining tabs
+  cTabs.forEach((t, i) => { t.idx = i + 1; });
+  aTabs.forEach((t, i) => { t.idx = i + 1; });
+
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
@@ -1383,7 +1396,8 @@ function runSimulation() {
 
   const drillInfo = document.getElementById('drillAngleInfo');
   if (drillInfo) {
-    drillInfo.innerHTML = `Drill angle: <strong>${drillAngleDeg.toFixed(1)}°</strong> (cathode) / <strong>${anodAngleDeg.toFixed(1)}°</strong> (anode, +180°) &bull; ${cTabs.length}C + ${aTabs.length}A tabs`;
+    const skipNote = (cTabsSkipped.length || aTabsSkipped.length) ? ` (skipped ${cTabsSkipped.length}C+${aTabsSkipped.length}A inner)` : '';
+    drillInfo.innerHTML = `Drill angle: <strong>${drillAngleDeg.toFixed(1)}°</strong> (cathode) / <strong>${anodAngleDeg.toFixed(1)}°</strong> (anode, +180°) &bull; ${cTabs.length}C + ${aTabs.length}A tabs${skipNote}`;
   }
 
   document.getElementById('btnRun').classList.remove('needs-run');

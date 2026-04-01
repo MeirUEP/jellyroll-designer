@@ -90,29 +90,33 @@ class LayerStackDetail(LayerStackSchema):
 
 # ========== Cell Parameters (JSONB in designs) ==========
 class CellParams(BaseModel):
+    model_config = {"extra": "allow"}
     mandrel_d: float
     target_od: float
     cell_h: float
+    separator_grab_distance: float = 50
+    pre_turns: float = 1.5
     tab_w: float = 10
     tab_h: float = 15
-    first_cath_arc: float = 200
+    first_cath_tab: float = 98
+    cath_weld_from_tab: int = 1
+    anod_weld_from_tab: int = 1
     anode_end_tab_clearance: float = 10
-    cath_start_turn: int = 1
-    anod_start_turn: int = 2
-    sep_start_turn: int = 1
 
 
 # ========== Design ==========
 class DesignCreate(BaseModel):
+    model_config = {"extra": "allow"}
     name: str = Field(..., max_length=255)
     description: str | None = None
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
-    cell_params: CellParams
+    cell_params: CellParams | None = None
 
 
 class DesignUpdate(BaseModel):
+    model_config = {"extra": "allow"}
     name: str | None = None
     description: str | None = None
     cathode_mix_id: UUID | None = None
