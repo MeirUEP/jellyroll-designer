@@ -1209,12 +1209,15 @@ function runSimulation() {
     }
   }
 
-  // --- Helper: wind to target radius with closest-fit ---
-  function windToRadius(tgtR, activeLayers, phaseName) {
+  // --- Helper: wind to target radius ---
+  // mode: 'closest' = pick undershoot or overshoot whichever is closer (default)
+  //        'undershoot' = always stop before exceeding target
+  function windToRadius(tgtR, activeLayers, phaseName, mode = 'closest') {
     const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
     if (pitch < 0.01) return;
     while (r < tgtR) {
       if (r + pitch > tgtR) {
+        if (mode === 'undershoot') break;
         const undershoot = tgtR - r;
         const overshoot = (r + pitch) - tgtR;
         if (undershoot <= overshoot) break;
@@ -1265,15 +1268,45 @@ function runSimulation() {
   phaseInfo.cathWindTurns = n - cathWindStart;
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
-  // ===== Phase 3: Main wind (all layers to target OD) =====
+  // ===== Phase 3: Main wind (all layers, stop before overshooting) =====
   if (anode) anode.off = arc;
   const mainWindStart = n;
-  windToRadius(targetR, allLayers, 'main_wind');
+  // Wind all layers but always undershoot — separator fill handles the rest.
+  windToRadius(targetR, allLayers, 'main_wind', 'undershoot');
   phaseInfo.mainTurns = n - mainWindStart;
 
-  // Record electrode computed lengths (before tab clearance check)
+  // Record electrode computed lengths
   if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
   if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
+
+  // ===== Phase 4: Separator fill to target OD =====
+  // Fine-tune OD with separator-only turns. Wind full turns then a fractional
+  // turn to hit the exact target radius.
+  const fillStart = n;
+  if (r < targetR && sepPitch > 0.001) {
+    // Full separator turns that fit
+    while (r + sepPitch <= targetR) {
+      const circ = 2 * Math.PI * (r + sepPitch / 2);
+      const arcStart = arc;
+      arc += circ;
+      r += sepPitch;
+      n += 1;
+      turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart, active: [...separators], phase: 'separator_fill' });
+    }
+    // Fractional last turn to hit exact target
+    const remainingR = targetR - r;
+    if (remainingR > 0.001) {
+      const frac = remainingR / sepPitch;
+      const circ = 2 * Math.PI * (r + sepPitch / 2);
+      const arcInc = circ * frac;
+      const arcStart = arc;
+      arc += arcInc;
+      r += remainingR;
+      n += frac;
+      turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart, active: [...separators], phase: 'separator_fill', frac });
+    }
+  }
+  phaseInfo.fillTurns = n - fillStart;
 
   // ===== Phase 4: Tab clearance check =====
   // Tab placement first (needed for clearance check)
@@ -1516,7 +1549,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + sep+cath ${(pi.cathWindTurns||0).toFixed(1)} + all ${Math.round(pi.mainTurns||0)})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${Math.round(pi.mainTurns||0)} + fill ${(pi.fillTurns||0).toFixed(1)})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
@@ -1580,7 +1613,8 @@ function updateTable() {
     `<span style="color:var(--fg2)">Overhang</span>`,
     `<span style="color:var(--fg)">Pre:</span> <span style="color:var(--accent)">${(pi.preTurns||0).toFixed(1)}T (sep)</span>`,
     `<span style="color:var(--fg)">Sep+Cath:</span> <span style="color:var(--accent)">${(pi.cathToAnodTurns||0).toFixed(1)}T</span>`,
-    `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T &rarr; OD</span>`,
+    `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T</span>`,
+    `<span style="color:var(--fg)">Sep fill:</span> <span style="color:var(--accent)">${(pi.fillTurns||0).toFixed(1)}T &rarr; OD</span>`,
   ];
   const seqHtml = `<div style="padding:4px 10px;font-size:10px;color:var(--fg2);border-bottom:1px solid var(--border)"><strong>Winding sequence:</strong> ${seqParts.join(' &rarr; ')}</div>`;
 
