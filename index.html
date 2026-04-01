@@ -512,7 +512,7 @@ async function loadCloudCache() {
   } catch(e) { console.warn('Cloud cache load failed:', e); }
 }
 
-function refreshCloudPresets() {
+async function refreshCloudPresets() {
   // Merge cloud mixes into cathode/anode preset dropdowns
   cloudMixes.forEach(m => {
     const type = m.type; // 'cathode' or 'anode'
@@ -526,6 +526,15 @@ function refreshCloudPresets() {
       presetStores.layers['☁ ' + s.name] = { _cloudId: s.id, _cloud: true };
     }
   });
+  // Merge cloud designs into design dropdown
+  try {
+    const data = await api.listDesigns();
+    (data.items || []).forEach(d => {
+      if (!presetStores.design['☁ ' + d.name]) {
+        presetStores.design['☁ ' + d.name] = { _cloudId: d.id, _cloud: true };
+      }
+    });
+  } catch(e) { /* ignore if designs endpoint fails */ }
   // Refresh all dropdowns
   ['cathode', 'anode', 'layers', 'design'].forEach(loadPresetList);
 }
@@ -1004,7 +1013,29 @@ document.querySelectorAll('.preset-load').forEach(btn => {
     // Cloud preset: fetch from API and convert
     if (entry._cloud && isApiConfigured()) {
       try {
-        if (type === 'cathode' || type === 'anode') {
+        if (type === 'design') {
+          const design = await api.getDesign(entry._cloudId);
+          params = design.params || design.cell_params || {};
+          layers = design.layers || [];
+          layers.forEach(l => { delete l.startTurn; });
+          if (params.separator_grab_distance === undefined) {
+            params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
+          }
+          delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
+          if (design.elec_props) elecProps = design.elec_props;
+          currentDesignId = design.id;
+          currentDesignName = design.name;
+          for (const [k, v] of Object.entries(params)) {
+            const el = document.getElementById('p_' + k);
+            if (el) el.value = v;
+          }
+          for (const [k, v] of Object.entries(elecProps)) {
+            const el = document.getElementById('ep_' + k);
+            if (el) el.value = v;
+          }
+          buildLayerUI();
+          runSimulation();
+        } else if (type === 'cathode' || type === 'anode') {
           const mix = await api.getMix(entry._cloudId);
           PRESET_APPLIERS[type](mixFromApi(mix));
         } else if (type === 'layers') {
