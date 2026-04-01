@@ -1268,45 +1268,40 @@ function runSimulation() {
   phaseInfo.cathWindTurns = n - cathWindStart;
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
-  // ===== Phase 3: Main wind (all layers, stop before overshooting) =====
+  // ===== Phase 3: Main wind (all layers to target OD minus 1 sep wrap) =====
+  // Reserve 1 separator turn for final wrap, then wind all layers with
+  // fractional last turn to fill the remaining gap precisely.
   if (anode) anode.off = arc;
   const mainWindStart = n;
-  // Wind all layers but always undershoot — separator fill handles the rest.
-  windToRadius(targetR, allLayers, 'main_wind', 'undershoot');
-  phaseInfo.mainTurns = n - mainWindStart;
-
-  // Record electrode computed lengths
-  if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
-  if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
-
-  // ===== Phase 4: Separator fill to target OD =====
-  // Fine-tune OD with separator-only turns. Wind full turns then a fractional
-  // turn to hit the exact target radius.
-  const fillStart = n;
-  if (r < targetR && sepPitch > 0.001) {
-    // Full separator turns that fit
-    while (r + sepPitch <= targetR) {
-      const circ = 2 * Math.PI * (r + sepPitch / 2);
+  const electrodeTargetR = targetR - sepPitch; // reserve 1 sep wrap
+  if (allPitch > 0.01 && electrodeTargetR > r) {
+    // Full turns
+    while (r + allPitch <= electrodeTargetR) {
+      const circ = 2 * Math.PI * (r + allPitch / 2);
       const arcStart = arc;
       arc += circ;
-      r += sepPitch;
+      r += allPitch;
       n += 1;
-      turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart, active: [...separators], phase: 'separator_fill' });
+      turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind' });
     }
-    // Fractional last turn to hit exact target
-    const remainingR = targetR - r;
-    if (remainingR > 0.001) {
-      const frac = remainingR / sepPitch;
-      const circ = 2 * Math.PI * (r + sepPitch / 2);
+    // Fractional last turn to hit electrode target radius
+    const remainingR = electrodeTargetR - r;
+    if (remainingR > 0.01) {
+      const frac = remainingR / allPitch;
+      const circ = 2 * Math.PI * (r + allPitch / 2);
       const arcInc = circ * frac;
       const arcStart = arc;
       arc += arcInc;
       r += remainingR;
       n += frac;
-      turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart, active: [...separators], phase: 'separator_fill', frac });
+      turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
     }
   }
-  phaseInfo.fillTurns = n - fillStart;
+  phaseInfo.mainTurns = n - mainWindStart;
+
+  // Record electrode computed lengths (before tab clearance)
+  if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
+  if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
 
   // ===== Phase 4: Tab clearance check =====
   // Tab placement first (needed for clearance check)
@@ -1390,26 +1385,23 @@ function runSimulation() {
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
-  // Anode end tab clearance
+  // Anode end tab clearance — flag only, do not extend winding
   let anodeExtended = false;
   if (anode && anode.computedLen > 0) {
     const clearance = params.anode_end_tab_clearance || 10;
     const anodeEnd = anode.off + anode.computedLen;
     const allTabs = [...aTabs, ...cTabs];
-    let extendTo = anodeEnd;
     for (const tab of allTabs) {
       if (Math.abs(anodeEnd - tab.arcLen) < clearance) {
-        const newEnd = tab.arcLen + clearance;
-        if (newEnd > extendTo) extendTo = newEnd;
+        anodeExtended = true;
+        break;
       }
     }
-    if (extendTo > anodeEnd) {
-      windToRadius(r + 5, allLayers, 'main_wind');
-      if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
-      if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
-      anodeExtended = true;
-    }
   }
+
+  // ===== Final separator wrap (1 turn) =====
+  windTurns(1, separators, 'final_wrap');
+  phaseInfo.finalWrapTurns = 1;
 
   // Set separator computed lengths
   separators.forEach(s => { s.computedLen = arc - s.off; });
@@ -1549,7 +1541,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${Math.round(pi.mainTurns||0)} + fill ${(pi.fillTurns||0).toFixed(1)})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)} + wrap ${pi.finalWrapTurns||1})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
@@ -1613,8 +1605,8 @@ function updateTable() {
     `<span style="color:var(--fg2)">Overhang</span>`,
     `<span style="color:var(--fg)">Pre:</span> <span style="color:var(--accent)">${(pi.preTurns||0).toFixed(1)}T (sep)</span>`,
     `<span style="color:var(--fg)">Sep+Cath:</span> <span style="color:var(--accent)">${(pi.cathToAnodTurns||0).toFixed(1)}T</span>`,
-    `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T</span>`,
-    `<span style="color:var(--fg)">Sep fill:</span> <span style="color:var(--accent)">${(pi.fillTurns||0).toFixed(1)}T &rarr; OD</span>`,
+    `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${(pi.mainTurns||0).toFixed(1)}T</span>`,
+    `<span style="color:var(--fg)">Final wrap:</span> <span style="color:var(--accent)">1T (sep) &rarr; OD</span>`,
   ];
   const seqHtml = `<div style="padding:4px 10px;font-size:10px;color:var(--fg2);border-bottom:1px solid var(--border)"><strong>Winding sequence:</strong> ${seqParts.join(' &rarr; ')}</div>`;
 
