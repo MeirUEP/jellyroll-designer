@@ -318,15 +318,15 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Target OD (mm)</label><input type="number" id="p_target_od" step="0.1" value="94"></div>
           <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
           <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
-          <!-- Separator overhang is auto-computed: mandrel_d + 0.5 * π * mandrel_d -->
+          <div class="param-item"><label>Sep grab dist (mm)</label><input type="number" id="p_separator_grab_distance" step="0.5" min="0" value="50" title="Blade-to-mandrel distance. Sets separator overhang length (machine constant)."></div>
         </div>
       </div>
       <div class="panel">
         <h3>Winding Sequence</h3>
         <div class="param-grid">
-          <div class="param-item"><label>Separator start turn</label><input type="number" id="p_sep_start_turn" step="1" min="1" value="1"></div>
-          <div class="param-item"><label>Cathode start turn</label><input type="number" id="p_cath_start_turn" step="1" min="1" value="1"></div>
-          <div class="param-item"><label>Anode start turn</label><input type="number" id="p_anod_start_turn" step="1" min="1" value="2"></div>
+          <div class="param-item"><label>Insulation pre-turns</label><input type="number" id="p_pre_turns" step="0.1" min="0" value="1.5" title="Separator-only turns before cathode inserts"></div>
+          <div class="param-item"><label>Cathode-to-anode turns</label><input type="number" id="p_cath_to_anod_turns" step="0.1" min="0" value="1.8" title="Turns after cathode insert before anode inserts"></div>
+          <div class="param-item"><label>Insulation final turns</label><input type="number" id="p_final_turns" step="0.1" min="0" value="6.2" title="Separator-only turns after electrodes end"></div>
         </div>
       </div>
       <div class="panel">
@@ -334,7 +334,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <div class="param-grid">
           <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
           <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
-          <div class="param-item"><label>1st cathode tab arc (mm)</label><input type="number" id="p_first_cath_arc" step="1" value="200" title="Distance along the cathode strip to the first cathode tab. All subsequent cathode tabs align at the same drill angle. Anode tabs are always 180° opposite."></div>
+          <div class="param-item"><label>1st cathode tab (mm)</label><input type="number" id="p_first_cath_tab" step="1" value="98" title="Distance along cathode strip to first tab. All subsequent cathode tabs align at the same drill angle. Anode tabs are always 180° opposite."></div>
           <div class="param-item"><label>Anode end tab clearance (mm)</label><input type="number" id="p_anode_end_tab_clearance" step="1" value="10" title="Minimum arc distance between anode end and nearest tab. If too close, anode is extended past the tab."></div>
         </div>
         <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
@@ -602,8 +602,6 @@ function layerStackFromApi(stack) {
         type: item.role || (mat ? mat.type : 'other'),
         t: mat ? mat.thickness : 0.1,
         w: mat ? mat.width : 200,
-        len: 2000,
-        startTurn: 1,
         color: mat ? (mat.color || '#888') : '#888',
       };
     });
@@ -887,7 +885,7 @@ function addLayerFromLib() {
   const lib = getLayerLib();
   const l = lib[name];
   if (!l) return;
-  layers.push({ name, type: l.type, t: l.t, w: l.w, len: 1000, startTurn: 1, color: l.color });
+  layers.push({ name, type: l.type, t: l.t, w: l.w, color: l.color });
   buildLayerUI();
   sel.value = '';
   markDirty();
@@ -970,7 +968,7 @@ function applyLayersPreset(p) {
   const src = p.layers || p;
   if (!Array.isArray(src) || src.length === 0) return;
   layers.length = 0;
-  src.forEach(l => { const ll = { ...l }; if (ll.startTurn === undefined) ll.startTurn = (ll.off > 0) ? 2 : 1; layers.push(ll); });
+  src.forEach(l => { const ll = { ...l }; delete ll.startTurn; layers.push(ll); });
   buildLayerUI();
   markDirty();
 }
@@ -1109,22 +1107,25 @@ document.getElementById('bottomToggle').addEventListener('click', () => {
 // ========== STATE ==========
 const LAYER_TYPES = ['anode','cathode','separator','collector','tape','other'];
 let layers = [
-  {name:'Anode',type:'anode',t:1.0,w:222,len:1800,startTurn:2,color:'#16a34a'},
-  {name:'Kraft paper',type:'separator',t:0.15,w:228,len:2600,startTurn:1,color:'#b45309'},
-  {name:'Cellophane A',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#38bdf8'},
-  {name:'Cellophane B',type:'separator',t:0.05,w:226,len:2440,startTurn:1,color:'#7dd3fc'},
-  {name:'Cathode',type:'cathode',t:2.0,w:188,len:1920,startTurn:1,color:'#3b82f6'},
-  {name:'Cellophane C',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#38bdf8'},
-  {name:'Cellophane D',type:'separator',t:0.05,w:226,len:2590,startTurn:1,color:'#7dd3fc'},
-  {name:'Kraft paper 2',type:'separator',t:0.15,w:228,len:2670,startTurn:1,color:'#d97706'},
-  {name:'PVA lam.',type:'separator',t:0.1,w:224,len:1862,startTurn:1,color:'#a855f7'},
+  {name:'Anode',type:'anode',t:1.0,w:222,color:'#16a34a'},
+  {name:'Kraft paper',type:'separator',t:0.15,w:228,color:'#b45309'},
+  {name:'Cellophane A',type:'separator',t:0.05,w:226,color:'#38bdf8'},
+  {name:'Cellophane B',type:'separator',t:0.05,w:226,color:'#7dd3fc'},
+  {name:'Cathode',type:'cathode',t:2.0,w:188,color:'#3b82f6'},
+  {name:'Cellophane C',type:'separator',t:0.05,w:226,color:'#38bdf8'},
+  {name:'Cellophane D',type:'separator',t:0.05,w:226,color:'#7dd3fc'},
+  {name:'Kraft paper 2',type:'separator',t:0.15,w:228,color:'#d97706'},
+  {name:'PVA lam.',type:'separator',t:0.1,w:224,color:'#a855f7'},
 ];
 
 let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
-  cath_start_turn: 1, anod_start_turn: 2, sep_start_turn: 1,
+  separator_grab_distance: 50,  // blade-to-mandrel distance (mm), machine constant
+  pre_turns: 1.5,               // insulation pre-turns (separator-only before cathode)
+  cath_to_anod_turns: 1.8,      // turns after cathode insert before anode inserts
+  final_turns: 6.2,             // insulation final turns (separator-only after electrodes)
   tab_w: 10, tab_h: 15,
-  first_cath_arc: 200,
+  first_cath_tab: 98,           // mm along cathode strip to first tab
   anode_end_tab_clearance: 10,
 };
 
@@ -1157,143 +1158,118 @@ let layerVisibility = {};
 
 // Helper: effective length for a layer (computed for open-ended types, input for fixed)
 function layerLen(l) {
-  return (['anode','cathode','separator'].includes(l.type) && l.computedLen) ? l.computedLen : l.len;
+  return (['anode','cathode','separator'].includes(l.type) && l.computedLen) ? l.computedLen : (l.len || 0);
 }
 
-// ========== SIMULATION ENGINE ==========
+// ========== SIMULATION ENGINE (Phase-Based Winder Model) ==========
 function runSimulation() {
   const r0 = params.mandrel_d / 2;
-  const nonMandrel = layers.filter(l => l.type !== 'mandrel');
+  const targetR = params.target_od / 2;
+  const openEndedTypes = new Set(['anode', 'cathode', 'separator']);
 
-  // Assign startTurn from params based on layer type
-  nonMandrel.forEach(l => {
-    if (l.type === 'cathode') l.startTurn = Math.max(1, Math.round(params.cath_start_turn || 1));
-    else if (l.type === 'anode') l.startTurn = Math.max(1, Math.round(params.anod_start_turn || 2));
-    else if (l.type === 'separator') l.startTurn = Math.max(1, Math.round(params.sep_start_turn || 1));
-    else l.startTurn = l.startTurn || 1;
-  });
+  // Classify layers
+  const separators = layers.filter(l => l.type === 'separator');
+  const cathode = layers.find(l => l.type === 'cathode');
+  const anode = layers.find(l => l.type === 'anode');
+  const allLayers = layers.filter(l => l.type !== 'mandrel');
 
-  // Two-pass simulation: compute arc offsets from startTurn, then wind
-  // Pre-wind: separator overhang folds over the split mandrel, adding
-  // separator-only wraps before regular turn counting begins.
+  // Reset computed state
+  allLayers.forEach(l => { l.off = -1; l.computedLen = 0; });
+
+  // Pitch calculations
+  const sepPitch = separators.reduce((sum, l) => sum + l.t, 0);
+  const sepAndCathLayers = layers.filter(l => l.type === 'separator' || l.type === 'cathode');
+  const phase2Pitch = sepAndCathLayers.reduce((sum, l) => sum + l.t, 0);
+  const allPitch = allLayers.reduce((sum, l) => sum + l.t, 0);
+
   let r = r0;
   let arc = 0;
-  const turns = [];
   let n = 0;
+  const turns = [];
+  let phaseInfo = { preTurns: 0, cathWindTurns: 0, mainTurns: 0, finalTurns: 0 };
 
-  // Pre-wind separator overhang: all separator layers wrap for overhang length
-  // Separator overhang = mandrel diameter + half circumference
-  const sepOverhang = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
-  if (sepOverhang > 0) {
-    const sepLayers = nonMandrel.filter(l => l.type === 'separator');
-    const sepPitch = sepLayers.reduce((sum, l) => sum + l.t, 0);
-    if (sepPitch > 0) {
-      let ohRemaining = sepOverhang;
-      while (ohRemaining > 0 && r < params.target_od / 2) {
-        const circ = 2 * Math.PI * (r + sepPitch / 2);
-        if (ohRemaining >= circ) {
-          // Full overhang turn
-          r += sepPitch;
-          arc += circ;
-          ohRemaining -= circ;
-          n++;
-          const active = sepLayers.map(l => l); // all separators active
-          turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart: arc - circ, active, isOverhang: true });
-        } else {
-          // Partial last overhang wrap — fraction of a turn
-          const frac = ohRemaining / circ;
-          const partialArc = ohRemaining;
-          r += sepPitch * frac;
-          arc += partialArc;
-          ohRemaining = 0;
-          n++;
-          const active = sepLayers.map(l => l);
-          turns.push({ turn: n, r, arc, pitch: sepPitch, circ, arcStart: arc - partialArc, active, isOverhang: true });
-        }
-      }
+  // --- Helper: wind exact number of turns (supports fractional) ---
+  function windTurns(numTurns, activeLayers, phaseName) {
+    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    if (pitch < 0.01) return;
+    let remaining = numTurns;
+    while (remaining > 0.001) {
+      const frac = Math.min(remaining, 1.0);
+      const circ = 2 * Math.PI * (r + pitch / 2);
+      const arcInc = circ * frac;
+      const rInc = pitch * frac;
+      const arcStart = arc;
+      arc += arcInc;
+      r += rInc;
+      n += frac;
+      remaining -= frac;
+      turns.push({ turn: n, r, arc, pitch, circ, arcStart, active: [...activeLayers], phase: phaseName, frac });
     }
   }
 
-  // Set separator layer offsets: separators start at arc=0 (they participate in overhang)
-  // Non-separator layers use startTurn-based activation in the main winding loop
-  nonMandrel.forEach(l => {
-    if (l.type === 'separator') {
-      l.off = 0; // separators start from the very beginning (overhang)
-    } else {
-      l.off = -1; // all non-separators activate via the winding loop
-    }
-  });
-
-  // Wind until target OD is reached. Electrode and separator lengths are COMPUTED (not inputs).
-  // Layers with fixed lengths (tape, collector, other) still use their input len.
-  const openEndedTypes = new Set(['anode', 'cathode', 'separator']);
-
-  function windUntil(targetR, maxTurns) {
-    while (r < targetR && n < maxTurns) {
-      // Activate non-separator layers based on startTurn.
-      // Only ONE layer activates per turn, in order of startTurn (lowest first).
-      // This ensures proper staggering even when startTurns fall during pre-wind.
-      const pending = nonMandrel.filter(l => l.type !== 'separator' && l.off < 0 && l.startTurn <= n + 1);
-      if (pending.length > 0) {
-        pending.sort((a, b) => a.startTurn - b.startTurn);
-        pending[0].off = arc; // Activate only one per turn
+  // --- Helper: wind to target radius with closest-fit ---
+  function windToRadius(tgtR, activeLayers, phaseName) {
+    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    if (pitch < 0.01) return;
+    while (r < tgtR) {
+      if (r + pitch > tgtR) {
+        const undershoot = tgtR - r;
+        const overshoot = (r + pitch) - tgtR;
+        if (undershoot <= overshoot) break;
       }
-
-      // Compute pitch from currently active layers
-      let pitch = 0;
-      for (const l of nonMandrel) {
-        if (l.off < 0) continue;
-        if (arc < l.off) continue;
-        const isOpen = openEndedTypes.has(l.type);
-        if (isOpen || arc < l.off + l.len) {
-          pitch += l.t;
-        }
-      }
-      if (pitch < 0.01) break;
-      // Closest-fit: if adding this turn overshoots, check which is closer to target
-      if (r + pitch > targetR) {
-        const undershoot = targetR - r;
-        const overshoot = (r + pitch) - targetR;
-        if (undershoot <= overshoot) break; // stopping here is closer
-        // else: fall through and wind this turn (overshoot is closer)
-      }
-
       const circ = 2 * Math.PI * (r + pitch / 2);
-      n++;
       const arcStart = arc;
       arc += circ;
       r += pitch;
-
-      const active = nonMandrel.filter(l => {
-        if (l.off < 0) return false;
-        const isOpen = openEndedTypes.has(l.type);
-        return l.off < arc && (isOpen || l.off + l.len > arcStart);
-      });
-      turns.push({ turn: n, r, arc, pitch, circ, arcStart, active });
+      n += 1;
+      turns.push({ turn: n, r, arc, pitch, circ, arcStart, active: [...activeLayers], phase: phaseName });
     }
   }
 
-  // Phase 1: Wind to target OD
-  windUntil(params.target_od / 2, 500);
+  // ===== Phase 0: Separator Overhang =====
+  // Separator tail folds around mandrel before winding begins.
+  // The grab distance sets total separator material pre-positioned.
+  separators.forEach(s => { s.off = 0; });
+  arc = params.separator_grab_distance || 0;
+  r += sepPitch; // folded overhang adds one separator stack thickness
+  // Record overhang as a single pseudo-turn for rendering
+  if (arc > 0) {
+    turns.push({
+      turn: 0, r, arc, pitch: sepPitch,
+      circ: arc, arcStart: 0,
+      active: [...separators], phase: 'overhang', frac: 1
+    });
+  }
 
-  // Any layers that never started — set off = 0 as fallback
-  nonMandrel.forEach(l => { if (l.off < 0) l.off = 0; });
+  // ===== Phase 1: Pre-wind (separator only) =====
+  const preWindStart = n;
+  windTurns(params.pre_turns, separators, 'pre_wind');
+  phaseInfo.preTurns = n - preWindStart;
 
-  // Store computed lengths for all open-ended layers
-  nonMandrel.forEach(l => {
-    if (openEndedTypes.has(l.type) && l.off >= 0) {
-      l.computedLen = arc - l.off;
-    }
-  });
+  // ===== Phase 2: Cathode wind (separator + cathode) =====
+  if (cathode) cathode.off = arc;
+  const cathWindStart = n;
+  windTurns(params.cath_to_anod_turns, sepAndCathLayers, 'cathode_wind');
+  phaseInfo.cathWindTurns = n - cathWindStart;
 
-  // Tab placement — angular-alignment model
-  // Each electrode has its own drill angle determined by its first tab arc position.
-  // All subsequent tabs of the same electrode align at the same angle.
-  const cathode = layers.find(l => l.type === 'cathode');
-  const anode = layers.find(l => l.type === 'anode');
+  // ===== Phase 3: Main wind (all layers to electrode stop radius) =====
+  // Reserve radius budget for final insulation turns
+  if (anode) anode.off = arc;
+  const electrodeStopR = targetR - params.final_turns * sepPitch;
+  const mainWindStart = n;
+  if (electrodeStopR > r) {
+    windToRadius(electrodeStopR, allLayers, 'main_wind');
+  }
+  phaseInfo.mainTurns = n - mainWindStart;
+
+  // Record electrode computed lengths (before tab clearance check)
+  if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
+  if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
+
+  // ===== Phase 4: Tab clearance check =====
+  // Tab placement first (needed for clearance check)
   const cTabs = [], aTabs = [];
 
-  // Helper: find the mid-radius of a specific layer within a turn's band
   function layerMidR(turnIdx, targetLayer) {
     const t = turns[turnIdx];
     const prevR = turnIdx > 0 ? turns[turnIdx-1].r : r0;
@@ -1302,15 +1278,12 @@ function runSimulation() {
     if (totalThick <= 0) return t.r;
     let cumThick = 0;
     for (const l of t.active) {
-      if (l === targetLayer) {
-        return prevR + bandW * (cumThick + l.t / 2) / totalThick;
-      }
+      if (l === targetLayer) return prevR + bandW * (cumThick + l.t / 2) / totalThick;
       cumThick += l.t;
     }
-    return t.r; // fallback
+    return t.r;
   }
 
-  // Helper: compute drill angle from a first-tab arc position
   function computeDrillAngle(firstArc) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
@@ -1318,28 +1291,25 @@ function runSimulation() {
         return (firstArc - t.arcStart) / t.circ * 360;
       }
     }
-    return 0; // fallback
+    return 0;
   }
 
-  // first_cath_arc is distance along the cathode strip, so add cathode.off to get absolute arc
-  const firstCathArcAbs = (cathode ? cathode.off : 0) + (params.first_cath_arc || 200);
+  function effectiveLen(l) {
+    return openEndedTypes.has(l.type) ? (l.computedLen || l.len || 0) : (l.len || 0);
+  }
+
+  const firstCathArcAbs = (cathode ? cathode.off : 0) + (params.first_cath_tab || 200);
   const drillAngleDeg = computeDrillAngle(firstCathArcAbs);
   const anodAngleDeg = (drillAngleDeg + 180) % 360;
 
-  // Helper: get effective length for a layer (computed for open-ended, input for fixed)
-  function effectiveLen(l) {
-    return openEndedTypes.has(l.type) ? (l.computedLen || l.len) : l.len;
-  }
-
-  // Place cathode tabs: at every turn where the drill angle intersects the cathode,
-  // but only starting from the requested first tab position (no earlier tabs).
+  // Place cathode tabs
   let firstCathTabTurn = 0;
   if (cathode) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
       const fracC = drillAngleDeg / 360;
       const tabArc = t.arcStart + fracC * t.circ;
-      if (tabArc < firstCathArcAbs) continue; // skip tabs before requested position
+      if (tabArc < firstCathArcAbs) continue;
       if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
         const cathInActive = t.active.find(l => l.name === cathode.name);
         if (cathInActive) {
@@ -1350,12 +1320,11 @@ function runSimulation() {
     }
   }
 
-  // Place anode tabs: 180° opposite cathode drill angle,
-  // starting from the same turn as the first cathode tab (not earlier).
+  // Place anode tabs
   if (anode) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
-      if (t.turn < firstCathTabTurn) continue; // anode tabs start from first cathode tab turn
+      if (t.turn < firstCathTabTurn) continue;
       const fracA = anodAngleDeg / 360;
       const tabArc = t.arcStart + fracA * t.circ;
       if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
@@ -1370,41 +1339,38 @@ function runSimulation() {
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
-  // Phase 2: Anode end tab clearance check
-  // If anode end is within clearance distance of any tab, extend past the tab
+  // Anode end tab clearance
   let anodeExtended = false;
-  let actualOD = 0;
   if (anode && anode.computedLen > 0) {
     const clearance = params.anode_end_tab_clearance || 10;
     const anodeEnd = anode.off + anode.computedLen;
-    // Check against all anode tabs
     const allTabs = [...aTabs, ...cTabs];
-    let tooClose = false;
     let extendTo = anodeEnd;
     for (const tab of allTabs) {
-      const dist = Math.abs(anodeEnd - tab.arcLen);
-      if (dist < clearance) {
-        tooClose = true;
-        // Extend past the tab by clearance distance
+      if (Math.abs(anodeEnd - tab.arcLen) < clearance) {
         const newEnd = tab.arcLen + clearance;
         if (newEnd > extendTo) extendTo = newEnd;
       }
     }
-    if (tooClose && extendTo > anodeEnd) {
-      // Wind a few extra turns to get past the tab
-      windUntil(r + 5, n + 5);
-      // Recompute all open-ended lengths
-      nonMandrel.forEach(l => {
-        if (openEndedTypes.has(l.type) && l.off >= 0) {
-          l.computedLen = arc - l.off;
-        }
-      });
+    if (extendTo > anodeEnd) {
+      windToRadius(r + 5, allLayers, 'main_wind');
+      if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
+      if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
       anodeExtended = true;
     }
   }
 
+  // ===== Phase 5: Final insulation (separator only) =====
+  const finalStart = n;
+  windTurns(params.final_turns, separators, 'final_insulation');
+  phaseInfo.finalTurns = n - finalStart;
+
+  // Set separator computed lengths
+  separators.forEach(s => { s.computedLen = arc - s.off; });
+
+  // Build result
   const outerR = turns.length > 0 ? turns[turns.length - 1].r : r0;
-  actualOD = outerR * 2;
+  const actualOD = outerR * 2;
   const pitches = turns.map(t => t.pitch);
 
   simResult = {
@@ -1417,9 +1383,9 @@ function runSimulation() {
     anodeExtended,
     cathodeLen: cathode ? cathode.computedLen : 0,
     anodeLen: anode ? anode.computedLen : 0,
+    phaseInfo,
   };
 
-  // Update drill angle info display
   const drillInfo = document.getElementById('drillAngleInfo');
   if (drillInfo) {
     drillInfo.innerHTML = `Drill angle: <strong>${drillAngleDeg.toFixed(1)}°</strong> (cathode) / <strong>${anodAngleDeg.toFixed(1)}°</strong> (anode, +180°) &bull; ${cTabs.length}C + ${aTabs.length}A tabs`;
@@ -1533,11 +1499,14 @@ function updateInfoBar() {
   const odLabel = s.anodeExtended
     ? `<span>OD: <strong style="color:var(--red)">${s.actualOD.toFixed(1)}mm</strong> (target ${s.targetOD})</span>`
     : `<span>OD: <strong>${s.actualOD.toFixed(1)}mm</strong></span>`;
+  const pi = s.phaseInfo || {};
+  const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(${(pi.preTurns||0).toFixed(1)}+${(pi.cathWindTurns||0).toFixed(1)}+${Math.round(pi.mainTurns||0)}+${(pi.finalTurns||0).toFixed(1)})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
+    `<span>Sep L: <strong style="color:var(--fg2)">${Math.round(sepLen)}mm</strong></span>` +
     `<span>Tabs: <strong style="color:#3b82f6">${s.cTabs.length}C</strong>+<strong style="color:#16a34a">${s.aTabs.length}A</strong></span>`;
   if (capResult) {
     html += `<span>Cell cap: <strong>${capResult.cellCapAh.toFixed(1)}Ah</strong></span>` +
@@ -1552,11 +1521,15 @@ function updateSummary() {
   const odVal = s.anodeExtended
     ? `<span style="color:var(--red)">${s.actualOD.toFixed(1)}mm</span> <span style="font-size:9px">(target ${s.targetOD})</span>`
     : `${s.actualOD.toFixed(1)}mm`;
+  const pi2 = s.phaseInfo || {};
+  const sepLen2 = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   const cards = [
     { lbl: 'Actual OD', val: odVal },
     { lbl: 'Total turns', val: s.turns.length },
+    { lbl: 'Electrode turns', val: Math.round(pi2.mainTurns || 0) },
     { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm${s.cathodeLen > 2000 ? ' !' : ''}`, cls: s.cathodeLen > 2000 ? 'color:var(--red)' : 'color:#3b82f6' },
     { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}${s.anodeLen > 2000 ? ' !' : ''}`, cls: s.anodeLen > 2000 ? 'color:var(--red)' : 'color:#16a34a' },
+    { lbl: 'Sep length', val: `${Math.round(sepLen2)}mm` },
     { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
     { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
     { lbl: 'Anode tabs', val: s.aTabs.length, cls: 'color:#16a34a' },
@@ -1587,16 +1560,15 @@ function updateTable() {
       rows += `<tr><td style="color:#16a34a;font-weight:bold">Anode</td><td>${t.idx}</td><td>${t.turn}</td><td>${t.r.toFixed(2)}</td><td>${t.pitch.toFixed(2)}</td><td>${t.arcLen.toFixed(1)}</td><td>${t.spacing ? t.spacing.toFixed(1) : '—'}</td><td>${s.anodAngleDeg.toFixed(1)}&deg;</td></tr>`;
     }
   }
-  // Winding sequence summary
-  const turnGroups = {};
-  layers.filter(l => l.type !== 'mandrel').forEach(l => {
-    const st = l.startTurn || 1;
-    if (!turnGroups[st]) turnGroups[st] = [];
-    turnGroups[st].push(l.name);
-  });
-  const seqParts = Object.keys(turnGroups).sort((a,b) => a-b).map(t =>
-    `<span style="color:var(--fg)">T${t}:</span> <span style="color:var(--accent)">${turnGroups[t].join(', ')}</span>`
-  );
+  // Winding sequence summary (phase-based)
+  const pi = s.phaseInfo || {};
+  const seqParts = [
+    `<span style="color:var(--fg2)">Overhang</span>`,
+    `<span style="color:var(--fg)">Pre:</span> <span style="color:var(--accent)">${(pi.preTurns||0).toFixed(1)}T (sep)</span>`,
+    `<span style="color:var(--fg)">Cath+Sep:</span> <span style="color:var(--accent)">${(pi.cathWindTurns||0).toFixed(1)}T</span>`,
+    `<span style="color:var(--fg)">Main:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T (all)</span>`,
+    `<span style="color:var(--fg)">Final:</span> <span style="color:var(--accent)">${(pi.finalTurns||0).toFixed(1)}T (sep)</span>`,
+  ];
   const seqHtml = `<div style="padding:4px 10px;font-size:10px;color:var(--fg2);border-bottom:1px solid var(--border)"><strong>Winding sequence:</strong> ${seqParts.join(' &rarr; ')}</div>`;
 
   let tableHtml = seqHtml + `<table><thead><tr><th>Electrode</th><th>Tab#</th><th>Turn</th><th>Radius (mm)</th><th>Pitch (mm)</th><th>Arc Length (mm)</th><th>Spacing (mm)</th><th>Angle</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -1659,11 +1631,9 @@ function buildLayerUI() {
       <div class="layer-props">
         <div class="param-item"><label>Thick</label><input type="number" step="0.01" value="${l.t}" data-i="${i}" data-f="t"></div>
         <div class="param-item"><label>Width</label><input type="number" step="0.1" value="${l.w}" data-i="${i}" data-f="w"></div>
-        ${l.type === 'anode' || l.type === 'cathode'
-          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : '—'}" data-i="${i}" data-f="len" readonly style="background:var(--bg3);color:${l.computedLen > 2000 ? 'var(--red)' : 'var(--fg2)'};cursor:not-allowed" title="${l.computedLen > 2000 ? 'Exceeds 2m coater limit!' : 'Computed from target OD'}"></div>`
-          : l.type === 'separator'
-            ? ''
-            : `<div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len}" data-i="${i}" data-f="len"></div>`}
+        ${l.type === 'anode' || l.type === 'cathode' || l.type === 'separator'
+          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : '—'}" data-i="${i}" data-f="len" readonly style="background:var(--bg3);color:${l.computedLen > 2000 ? 'var(--red)' : 'var(--fg2)'};cursor:not-allowed" title="Computed from target OD"></div>`
+          : `<div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len}" data-i="${i}" data-f="len"></div>`}
       </div>`;
     list.appendChild(card);
   });
@@ -1710,7 +1680,7 @@ function markDirty() {
 }
 
 document.getElementById('btnAddLayer').addEventListener('click', () => {
-  layers.push({name:'New Layer',type:'separator',t:0.1,w:220,len:1000,startTurn:1,color:'#888888'});
+  layers.push({name:'New Layer',type:'separator',t:0.1,w:220,color:'#888888'});
   buildLayerUI(); markDirty();
 });
 
@@ -2643,7 +2613,7 @@ document.getElementById('btnExport').addEventListener('click', () => {
 
 // ========== SAVE/LOAD ==========
 document.getElementById('btnSave').addEventListener('click', () => {
-  const data = { version: '1.1', params, layers, elecProps };
+  const data = { version: '1.2', params, layers, elecProps };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2662,15 +2632,16 @@ document.getElementById('fileLoad').addEventListener('change', e => {
       if (data.version && data.params && data.layers) {
         params = data.params;
         layers = data.layers;
-        // Backward compat: convert old off-based layers to startTurn
-        layers.forEach(l => { if (l.startTurn === undefined) l.startTurn = (l.off > 0) ? 2 : 1; });
-        // Backward compat: migrate old cath_angle/anod_angle/skip_turns to first_cath_arc
-        if (params.first_cath_arc === undefined) {
-          params.first_cath_arc = 200; // sensible default
-          delete params.cath_angle;
-          delete params.anod_angle;
-          delete params.skip_turns;
+        // Backward compat: clean up old fields
+        layers.forEach(l => { delete l.startTurn; });
+        if (params.first_cath_tab === undefined) {
+          params.first_cath_tab = 200;
+          delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
         }
+        if (params.separator_grab_distance === undefined) {
+          params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
+        }
+        delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
         if (data.elecProps) elecProps = data.elecProps;
         for (const [k, v] of Object.entries(params)) {
           const el = document.getElementById('p_' + k);
@@ -2730,7 +2701,7 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   renderView();
 
   // Build layer stack table
-  let layerRows = layers.map((l,i) => `<tr><td>${i}</td><td><span style="display:inline-block;width:12px;height:12px;background:${l.color};border-radius:2px;vertical-align:middle"></span> ${l.name}</td><td>${l.type}</td><td>${l.t}</td><td>${l.w}</td><td>${Math.round(layerLen(l))}</td><td>${l.startTurn||1}</td><td>${(l.off||0).toFixed(1)}</td></tr>`).join('');
+  let layerRows = layers.map((l,i) => `<tr><td>${i}</td><td><span style="display:inline-block;width:12px;height:12px;background:${l.color};border-radius:2px;vertical-align:middle"></span> ${l.name}</td><td>${l.type}</td><td>${l.t}</td><td>${l.w}</td><td>${Math.round(layerLen(l))}</td><td>${(l.off||0).toFixed(1)}</td></tr>`).join('');
 
   // Build tab table
   let tabRows = '';
@@ -2788,7 +2759,7 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   <div class="params">
     <div><span>Mandrel diameter</span><span>${params.mandrel_d} mm</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
-    <div><span>1st cathode tab arc</span><span>${params.first_cath_arc} mm</span></div>
+    <div><span>1st cathode tab arc</span><span>${params.first_cath_tab} mm</span></div>
     <div><span>Cathode drill angle</span><span>${s.drillAngleDeg.toFixed(1)}°</span></div>
     <div><span>Anode drill angle</span><span>${s.anodAngleDeg.toFixed(1)}° (+180°)</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
@@ -2805,7 +2776,7 @@ document.getElementById('btnPDF').addEventListener('click', () => {
 
   <h2>Layer Stack</h2>
   <table>
-    <tr><th>#</th><th>Name</th><th>Type</th><th>Thickness (mm)</th><th>Width (mm)</th><th>Length (mm)</th><th>Start Turn</th><th>Offset (mm)</th></tr>
+    <tr><th>#</th><th>Name</th><th>Type</th><th>Thickness (mm)</th><th>Width (mm)</th><th>Length (mm)</th><th>Offset (mm)</th></tr>
     ${layerRows}
   </table>
 
@@ -2888,12 +2859,15 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
           const design = await api.getDesign(row.dataset.id);
           params = design.params;
           layers = design.layers;
-          layers.forEach(l => { if (l.startTurn === undefined) l.startTurn = (l.off > 0) ? 2 : 1; });
-          // Backward compat: migrate old angle-based params
-          if (params.first_cath_arc === undefined) {
-            params.first_cath_arc = 200;
+          layers.forEach(l => { delete l.startTurn; });
+          if (params.first_cath_tab === undefined) {
+            params.first_cath_tab = 200;
             delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
           }
+          if (params.separator_grab_distance === undefined) {
+            params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
+          }
+          delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
