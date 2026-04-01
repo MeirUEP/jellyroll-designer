@@ -325,7 +325,6 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <h3>Winding Sequence</h3>
         <div class="param-grid">
           <div class="param-item"><label>Insulation pre-turns</label><input type="number" id="p_pre_turns" step="0.1" min="0" value="1.5" title="Separator-only turns before cathode inserts"></div>
-          <div class="param-item"><label>Cathode-to-anode turns</label><input type="number" id="p_cath_to_anod_turns" step="0.1" min="0" value="1.8" title="Turns after cathode insert before anode inserts"></div>
         </div>
       </div>
       <div class="panel">
@@ -1121,7 +1120,6 @@ let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
   separator_grab_distance: 50,  // blade-to-mandrel distance (mm), machine constant
   pre_turns: 1.5,               // insulation pre-turns (separator-only before cathode)
-  cath_to_anod_turns: 1.8,      // turns after cathode insert before anode inserts
   tab_w: 10, tab_h: 15,
   first_cath_tab: 98,           // mm along cathode strip to first tab
   anode_end_tab_clearance: 10,
@@ -1245,10 +1243,18 @@ function runSimulation() {
   phaseInfo.preTurns = n - preWindStart;
 
   // ===== Phase 2: Cathode wind (separator + cathode) =====
+  // Cathode enters after pre-wind. Anode enters at 180° from cathode
+  // (opposite conveyor). Compute the soonest half-turn opportunity (N+0.5 turns).
   if (cathode) cathode.off = arc;
+
+  // Compute anode entry: anode conveyor is 180° from cathode conveyor.
+  // Anode enters after 0.5, 1.5, 2.5... turns from cathode entry.
+  // Use 0.5 turns (first opportunity) — cathode gets half a turn to be gripped.
+  const cathToAnodTurns = 0.5;
   const cathWindStart = n;
-  windTurns(params.cath_to_anod_turns, sepAndCathLayers, 'cathode_wind');
+  windTurns(cathToAnodTurns, sepAndCathLayers, 'cathode_wind');
   phaseInfo.cathWindTurns = n - cathWindStart;
+  phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers to target OD) =====
   if (anode) anode.off = arc;
@@ -1491,7 +1497,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(${(pi.preTurns||0).toFixed(1)}+${(pi.cathWindTurns||0).toFixed(1)}+${Math.round(pi.mainTurns||0)})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + sep+cath ${(pi.cathWindTurns||0).toFixed(1)} + all ${Math.round(pi.mainTurns||0)})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
@@ -1554,8 +1560,8 @@ function updateTable() {
   const seqParts = [
     `<span style="color:var(--fg2)">Overhang</span>`,
     `<span style="color:var(--fg)">Pre:</span> <span style="color:var(--accent)">${(pi.preTurns||0).toFixed(1)}T (sep)</span>`,
-    `<span style="color:var(--fg)">Cath+Sep:</span> <span style="color:var(--accent)">${(pi.cathWindTurns||0).toFixed(1)}T</span>`,
-    `<span style="color:var(--fg)">Main:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T (all)</span>`,
+    `<span style="color:var(--fg)">Sep+Cath:</span> <span style="color:var(--accent)">${(pi.cathToAnodTurns||0).toFixed(1)}T</span>`,
+    `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${Math.round(pi.mainTurns||0)}T &rarr; OD</span>`,
   ];
   const seqHtml = `<div style="padding:4px 10px;font-size:10px;color:var(--fg2);border-bottom:1px solid var(--border)"><strong>Winding sequence:</strong> ${seqParts.join(' &rarr; ')}</div>`;
 
