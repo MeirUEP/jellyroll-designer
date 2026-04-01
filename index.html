@@ -386,7 +386,8 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <input type="file" id="fileLoad" accept=".json" style="display:none">
         <button class="btn-sm" id="btnExport">CSV</button>
         <button class="btn-sm" id="btnPDF" style="background:#7c3aed;color:#fff">PDF</button>
-        <button class="btn-cloud" id="btnCloudSave">&#9729;</button>
+        <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
+        <button class="btn-cloud" id="btnCloudSaveSim" style="font-size:9px">&#9729; Save Sim</button>
         <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
         <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
       </div>
@@ -1025,6 +1026,29 @@ document.querySelectorAll('.preset-load').forEach(btn => {
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
+          // Restore linked formulations if present
+          if (design.cathode_mix) {
+            applyCathodePreset(mixFromApi(design.cathode_mix));
+            const cathSel = document.getElementById(PRESET_SELECTS.cathode);
+            const cloudName = '☁ ' + design.cathode_mix.name;
+            if (presetStores.cathode[cloudName]) cathSel.value = cloudName;
+          }
+          if (design.anode_mix) {
+            applyAnodePreset(mixFromApi(design.anode_mix));
+            const anodSel = document.getElementById(PRESET_SELECTS.anode);
+            const cloudName = '☁ ' + design.anode_mix.name;
+            if (presetStores.anode[cloudName]) anodSel.value = cloudName;
+          }
+          if (design.layer_stack && (!design.layers || design.layers.length === 0)) {
+            const stackLayers = layerStackFromApi(design.layer_stack);
+            if (stackLayers.length > 0) {
+              layers.length = 0;
+              stackLayers.forEach(l => layers.push(l));
+            }
+            const layerSel = document.getElementById(PRESET_SELECTS.layers);
+            const cloudName = '☁ ' + design.layer_stack.name;
+            if (presetStores.layers[cloudName]) layerSel.value = cloudName;
+          }
           for (const [k, v] of Object.entries(params)) {
             const el = document.getElementById('p_' + k);
             if (el) el.value = v;
@@ -2873,25 +2897,92 @@ document.getElementById('btnApiSettings').addEventListener('click', () => {
 document.getElementById('btnCloudSave').addEventListener('click', async () => {
   if (!getApiUrl()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
   try {
+    const designName = currentDesignName || prompt('Design name:', 'Jellyroll Design') || 'Untitled';
+
+    // --- Auto-save cathode mix if not already in cloud ---
+    let cathMixId = null;
+    const cathSel = document.getElementById(PRESET_SELECTS.cathode);
+    const cathEntry = presetStores.cathode[cathSel.value];
+    if (cathEntry && cathEntry._cloudId) {
+      cathMixId = cathEntry._cloudId;
+    } else if (cathComponents.length > 0) {
+      try {
+        const payload = mixToApi(getCathodePreset(), 'cathode');
+        payload.name = designName + ' — Cathode';
+        const saved = await api.createMix(payload);
+        cloudMixes.push(saved);
+        cathMixId = saved.id;
+        presetStores.cathode['☁ ' + saved.name] = { _cloudId: saved.id, _cloud: true };
+        loadPresetList('cathode');
+      } catch(e) { console.warn('Auto-save cathode mix failed:', e); }
+    }
+
+    // --- Auto-save anode mix if not already in cloud ---
+    let anodMixId = null;
+    const anodSel = document.getElementById(PRESET_SELECTS.anode);
+    const anodEntry = presetStores.anode[anodSel.value];
+    if (anodEntry && anodEntry._cloudId) {
+      anodMixId = anodEntry._cloudId;
+    } else if (anodComponents.length > 0) {
+      try {
+        const payload = mixToApi(getAnodePreset(), 'anode');
+        payload.name = designName + ' — Anode';
+        const saved = await api.createMix(payload);
+        cloudMixes.push(saved);
+        anodMixId = saved.id;
+        presetStores.anode['☁ ' + saved.name] = { _cloudId: saved.id, _cloud: true };
+        loadPresetList('anode');
+      } catch(e) { console.warn('Auto-save anode mix failed:', e); }
+    }
+
+    // --- Auto-save layer stack if not already in cloud ---
+    let layerStackId = null;
+    const layerSel = document.getElementById(PRESET_SELECTS.layers);
+    const layerEntry = presetStores.layers[layerSel.value];
+    if (layerEntry && layerEntry._cloudId) {
+      layerStackId = layerEntry._cloudId;
+    } else if (layers.length > 0) {
+      try {
+        const payload = await layerStackToApi(layers);
+        payload.name = designName + ' — Stack';
+        const saved = await api.createLayerStack(payload);
+        cloudLayerStacks.push(saved);
+        layerStackId = saved.id;
+        presetStores.layers['☁ ' + saved.name] = { _cloudId: saved.id, _cloud: true };
+        loadPresetList('layers');
+      } catch(e) { console.warn('Auto-save layer stack failed:', e); }
+    }
+
+    // --- Save design with linked FKs ---
     const designData = {
-      name: currentDesignName || prompt('Design name:', 'Jellyroll Design') || 'Untitled',
+      name: designName,
       params, layers, elec_props: elecProps,
+      cathode_mix_id: cathMixId,
+      anode_mix_id: anodMixId,
+      layer_stack_id: layerStackId,
     };
     let saved;
     if (currentDesignId) {
       saved = await api.updateDesign(currentDesignId, designData);
-      showToast('Design updated in cloud');
+      showToast('Design updated in cloud (with formulations & stack)');
     } else {
       saved = await api.createDesign(designData);
       currentDesignId = saved.id;
       currentDesignName = saved.name;
-      showToast('Design saved to cloud');
+      showToast('Design saved to cloud (with formulations & stack)');
     }
-    // Also save simulation + capacity results
+  } catch (e) { showToast('Save failed: ' + e.message, true); }
+});
+
+// Separate button for saving simulation results — only when user explicitly wants it
+document.getElementById('btnCloudSaveSim')?.addEventListener('click', async () => {
+  if (!currentDesignId) { showToast('Save design first before saving simulation', true); return; }
+  try {
     if (simResult) {
       await api.saveSimResult(currentDesignId, {
         turns: simResult.turns, c_tabs: simResult.cTabs, a_tabs: simResult.aTabs,
         outer_r: simResult.outerR, min_pitch: simResult.minPitch, max_pitch: simResult.maxPitch,
+        cathode_len: simResult.cathodeLen || null, anode_len: simResult.anodeLen || null,
       });
     }
     if (capResult) {
@@ -2902,7 +2993,8 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
         full_result: capResult,
       });
     }
-  } catch (e) { showToast('Save failed: ' + e.message, true); }
+    showToast('Simulation & capacity results saved to cloud');
+  } catch (e) { showToast('Save sim failed: ' + e.message, true); }
 });
 
 document.getElementById('btnCloudOpen').addEventListener('click', async () => {
@@ -2927,8 +3019,8 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
       row.addEventListener('click', async () => {
         try {
           const design = await api.getDesign(row.dataset.id);
-          params = design.params;
-          layers = design.layers;
+          params = design.params || design.cell_params || {};
+          layers = design.layers || [];
           layers.forEach(l => { delete l.startTurn; });
           if (params.first_cath_tab === undefined) {
             params.first_cath_tab = 200;
@@ -2941,6 +3033,30 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
+          // Restore linked formulations if present
+          if (design.cathode_mix) {
+            applyCathodePreset(mixFromApi(design.cathode_mix));
+            const cathSel = document.getElementById(PRESET_SELECTS.cathode);
+            const cloudName = '☁ ' + design.cathode_mix.name;
+            if (presetStores.cathode[cloudName]) cathSel.value = cloudName;
+          }
+          if (design.anode_mix) {
+            applyAnodePreset(mixFromApi(design.anode_mix));
+            const anodSel = document.getElementById(PRESET_SELECTS.anode);
+            const cloudName = '☁ ' + design.anode_mix.name;
+            if (presetStores.anode[cloudName]) anodSel.value = cloudName;
+          }
+          // Restore linked layer stack if present (and no inline layers)
+          if (design.layer_stack && (!design.layers || design.layers.length === 0)) {
+            const stackLayers = layerStackFromApi(design.layer_stack);
+            if (stackLayers.length > 0) {
+              layers.length = 0;
+              stackLayers.forEach(l => layers.push(l));
+            }
+            const layerSel = document.getElementById(PRESET_SELECTS.layers);
+            const cloudName = '☁ ' + design.layer_stack.name;
+            if (presetStores.layers[cloudName]) layerSel.value = cloudName;
+          }
           for (const [k, v] of Object.entries(params)) {
             const el = document.getElementById('p_' + k);
             if (el) el.value = v;
