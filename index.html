@@ -1236,7 +1236,9 @@ function runSimulation() {
   // Pitch calculations
   const sepPitch = separators.reduce((sum, l) => sum + l.t, 0);
   const sepAndCathLayers = layers.filter(l => l.type === 'separator' || l.type === 'cathode');
+  const sepAndAnodLayers = layers.filter(l => l.type === 'separator' || l.type === 'anode');
   const phase2Pitch = sepAndCathLayers.reduce((sum, l) => sum + l.t, 0);
+  const anodExtPitch = sepAndAnodLayers.reduce((sum, l) => sum + l.t, 0);
   const allPitch = allLayers.reduce((sum, l) => sum + l.t, 0);
 
   let r = r0;
@@ -1458,6 +1460,27 @@ function runSimulation() {
         break;
       }
     }
+  }
+
+  // ===== Phase 4b: Anode extension (anode + separators, no cathode) =====
+  // If anode extends past cathode, wind additional arc with anode+sep layers.
+  // If anode is shorter (pulled back), we just set its computedLen shorter.
+  const anodeExtraArc = anodeEndArc - anodeArcAtMainEnd;
+  phaseInfo.anodeExtTurns = 0;
+  if (anode && anodeExtraArc > 0.01 && anodExtPitch > 0) {
+    // Wind fractional turn with anode + separators only (cathode has ended)
+    const frac = anodeExtraArc / (2 * Math.PI * (r + anodExtPitch / 2));
+    const circ = 2 * Math.PI * (r + anodExtPitch / 2);
+    const arcStart = arc;
+    const rInc = anodExtPitch * frac;
+    arc += anodeExtraArc;
+    r += rInc;
+    n += frac;
+    turns.push({ turn: n, r, arc, pitch: anodExtPitch, circ, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
+    phaseInfo.anodeExtTurns = frac;
+  }
+  // Set final anode computed length
+  if (anode && anode.off >= 0) {
     anode.computedLen = anodeEndArc - anode.off;
   }
 
@@ -1601,7 +1624,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)} + wrap ${pi.finalWrapTurns||1})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)}${pi.anodeExtTurns > 0.001 ? ' + anod ' + pi.anodeExtTurns.toFixed(2) : ''} + wrap ${pi.finalWrapTurns||1})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
@@ -1664,6 +1687,7 @@ function updateTable() {
     `<span style="color:var(--fg)">Pre:</span> <span style="color:var(--accent)">${(pi.preTurns||0).toFixed(1)}T (sep)</span>`,
     `<span style="color:var(--fg)">Sep+Cath:</span> <span style="color:var(--accent)">${(pi.cathToAnodTurns||0).toFixed(1)}T</span>`,
     `<span style="color:var(--fg)">All layers:</span> <span style="color:var(--accent)">${(pi.mainTurns||0).toFixed(1)}T</span>`,
+    ...(pi.anodeExtTurns > 0.001 ? [`<span style="color:var(--fg)">Anod ext:</span> <span style="color:#16a34a">${pi.anodeExtTurns.toFixed(2)}T</span>`] : []),
     `<span style="color:var(--fg)">Final wrap:</span> <span style="color:var(--accent)">1T (sep) &rarr; OD</span>`,
   ];
   const seqHtml = `<div style="padding:4px 10px;font-size:10px;color:var(--fg2);border-bottom:1px solid var(--border)"><strong>Winding sequence:</strong> ${seqParts.join(' &rarr; ')}</div>`;
