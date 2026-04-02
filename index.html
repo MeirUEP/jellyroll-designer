@@ -1332,23 +1332,10 @@ function runSimulation() {
   if (anode) anode.off = arc;
   const mainWindStart = n;
 
-  // Estimate anode extension: predict angular position after main wind
-  let estAnodeExtFrac = 0;
-  if (anode) {
-    const roughTargetR = targetR - sepPitch; // without anode ext first
-    const roughMainTurns = (roughTargetR - r) / allPitch;
-    // Angular position at current arc + main wind turns
-    const roughEndAngle = (360 * (n + roughMainTurns)) % 360;
-    const tabAngles = [drillAngleDeg % 360, anodAngleDeg % 360];
-    let bestFwd = 360;
-    for (const tabAng of tabAngles) {
-      let fwd = (tabAng - roughEndAngle + 360) % 360;
-      if (fwd < 1) fwd += 360;
-      if (fwd < bestFwd) bestFwd = fwd;
-    }
-    estAnodeExtFrac = Math.max(0, (bestFwd - ((params.anode_end_tab_clearance || 10) / (2 * Math.PI * roughTargetR) * 360)) / 360);
-  }
-  const estAnodeExtR = anodExtPitch * estAnodeExtFrac;
+  // Estimate anode extension radius: tabs are at 180° intervals, so the
+  // next tab line is at most 0.5 turns away. On average the extension is
+  // ~0.25 turns. We use this estimate to reserve radius in the main wind.
+  const estAnodeExtR = anode ? anodExtPitch * 0.25 : 0;
   const electrodeTargetR = targetR - sepPitch - estAnodeExtR;
   if (allPitch > 0.01 && electrodeTargetR > r) {
     // Full turns
