@@ -1326,53 +1326,13 @@ function runSimulation() {
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers to target OD) =====
-  // Reserve radius for: anode extension + final sep wrap (1 turn).
-  // To estimate anode extension, we predict where the main wind ends angularly,
-  // find the next tab line, and compute the fractional turn the anode needs.
+  // Reserve radius for: anode extension (avg ~0.35 turn) + final sep wrap (min 0.5 turn).
+  // Variable final sep wrap fills exact remaining gap after anode extension.
   if (anode) anode.off = arc;
   const mainWindStart = n;
-
-  // Reserve radius for anode extension + final sep wrap.
-  // First pass: estimate drill angle from first cathode tab position to predict
-  // the anode extension. The first tab arc can be estimated geometrically.
-  let estAnodeExtR = 0;
-  if (anode) {
-    // Estimate drill angle: first cathode tab at cathode.off + first_cath_tab
-    // At radius r, one turn ≈ 2πr arc. Estimate angle of first tab.
-    const firstTabArc = (cathode ? cathode.off : 0) + (params.first_cath_tab || 200);
-    // Accumulate arc through existing turns to find angle
-    let estAngle = 0;
-    for (const t of turns) {
-      if (firstTabArc >= t.arcStart && firstTabArc < t.arc) {
-        estAngle = (firstTabArc - t.arcStart) / t.circ * 360;
-        break;
-      }
-    }
-    // If first tab falls beyond existing turns, estimate from circumference
-    if (estAngle === 0 && r > 0) {
-      const arcBeyond = firstTabArc - arc;
-      if (arcBeyond > 0) {
-        estAngle = (arcBeyond / (2 * Math.PI * r) * 360) % 360;
-      }
-    }
-    const estAnodAngle = (estAngle + 180) % 360;
-    // Predict where main wind ends: roughTargetR without anode ext
-    const roughTargetR = targetR - sepPitch;
-    const roughMainTurns = Math.max(0, (roughTargetR - r) / allPitch);
-    const roughEndAngle = (360 * (n + roughMainTurns)) % 360;
-    // Find nearest forward tab line from rough end angle
-    const tabAngles = [estAngle, estAnodAngle];
-    let bestFwd = 360;
-    for (const tabAng of tabAngles) {
-      let fwd = (tabAng - roughEndAngle + 360) % 360;
-      if (fwd < 1) fwd += 360;
-      if (fwd < bestFwd) bestFwd = fwd;
-    }
-    const clearanceDeg = (params.anode_end_tab_clearance || 10) / (2 * Math.PI * roughTargetR) * 360;
-    const estExtFrac = Math.max(0, (bestFwd - clearanceDeg) / 360);
-    estAnodeExtR = anodExtPitch * estExtFrac;
-  }
-  const electrodeTargetR = targetR - sepPitch - estAnodeExtR;
+  const anodeExtReserve = anode ? anodExtPitch * 0.35 : 0;
+  const minFinalWrapTurns = 0.5;
+  const electrodeTargetR = targetR - sepPitch * minFinalWrapTurns - anodeExtReserve;
   if (allPitch > 0.01 && electrodeTargetR > r) {
     // Full turns
     while (r + allPitch <= electrodeTargetR) {
@@ -1528,9 +1488,13 @@ function runSimulation() {
     anode.computedLen = anodeEndArc - anode.off;
   }
 
-  // ===== Final separator wrap (1 turn) =====
-  windTurns(1, separators, 'final_wrap');
-  phaseInfo.finalWrapTurns = 1;
+  // ===== Final separator wrap: fill remaining gap to target OD =====
+  // After main wind + anode extension, wind separator to fill exact gap to targetR.
+  const remainingToTarget = targetR - r;
+  const sepWrapTurns = remainingToTarget > 0.001 ? remainingToTarget / sepPitch : minFinalWrapTurns;
+  const actualWrapTurns = Math.max(sepWrapTurns, minFinalWrapTurns);
+  windTurns(actualWrapTurns, separators, 'final_wrap');
+  phaseInfo.finalWrapTurns = actualWrapTurns;
 
   // Set separator computed lengths
   separators.forEach(s => { s.computedLen = arc - s.off; });
@@ -1668,7 +1632,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)}${pi.anodeExtTurns > 0.001 ? ' + anod ' + pi.anodeExtTurns.toFixed(2) : ''} + wrap ${pi.finalWrapTurns||1})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)}${pi.anodeExtTurns > 0.001 ? ' + anod ' + pi.anodeExtTurns.toFixed(2) : ''} + wrap ${(pi.finalWrapTurns||1).toFixed(1)})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
