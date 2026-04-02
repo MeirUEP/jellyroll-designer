@@ -1351,11 +1351,10 @@ function runSimulation() {
   }
   phaseInfo.mainTurns = n - mainWindStart;
 
-  // Record cathode computed length — cathode ends where main wind ends.
+  // Record electrode computed lengths at end of main wind.
+  // Cathode ends here. Anode may be adjusted after tab clearance check.
   if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
-
-  // Anode length is set after tab placement — anode may extend beyond cathode.
-  // For now, record the same arc; we'll adjust after tab clearance check.
+  if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
   const anodeArcAtMainEnd = arc;
 
   // ===== Phase 4: Tab clearance check =====
