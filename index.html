@@ -1444,46 +1444,45 @@ function runSimulation() {
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
-  // Anode end tab clearance — if the anode end is too close to any tab,
-  // pick the shorter adjustment: pull back before the tab or extend past it.
-  // Only two angular positions have tabs (cathode angle + anode angle at 180°),
-  // so pulling back or extending will always land in the clear zone between them.
+  // ===== Phase 4b: Anode extension =====
+  // Anode always extends past cathode end, wrapping around until just before
+  // the next tab-line crossing. Two tab angles exist (cathode + anode at 180°).
+  // Compute the angular position at main wind end and find the next tab line.
   let anodeExtended = false;
   let anodeEndArc = anodeArcAtMainEnd;
-  if (anode && anode.off >= 0) {
-    const clearance = params.anode_end_tab_clearance || 10;
-    const allTabs = [...aTabs, ...cTabs].map(t => t.arcLen);
-    for (const tabArc of allTabs) {
-      if (Math.abs(anodeEndArc - tabArc) < clearance) {
-        const pullBack = tabArc - clearance;
-        const pushPast = tabArc + clearance;
-        anodeEndArc = Math.abs(pullBack - anodeArcAtMainEnd) <= Math.abs(pushPast - anodeArcAtMainEnd)
-          ? pullBack : pushPast;
-        anodeExtended = true;
-        break;
-      }
-    }
-  }
-
-  // ===== Phase 4b: Anode extension (anode + separators, no cathode) =====
-  // If anode extends past cathode, wind additional arc with anode+sep layers.
-  // If anode is shorter (pulled back), we just set its computedLen shorter.
-  const anodeExtraArc = anodeEndArc - anodeArcAtMainEnd;
   phaseInfo.anodeExtTurns = 0;
-  if (anode && anodeExtraArc > 0.01 && anodExtPitch > 0) {
-    // Wind fractional turn with anode + separators only (cathode has ended)
-    const frac = anodeExtraArc / (2 * Math.PI * (r + anodExtPitch / 2));
-    const circ = 2 * Math.PI * (r + anodExtPitch / 2);
-    const arcStart = arc;
-    const rInc = anodExtPitch * frac;
-    arc += anodeExtraArc;
-    r += rInc;
-    n += frac;
-    turns.push({ turn: n, r, arc, pitch: anodExtPitch, circ, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
-    phaseInfo.anodeExtTurns = frac;
-  }
-  // Set final anode computed length
-  if (anode && anode.off >= 0) {
+  if (anode && anode.off >= 0 && r > 0) {
+    const clearance = params.anode_end_tab_clearance || 10;
+    const circ = 2 * Math.PI * r; // circumference at current radius
+    // Current angular position (0–360°) at end of main wind
+    const lastTurn = turns[turns.length - 1];
+    const arcIntoTurn = anodeArcAtMainEnd - (lastTurn ? lastTurn.arcStart : 0);
+    const currentAngle = lastTurn ? (arcIntoTurn / lastTurn.circ * 360) % 360 : 0;
+    // Two tab angles on the roll
+    const tabAngles = [drillAngleDeg % 360, anodAngleDeg % 360];
+    // Find the next tab-line crossing going forward from current angle
+    let bestForwardArc = circ; // max: one full turn
+    for (const tabAng of tabAngles) {
+      let fwdDeg = (tabAng - currentAngle + 360) % 360;
+      if (fwdDeg < 1) fwdDeg += 360; // skip if we're exactly on a tab line
+      const fwdArc = fwdDeg / 360 * circ;
+      if (fwdArc < bestForwardArc) bestForwardArc = fwdArc;
+    }
+    // Anode extends to just before that tab line
+    const anodeExtraArc = bestForwardArc - clearance;
+    if (anodeExtraArc > 0.01 && anodExtPitch > 0) {
+      anodeEndArc = anodeArcAtMainEnd + anodeExtraArc;
+      anodeExtended = true;
+      const frac = anodeExtraArc / (2 * Math.PI * (r + anodExtPitch / 2));
+      const extCirc = 2 * Math.PI * (r + anodExtPitch / 2);
+      const arcStart = arc;
+      const rInc = anodExtPitch * frac;
+      arc += anodeExtraArc;
+      r += rInc;
+      n += frac;
+      turns.push({ turn: n, r, arc, pitch: anodExtPitch, circ: extCirc, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
+      phaseInfo.anodeExtTurns = frac;
+    }
     anode.computedLen = anodeEndArc - anode.off;
   }
 
