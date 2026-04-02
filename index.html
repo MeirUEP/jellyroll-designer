@@ -325,7 +325,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <h3>Winding Sequence</h3>
         <div class="param-grid">
           <div class="param-item"><label>Insulation pre-turns</label><input type="number" id="p_pre_turns" step="0.1" min="0" value="1.5" title="Separator-only turns before cathode inserts"></div>
-          <div class="param-item"><label>Min cath→anode delay</label><input type="number" id="p_min_cath_to_anod" step="0.5" min="0.5" value="0.5" title="Minimum turns after cathode before anode enters. Rounded up to N+0.5 for 180° alignment."></div>
+          <div class="param-item"><label>Cath→anode delay (turns)</label><input type="number" id="p_min_cath_to_anod" step="0.1" min="0.1" value="0.5" title="Turns of cathode+separator winding before anode enters. Anode enters from opposite side (180°)."></div>
         </div>
       </div>
       <div class="panel">
@@ -1178,7 +1178,7 @@ let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
   separator_grab_distance: 50,  // blade-to-mandrel distance (mm), machine constant
   pre_turns: 1.5,               // insulation pre-turns (separator-only before cathode)
-  min_cath_to_anod: 0.5,        // minimum turns before anode enters (rounded up to N+0.5)
+  min_cath_to_anod: 0.5,        // turns of cathode+sep winding before anode enters
   tab_w: 10, tab_h: 15,
   first_cath_tab: 98,           // mm along cathode strip to first tab
   cath_weld_from_tab: 1,        // start cathode welding from tab N (skip inner tabs)
@@ -1311,13 +1311,10 @@ function runSimulation() {
   // (opposite conveyor). Compute the soonest half-turn opportunity (N+0.5 turns).
   if (cathode) cathode.off = arc;
 
-  // Compute anode entry: anode conveyor is 180° from cathode conveyor.
-  // Anode enters after 0.5, 1.5, 2.5... turns from cathode entry.
-  // Round up the minimum delay to the next valid N+0.5 value.
-  const minDelay = params.min_cath_to_anod || 0.5;
-  const cathToAnodTurns = Math.floor(minDelay) + 0.5 < minDelay
-    ? Math.floor(minDelay) + 1.5
-    : Math.floor(minDelay) + 0.5;
+  // Compute anode entry: anode enters from opposite conveyor (180° on mandrel).
+  // The delay is simply how many turns of cathode+sep winding before anode joins.
+  // Tab 180° alignment is handled by the drill angle, not by entry timing.
+  const cathToAnodTurns = params.min_cath_to_anod || 0.5;
   const cathWindStart = n;
   windTurns(cathToAnodTurns, sepAndCathLayers, 'cathode_wind');
   phaseInfo.cathWindTurns = n - cathWindStart;
