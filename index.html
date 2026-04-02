@@ -1440,27 +1440,47 @@ function runSimulation() {
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
-  // Anode end tab clearance — extend anode past any tab that's too close.
-  // The anode can wrap beyond the cathode end; we just avoid ending near a tab.
+  // Anode end tab clearance — if the anode end is too close to any tab,
+  // pick the shorter adjustment: either pull back before the tab or extend past it.
+  // Whichever keeps anode length closer to the default (closer to target OD).
   let anodeExtended = false;
   let anodeEndArc = anodeArcAtMainEnd; // default: same as cathode end
   if (anode && anode.off >= 0) {
     const clearance = params.anode_end_tab_clearance || 10;
     const allTabs = [...aTabs, ...cTabs].map(t => t.arcLen).sort((a, b) => a - b);
-    // Start from the default anode end (same as cathode) and check clearance.
-    // If too close to a tab, push the anode end past the tab + clearance.
-    // Allow extending up to ~1 extra turn beyond cathode end.
-    const maxExtension = 2 * Math.PI * r; // one full turn at current radius
     let pos = anodeArcAtMainEnd;
-    let shifted = true;
-    while (shifted) {
-      shifted = false;
-      for (const tabArc of allTabs) {
-        if (Math.abs(pos - tabArc) < clearance && (pos - anode.off) < (anodeArcAtMainEnd - anode.off) + maxExtension) {
-          pos = tabArc + clearance; // push past the tab
-          shifted = true;
-          anodeExtended = true;
+    // Check if pos is within clearance of any tab
+    for (const tabArc of allTabs) {
+      if (Math.abs(pos - tabArc) < clearance) {
+        // Two options: pull back before tab, or extend past tab
+        const pullBack = tabArc - clearance;
+        const pushPast = tabArc + clearance;
+        // Pick whichever is closer to the default position (target OD)
+        const defaultPos = anodeArcAtMainEnd;
+        if (Math.abs(pullBack - defaultPos) <= Math.abs(pushPast - defaultPos)) {
+          pos = pullBack;
+        } else {
+          pos = pushPast;
         }
+        anodeExtended = true;
+        // Re-check against all tabs with the new position
+        let conflict = true;
+        let iterations = 0;
+        while (conflict && iterations < 10) {
+          conflict = false;
+          iterations++;
+          for (const t2 of allTabs) {
+            if (Math.abs(pos - t2) < clearance) {
+              // Still conflicting — try the other direction from this tab
+              const pb = t2 - clearance;
+              const pp = t2 + clearance;
+              pos = Math.abs(pb - defaultPos) <= Math.abs(pp - defaultPos) ? pb : pp;
+              conflict = true;
+              break;
+            }
+          }
+        }
+        break; // done adjusting
       }
     }
     anodeEndArc = pos;
