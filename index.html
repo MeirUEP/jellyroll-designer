@@ -1351,9 +1351,12 @@ function runSimulation() {
   }
   phaseInfo.mainTurns = n - mainWindStart;
 
-  // Record electrode computed lengths (before tab clearance)
+  // Record cathode computed length — cathode ends where main wind ends.
   if (cathode && cathode.off >= 0) cathode.computedLen = arc - cathode.off;
-  if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
+
+  // Anode length is set after tab placement — anode may extend beyond cathode.
+  // For now, record the same arc; we'll adjust after tab clearance check.
+  const anodeArcAtMainEnd = arc;
 
   // ===== Phase 4: Tab clearance check =====
   // Tab placement first (needed for clearance check)
@@ -1437,18 +1440,31 @@ function runSimulation() {
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
-  // Anode end tab clearance — flag only, do not extend winding
+  // Anode end tab clearance — extend anode past any tab that's too close.
+  // The anode can wrap beyond the cathode end; we just avoid ending near a tab.
   let anodeExtended = false;
-  if (anode && anode.computedLen > 0) {
+  let anodeEndArc = anodeArcAtMainEnd; // default: same as cathode end
+  if (anode && anode.off >= 0) {
     const clearance = params.anode_end_tab_clearance || 10;
-    const anodeEnd = anode.off + anode.computedLen;
-    const allTabs = [...aTabs, ...cTabs];
-    for (const tab of allTabs) {
-      if (Math.abs(anodeEnd - tab.arcLen) < clearance) {
-        anodeExtended = true;
-        break;
+    const allTabs = [...aTabs, ...cTabs].map(t => t.arcLen).sort((a, b) => a - b);
+    // Start from the default anode end (same as cathode) and check clearance.
+    // If too close to a tab, push the anode end past the tab + clearance.
+    // Allow extending up to ~1 extra turn beyond cathode end.
+    const maxExtension = 2 * Math.PI * r; // one full turn at current radius
+    let pos = anodeArcAtMainEnd;
+    let shifted = true;
+    while (shifted) {
+      shifted = false;
+      for (const tabArc of allTabs) {
+        if (Math.abs(pos - tabArc) < clearance && (pos - anode.off) < (anodeArcAtMainEnd - anode.off) + maxExtension) {
+          pos = tabArc + clearance; // push past the tab
+          shifted = true;
+          anodeExtended = true;
+        }
       }
     }
+    anodeEndArc = pos;
+    anode.computedLen = anodeEndArc - anode.off;
   }
 
   // ===== Final separator wrap (1 turn) =====
@@ -1587,9 +1603,7 @@ function computeCapacity() {
 function updateInfoBar() {
   if (!simResult) return;
   const s = simResult;
-  const odLabel = s.anodeExtended
-    ? `<span>OD: <strong style="color:var(--red)">${s.actualOD.toFixed(1)}mm</strong> (target ${s.targetOD})</span>`
-    : `<span>OD: <strong>${s.actualOD.toFixed(1)}mm</strong></span>`;
+  const odLabel = `<span>OD: <strong>${s.actualOD.toFixed(1)}mm</strong> (target ${s.targetOD})</span>`;
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
@@ -1609,9 +1623,7 @@ function updateInfoBar() {
 function updateSummary() {
   if (!simResult) return;
   const s = simResult;
-  const odVal = s.anodeExtended
-    ? `<span style="color:var(--red)">${s.actualOD.toFixed(1)}mm</span> <span style="font-size:9px">(target ${s.targetOD})</span>`
-    : `${s.actualOD.toFixed(1)}mm`;
+  const odVal = `${s.actualOD.toFixed(1)}mm`;
   const pi2 = s.phaseInfo || {};
   const sepLen2 = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   const cards = [
