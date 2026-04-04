@@ -63,10 +63,12 @@ class Design(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     version = Column(String(10), nullable=False, server_default="1.2")
+    is_experimental = Column(Boolean, nullable=False, server_default="false")
     cathode_mix_id = Column(UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=True)
     anode_mix_id = Column(UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=True)
     layer_stack_id = Column(UUID(as_uuid=True), ForeignKey("layer_stacks.id"), nullable=True)
     cell_params = Column(JSONB, nullable=False)  # mandrel_d, target_od, cell_h, tabs, winding seq
+    experimental_data = Column(JSONB, nullable=True)  # measured OD, tab positions, electrode lengths
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 

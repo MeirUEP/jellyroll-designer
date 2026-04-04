@@ -104,25 +104,43 @@ class CellParams(BaseModel):
     anode_end_tab_clearance: float = 10
 
 
+# ========== Experimental Data ==========
+class ExperimentalTabData(BaseModel):
+    tab_num: int
+    arc_position_mm: float
+
+class ExperimentalData(BaseModel):
+    measured_od: float | None = None
+    cathode_length: float | None = None
+    anode_length: float | None = None
+    cathode_tabs: list[ExperimentalTabData] | None = None
+    anode_tabs: list[ExperimentalTabData] | None = None
+    notes: str | None = None
+
+
 # ========== Design ==========
 class DesignCreate(BaseModel):
     model_config = {"extra": "allow"}
     name: str = Field(..., max_length=255)
     description: str | None = None
+    is_experimental: bool = False
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     cell_params: CellParams | None = None
+    experimental_data: ExperimentalData | None = None
 
 
 class DesignUpdate(BaseModel):
     model_config = {"extra": "allow"}
     name: str | None = None
     description: str | None = None
+    is_experimental: bool | None = None
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     cell_params: CellParams | None = None
+    experimental_data: ExperimentalData | None = None
 
 
 class DesignSummary(BaseModel):
@@ -130,6 +148,7 @@ class DesignSummary(BaseModel):
     name: str
     description: str | None
     version: str
+    is_experimental: bool = False
     created_at: datetime
     updated_at: datetime
     model_config = {"from_attributes": True}
@@ -167,6 +186,7 @@ class DesignDetail(DesignSummary):
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     cell_params: CellParams
+    experimental_data: ExperimentalData | None = None
     cathode_mix: MixSchema | None = None
     anode_mix: MixSchema | None = None
     layer_stack: LayerStackSchema | None = None

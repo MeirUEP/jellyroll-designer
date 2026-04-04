@@ -396,6 +396,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
         <button class="btn-cloud" id="btnCloudSaveSim" style="font-size:9px">&#9729; Save Sim</button>
         <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
+        <button class="btn-sm" id="btnAddExperimental" style="background:#d97706;color:#fff;font-size:9px" title="Add experimental result with measured data">+ Experimental</button>
         <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
       </div>
     </div>
@@ -441,6 +442,73 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
     <button class="close-btn" onclick="document.getElementById('modalCloudOpen').classList.add('hidden')">&times;</button>
     <h3>Open Design from Cloud</h3>
     <div id="cloudDesignList"><p style="color:var(--fg2);font-size:11px">Loading...</p></div>
+  </div>
+</div>
+
+<!-- Experimental Result Modal -->
+<div class="modal-overlay hidden" id="modalExperimental">
+  <div class="modal-box" style="min-width:500px;max-height:85vh;overflow-y:auto">
+    <button class="close-btn" onclick="document.getElementById('modalExperimental').classList.add('hidden')">&times;</button>
+    <h3>Add Experimental Result</h3>
+    <p style="font-size:10px;color:var(--fg2);margin-bottom:8px">Record measured data from a built cell. Link to formulations and layer stack to enable comparison with simulation.</p>
+
+    <label style="font-size:10px;color:var(--fg2)">Name</label>
+    <input type="text" id="expName" placeholder="e.g. Batch 2026-04 Cell #3" style="width:100%;margin-bottom:6px">
+
+    <label style="font-size:10px;color:var(--fg2)">Description / Notes</label>
+    <textarea id="expNotes" rows="2" placeholder="Winding tension, observations, etc." style="width:100%;margin-bottom:6px;font-size:11px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode formulation</label>
+        <select id="expCathMix" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode formulation</label>
+        <select id="expAnodMix" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-bottom:8px">
+      <label style="font-size:10px;color:var(--fg2)">Layer stack</label>
+      <select id="expLayerStack" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+        <option value="">-- Select --</option>
+      </select>
+    </div>
+
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Measured Data</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Measured OD (mm)</label>
+        <input type="number" id="expMeasuredOD" step="0.1" placeholder="e.g. 83.5" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode length (mm)</label>
+        <input type="number" id="expCathLen" step="1" placeholder="e.g. 1920" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode length (mm)</label>
+        <input type="number" id="expAnodLen" step="1" placeholder="e.g. 1850" style="width:100%">
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode tabs (JSON array)</label>
+        <textarea id="expCathTabs" rows="3" placeholder='[{"tab_num":1,"arc_position_mm":245.2},...]' style="width:100%;font-size:9px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode tabs (JSON array)</label>
+        <textarea id="expAnodTabs" rows="3" placeholder='[{"tab_num":1,"arc_position_mm":312.8},...]' style="width:100%;font-size:9px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btnSaveExperimental" style="width:100%;background:#d97706;margin-top:6px">Save Experimental Result</button>
+    <div id="expStatus" style="font-size:10px;margin-top:4px"></div>
   </div>
 </div>
 
@@ -3150,6 +3218,89 @@ document.getElementById('btnApiSettings').addEventListener('click', () => {
   document.getElementById('settApiUrl').value = getApiUrl();
   document.getElementById('settApiKey').value = getApiKey();
   document.getElementById('modalSettings').classList.remove('hidden');
+});
+
+// ========== EXPERIMENTAL RESULT ==========
+document.getElementById('btnAddExperimental').addEventListener('click', async () => {
+  if (!isApiConfigured()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
+  const modal = document.getElementById('modalExperimental');
+  // Populate dropdowns with cloud mixes and layer stacks
+  const cathSel = document.getElementById('expCathMix');
+  const anodSel = document.getElementById('expAnodMix');
+  const stackSel = document.getElementById('expLayerStack');
+  cathSel.innerHTML = '<option value="">-- Select --</option>';
+  anodSel.innerHTML = '<option value="">-- Select --</option>';
+  stackSel.innerHTML = '<option value="">-- Select --</option>';
+  try {
+    if (cloudMixes.length === 0) cloudMixes = await api.listMixes();
+    cloudMixes.filter(m => m.type === 'cathode').forEach(m => {
+      cathSel.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+    });
+    cloudMixes.filter(m => m.type === 'anode').forEach(m => {
+      anodSel.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+    });
+    if (cloudLayerStacks.length === 0) cloudLayerStacks = await api.listLayerStacks();
+    cloudLayerStacks.forEach(s => {
+      stackSel.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+    });
+  } catch(e) { console.error('Failed to load cloud data for experimental form:', e); }
+  // Pre-fill with current params if available
+  document.getElementById('expMeasuredOD').value = '';
+  document.getElementById('expCathLen').value = '';
+  document.getElementById('expAnodLen').value = '';
+  document.getElementById('expCathTabs').value = '';
+  document.getElementById('expAnodTabs').value = '';
+  document.getElementById('expStatus').textContent = '';
+  modal.classList.remove('hidden');
+});
+
+document.getElementById('btnSaveExperimental').addEventListener('click', async () => {
+  const name = document.getElementById('expName').value.trim();
+  if (!name) { document.getElementById('expStatus').textContent = 'Name is required'; return; }
+
+  // Parse tab JSON
+  let cathTabs = null, anodTabs = null;
+  const cathTabsRaw = document.getElementById('expCathTabs').value.trim();
+  const anodTabsRaw = document.getElementById('expAnodTabs').value.trim();
+  try { if (cathTabsRaw) cathTabs = JSON.parse(cathTabsRaw); } catch(e) {
+    document.getElementById('expStatus').textContent = 'Invalid cathode tabs JSON'; return;
+  }
+  try { if (anodTabsRaw) anodTabs = JSON.parse(anodTabsRaw); } catch(e) {
+    document.getElementById('expStatus').textContent = 'Invalid anode tabs JSON'; return;
+  }
+
+  const measuredOD = parseFloat(document.getElementById('expMeasuredOD').value) || null;
+  const cathLen = parseFloat(document.getElementById('expCathLen').value) || null;
+  const anodLen = parseFloat(document.getElementById('expAnodLen').value) || null;
+  const notes = document.getElementById('expNotes').value.trim() || null;
+
+  const payload = {
+    name,
+    description: notes,
+    is_experimental: true,
+    cathode_mix_id: document.getElementById('expCathMix').value || null,
+    anode_mix_id: document.getElementById('expAnodMix').value || null,
+    layer_stack_id: document.getElementById('expLayerStack').value || null,
+    cell_params: { ...params },  // save current cell params for reference
+    experimental_data: {
+      measured_od: measuredOD,
+      cathode_length: cathLen,
+      anode_length: anodLen,
+      cathode_tabs: cathTabs,
+      anode_tabs: anodTabs,
+      notes,
+    },
+  };
+
+  try {
+    document.getElementById('expStatus').textContent = 'Saving...';
+    const saved = await api.createDesign(payload);
+    document.getElementById('expStatus').innerHTML = `<span style="color:#16a34a">Saved: ${saved.name} (${saved.id})</span>`;
+    showToast('Experimental result saved');
+    setTimeout(() => document.getElementById('modalExperimental').classList.add('hidden'), 1500);
+  } catch(e) {
+    document.getElementById('expStatus').innerHTML = `<span style="color:#ef4444">Error: ${e.message}</span>`;
+  }
 });
 
 document.getElementById('btnCloudSave').addEventListener('click', async () => {
