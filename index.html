@@ -1456,30 +1456,25 @@ function runSimulation() {
   const anodStartAngle = anode ? arcToAngle(anode.off) : 0;
 
   // === Solver: sweep first cathode tab position ===
-  let bestSolution = null;
-  let bestScore = -Infinity;
-  const solverWarnings = [];
+  // Two-pass approach:
+  //   Pass 1: Collect all valid candidates (constraints met + anode tab in range)
+  //   Pass 2: Rank by max tabs, then max electrode length among ties
   const STEP = 0.5; // mm step for sweep
+  const candidates = [];
 
-  for (let cathTabMm = cathTabMinMm; cathTabMm <= cathTabMaxMm; cathTabMm += STEP) {
+  function evaluateCandidate(cathTabMm) {
     const firstCathArcAbs = (cathode ? cathode.off : 0) + cathTabMm;
     const drillAng = computeDrillAngle(firstCathArcAbs);
     const anodAng = (drillAng + 180) % 360;
 
-    // Check inner zone constraints: cathode start & anode start vs tab zones & each other
-    const cathStartVsCathZone = angDist(cathStartAngle, drillAng);
-    const cathStartVsAnodZone = angDist(cathStartAngle, anodAng);
-    const anodStartVsCathZone = angDist(anodStartAngle, drillAng);
-    const anodStartVsAnodZone = angDist(anodStartAngle, anodAng);
-    const startVsStart = angDist(cathStartAngle, anodStartAngle);
+    // Inner zone: cathode start & anode start vs tab zones & each other
+    const innerOk = angDist(cathStartAngle, drillAng) >= keepOutHalf &&
+                    angDist(cathStartAngle, anodAng) >= keepOutHalf &&
+                    angDist(anodStartAngle, drillAng) >= keepOutHalf &&
+                    angDist(anodStartAngle, anodAng) >= keepOutHalf &&
+                    angDist(cathStartAngle, anodStartAngle) >= minClearance;
 
-    const innerOk = cathStartVsCathZone >= keepOutHalf &&
-                    cathStartVsAnodZone >= keepOutHalf &&
-                    anodStartVsCathZone >= keepOutHalf &&
-                    anodStartVsAnodZone >= keepOutHalf &&
-                    startVsStart >= minClearance;
-
-    // Place cathode tabs at this drill angle
+    // Place cathode tabs
     const trialCTabs = [];
     if (cathode) {
       for (let ti = 0; ti < turns.length; ti++) {
@@ -1512,70 +1507,89 @@ function runSimulation() {
       }
     }
 
-    // Check first anode tab position along anode strip
-    const firstAnodTabAlongAnode = trialATabs.length > 0 ? trialATabs[0].arcLen - anode.off : -1;
+    // Validate first anode tab position along anode strip
+    const firstAnodTabAlongAnode = trialATabs.length > 0 && anode ? trialATabs[0].arcLen - anode.off : -1;
     const anodTabRangeOk = firstAnodTabAlongAnode >= anodTabMinMm && firstAnodTabAlongAnode <= anodTabMaxMm;
 
-    if (!anodTabRangeOk) continue;  // skip this candidate
-
-    // Compute cathode end angle — maximize cathode length
-    // Find the last cathode tab, then extend cathode past it to maximize length
-    // while keeping cathode end angle out of keep-out zones
+    // Outer zone: try adjusting electrode end within ±tolerance for best fit
     let cathEndArc = cathode ? cathode.off + effectiveLen(cathode) : 0;
-    let cathEndAngle = arcToAngle(cathEndArc);
-
-    // Compute anode end — extend past cathode end, find max length
-    // while keeping anode end angle out of keep-out zones and away from cathode end
     let anodEndArc = anode ? anode.off + effectiveLen(anode) : 0;
-    let anodEndAngle = arcToAngle(anodEndArc);
+    let bestCathEndArc = cathEndArc;
+    let bestAnodEndArc = anodEndArc;
+    let outerOk = false;
 
-    // Check outer zone constraints
-    const cathEndVsCathZone = angDist(cathEndAngle, drillAng);
-    const cathEndVsAnodZone = angDist(cathEndAngle, anodAng);
-    const anodEndVsCathZone = angDist(anodEndAngle, drillAng);
-    const anodEndVsAnodZone = angDist(anodEndAngle, anodAng);
-    const endVsEnd = angDist(cathEndAngle, anodEndAngle);
-
-    const outerOk = cathEndVsCathZone >= keepOutHalf &&
-                    cathEndVsAnodZone >= keepOutHalf &&
-                    anodEndVsCathZone >= keepOutHalf &&
-                    anodEndVsAnodZone >= keepOutHalf &&
-                    endVsEnd >= minClearance;
-
-    // Score: prioritize max tabs, then max total electrode length
-    const totalTabs = trialCTabs.length + trialATabs.length;
-    const totalLen = (cathode ? effectiveLen(cathode) : 0) + (anode ? effectiveLen(anode) : 0);
-    const constraintsOk = innerOk && outerOk;
-    // Penalize constraint violations but still track best-effort
-    const score = (constraintsOk ? 100000 : 0) + totalTabs * 1000 + totalLen;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestSolution = {
-        cathTabMm, firstCathArcAbs, drillAng, anodAng,
-        cTabs: trialCTabs, aTabs: trialATabs,
-        firstAnodTabAlongAnode,
-        cathEndAngle, anodEndAngle, cathStartAngle, anodStartAngle,
-        innerOk, outerOk, constraintsOk,
-        totalTabs, totalLen,
-      };
+    // Sweep cathode end within ±tolerance to find a valid angle
+    for (let adj = 0; adj <= lengthTol && !outerOk; adj += 1) {
+      for (const sign of [0, -1, 1]) {
+        const tryCathEnd = cathEndArc + sign * adj;
+        const tryCathAng = arcToAngle(tryCathEnd);
+        if (angDist(tryCathAng, drillAng) < keepOutHalf) continue;
+        if (angDist(tryCathAng, anodAng) < keepOutHalf) continue;
+        // Now sweep anode end
+        for (let adj2 = 0; adj2 <= lengthTol; adj2 += 1) {
+          for (const sign2 of [0, 1, -1]) {
+            const tryAnodEnd = anodEndArc + sign2 * adj2;
+            const tryAnodAng = arcToAngle(tryAnodEnd);
+            if (angDist(tryAnodAng, drillAng) < keepOutHalf) continue;
+            if (angDist(tryAnodAng, anodAng) < keepOutHalf) continue;
+            if (angDist(tryCathAng, tryAnodAng) < minClearance) continue;
+            // Valid outer zone configuration found
+            bestCathEndArc = tryCathEnd;
+            bestAnodEndArc = tryAnodEnd;
+            outerOk = true;
+            break;
+          }
+          if (outerOk) break;
+        }
+        if (outerOk) break;
+      }
     }
+
+    const cathEndAngle = arcToAngle(bestCathEndArc);
+    const anodEndAngle = arcToAngle(bestAnodEndArc);
+    const constraintsOk = innerOk && outerOk && anodTabRangeOk;
+    const totalTabs = trialCTabs.length + trialATabs.length;
+    const totalLen = (bestCathEndArc - (cathode ? cathode.off : 0)) + (bestAnodEndArc - (anode ? anode.off : 0));
+
+    return {
+      cathTabMm, firstCathArcAbs, drillAng, anodAng,
+      cTabs: trialCTabs, aTabs: trialATabs,
+      firstAnodTabAlongAnode,
+      cathEndAngle, anodEndAngle, cathStartAngle, anodStartAngle,
+      bestCathEndArc, bestAnodEndArc,
+      innerOk, outerOk, anodTabRangeOk, constraintsOk,
+      totalTabs, totalLen,
+    };
   }
 
-  // If no solution found at all, use midpoint as fallback
-  if (!bestSolution) {
-    const fallbackMm = (cathTabMinMm + cathTabMaxMm) / 2;
-    const firstCathArcAbs = (cathode ? cathode.off : 0) + fallbackMm;
-    bestSolution = {
-      cathTabMm: fallbackMm, firstCathArcAbs,
-      drillAng: computeDrillAngle(firstCathArcAbs),
-      anodAng: (computeDrillAngle(firstCathArcAbs) + 180) % 360,
-      cTabs: [], aTabs: [],
-      firstAnodTabAlongAnode: -1,
-      cathEndAngle: 0, anodEndAngle: 0, cathStartAngle, anodStartAngle,
-      innerOk: false, outerOk: false, constraintsOk: false,
-      totalTabs: 0, totalLen: 0,
-    };
+  // Pass 1: Evaluate all candidates
+  for (let cathTabMm = cathTabMinMm; cathTabMm <= cathTabMaxMm; cathTabMm += STEP) {
+    candidates.push(evaluateCandidate(cathTabMm));
+  }
+
+  // Pass 2: Select best solution
+  // Priority: valid solutions first, then max tabs, then max electrode length
+  const validCandidates = candidates.filter(c => c.constraintsOk);
+  let bestSolution;
+
+  if (validCandidates.length > 0) {
+    // Among valid: sort by tabs descending, then total length descending
+    validCandidates.sort((a, b) => {
+      if (b.totalTabs !== a.totalTabs) return b.totalTabs - a.totalTabs;
+      return b.totalLen - a.totalLen;
+    });
+    bestSolution = validCandidates[0];
+  } else {
+    // No valid solution — pick the one with fewest constraint violations
+    // and best tab coverage as tiebreaker
+    candidates.sort((a, b) => {
+      const aViolations = (a.innerOk ? 0 : 1) + (a.outerOk ? 0 : 1) + (a.anodTabRangeOk ? 0 : 1);
+      const bViolations = (b.innerOk ? 0 : 1) + (b.outerOk ? 0 : 1) + (b.anodTabRangeOk ? 0 : 1);
+      if (aViolations !== bViolations) return aViolations - bViolations;
+      if (b.totalTabs !== a.totalTabs) return b.totalTabs - a.totalTabs;
+      return b.totalLen - a.totalLen;
+    });
+    bestSolution = candidates[0] || evaluateCandidate((cathTabMinMm + cathTabMaxMm) / 2);
   }
 
   // Apply best solution
@@ -2004,9 +2018,8 @@ function buildLayerUI() {
 }
 
 function markDirty() {
-  // Auto-run with debounce
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => runSimulation(), 300);
+  // Highlight Run button to indicate re-simulation needed (no auto-run — solver is expensive)
+  document.getElementById('btnRun').classList.add('needs-run');
 }
 
 document.getElementById('btnAddLayer').addEventListener('click', () => {
