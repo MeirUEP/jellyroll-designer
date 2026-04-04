@@ -1389,6 +1389,16 @@ function runSimulation() {
         return (firstArc - t.arcStart) / t.circ * 360;
       }
     }
+    // Fallback: extrapolate angle from nearest turn instead of defaulting to 0°
+    if (turns.length > 0) {
+      const lastT = turns[turns.length - 1];
+      const firstT = turns[0];
+      if (firstArc < firstT.arcStart) {
+        return ((firstArc / firstT.circ) % 1) * 360;
+      } else {
+        return (((firstArc - lastT.arcStart) / lastT.circ) % 1) * 360;
+      }
+    }
     return 0;
   }
 
@@ -2887,11 +2897,12 @@ document.getElementById('btnPDF').addEventListener('click', () => {
   <h2>Cell Parameters</h2>
   <div class="params">
     <div><span>Mandrel diameter</span><span>${params.mandrel_d} mm</span></div>
+    <div><span>Separator overhang</span><span>${params.sep_overhang} mm</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
     <div><span>1st cathode tab arc</span><span>${params.first_cath_tab} mm</span></div>
     <div><span>Cathode drill angle</span><span>${s.drillAngleDeg.toFixed(1)}°</span></div>
     <div><span>Anode drill angle</span><span>${s.anodAngleDeg.toFixed(1)}° (+180°)</span></div>
-    <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
+    <div><span>Cell height</span><span>${params.cell_h} mm</span></div>
     <div><span>Pitch range</span><span>${s.minPitch.toFixed(2)}–${s.maxPitch.toFixed(2)} mm</span></div>
   </div>
 
