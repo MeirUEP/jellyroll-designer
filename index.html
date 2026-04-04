@@ -334,12 +334,18 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <div class="param-grid">
           <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
           <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
-          <div class="param-item"><label>1st cathode tab (mm)</label><input type="number" id="p_first_cath_tab" step="1" value="98" title="Distance along cathode strip to first tab. All subsequent cathode tabs align at the same drill angle. Anode tabs are always 180° opposite."></div>
-          <div class="param-item"><label>Anode end tab clearance (mm)</label><input type="number" id="p_anode_end_tab_clearance" step="1" value="10" title="Minimum arc distance between anode end and nearest tab. If too close, anode is extended past the tab."></div>
+          <div class="param-item"><label>1st cath tab min (in)</label><input type="number" id="p_first_cath_tab_min_in" step="0.1" value="4.5" title="Min distance along cathode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st cath tab max (in)</label><input type="number" id="p_first_cath_tab_max_in" step="0.1" value="5.0" title="Max distance along cathode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st anod tab min (in)</label><input type="number" id="p_first_anod_tab_min_in" step="0.1" value="6.0" title="Min distance along anode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st anod tab max (in)</label><input type="number" id="p_first_anod_tab_max_in" step="0.1" value="6.5" title="Max distance along anode strip to first tab (inches)"></div>
+          <div class="param-item"><label>Tab zone (&plusmn; deg)</label><input type="number" id="p_tab_zone_half_deg" step="1" min="1" max="45" value="10" title="Each tab occupies this angular zone around drill angle for safety clearance"></div>
+          <div class="param-item"><label>Min clearance (deg)</label><input type="number" id="p_min_clearance_deg" step="1" min="5" max="90" value="30" title="Minimum angular separation between electrode start/end events and tab zones"></div>
+          <div class="param-item"><label>Length tolerance (mm)</label><input type="number" id="p_length_tolerance" step="1" min="1" max="20" value="5" title="Cut length tolerance for electrodes (±mm)"></div>
           <div class="param-item"><label>Cathode weld from tab #</label><input type="number" id="p_cath_weld_from_tab" step="1" min="1" value="1" title="Skip inner cathode tabs — start welding from this tab number"></div>
           <div class="param-item"><label>Anode weld from tab #</label><input type="number" id="p_anod_weld_from_tab" step="1" min="1" value="1" title="Skip inner anode tabs — start welding from this tab number"></div>
         </div>
         <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
+        <div id="constraintWarnings" style="font-size:9px;margin-top:4px;padding:2px 4px;border-radius:3px"></div>
       </div>
       <div class="panel" id="panel3d" style="display:none">
         <h3>3D Display</h3>
@@ -1178,13 +1184,18 @@ let layers = [
 let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
   separator_grab_distance: 50,  // blade-to-mandrel distance (mm), machine constant
-  pre_turns: 1.5,               // insulation pre-turns (separator-only before cathode)
-  min_cath_to_anod: 0.5,        // turns of cathode+sep winding before anode enters
+  pre_turns: 1.5,               // exact insulation pre-turns (separator-only before cathode)
+  min_cath_to_anod: 0.5,        // exact turns of cathode+sep winding before anode enters
   tab_w: 10, tab_h: 15,
-  first_cath_tab: 98,           // mm along cathode strip to first tab
+  first_cath_tab_min_in: 4.5,   // min 1st cathode tab position along cathode (inches)
+  first_cath_tab_max_in: 5.0,   // max 1st cathode tab position along cathode (inches)
+  first_anod_tab_min_in: 6.0,   // min 1st anode tab position along anode (inches)
+  first_anod_tab_max_in: 6.5,   // max 1st anode tab position along anode (inches)
+  tab_zone_half_deg: 10,        // tabs occupy ±this angle for safety clearance checks
+  min_clearance_deg: 30,        // min angular separation between events and tab zones
+  length_tolerance: 5,          // electrode cut length tolerance (±mm)
   cath_weld_from_tab: 1,        // start cathode welding from tab N (skip inner tabs)
   anod_weld_from_tab: 1,        // start anode welding from tab N (skip inner tabs)
-  anode_end_tab_clearance: 10,
   tension_factor: 1,            // 1 = perfect winding, <1 = looser (air gap increases pitch)
 };
 
@@ -1364,9 +1375,10 @@ function runSimulation() {
   if (anode && anode.off >= 0) anode.computedLen = arc - anode.off;
   const anodeArcAtMainEnd = arc;
 
-  // ===== Phase 4: Tab clearance check =====
-  // Tab placement first (needed for clearance check)
-  const cTabs = [], aTabs = [];
+  // ===== Phase 4: Constraint Solver for Tab Placement =====
+  // The solver sweeps the first cathode tab position within its allowed range
+  // and finds the placement that maximizes tabs and electrode length while
+  // satisfying all angular clearance constraints.
 
   function layerMidR(turnIdx, targetLayer) {
     const t = turns[turnIdx];
@@ -1389,15 +1401,11 @@ function runSimulation() {
         return (firstArc - t.arcStart) / t.circ * 360;
       }
     }
-    // Fallback: extrapolate angle from nearest turn instead of defaulting to 0°
     if (turns.length > 0) {
       const lastT = turns[turns.length - 1];
       const firstT = turns[0];
-      if (firstArc < firstT.arcStart) {
-        return ((firstArc / firstT.circ) % 1) * 360;
-      } else {
-        return (((firstArc - lastT.arcStart) / lastT.circ) % 1) * 360;
-      }
+      if (firstArc < firstT.arcStart) return ((firstArc / firstT.circ) % 1) * 360;
+      return (((firstArc - lastT.arcStart) / lastT.circ) % 1) * 360;
     }
     return 0;
   }
@@ -1406,90 +1414,249 @@ function runSimulation() {
     return openEndedTypes.has(l.type) ? (l.computedLen || l.len || 0) : (l.len || 0);
   }
 
-  const firstCathArcAbs = (cathode ? cathode.off : 0) + (params.first_cath_tab || 200);
-  const drillAngleDeg = computeDrillAngle(firstCathArcAbs);
-  const anodAngleDeg = (drillAngleDeg + 180) % 360;
+  // Angular distance between two angles (0–360), accounting for wrap
+  function angDist(a, b) {
+    const d = Math.abs(((a - b) % 360 + 360) % 360);
+    return Math.min(d, 360 - d);
+  }
 
-  // Place cathode tabs
-  let firstCathTabTurn = 0;
-  if (cathode) {
+  // Check if angle is within a zone (center ± halfWidth), accounting for wrap
+  function inZone(angle, center, halfWidth) {
+    return angDist(angle, center) < halfWidth;
+  }
+
+  // Compute angular position at a given arc length
+  function arcToAngle(arcPos) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
-      const fracC = drillAngleDeg / 360;
-      const tabArc = t.arcStart + fracC * t.circ;
-      if (tabArc < firstCathArcAbs) continue;
-      if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
-        const cathInActive = t.active.find(l => l.name === cathode.name);
-        if (cathInActive) {
-          if (cTabs.length === 0) firstCathTabTurn = t.turn;
-          cTabs.push({ turn: t.turn, r: layerMidR(ti, cathInActive), pitch: t.pitch, arcLen: tabArc, idx: cTabs.length + 1, circ: t.circ, angleDeg: drillAngleDeg });
+      if (arcPos >= t.arcStart && arcPos < t.arc) {
+        return ((arcPos - t.arcStart) / t.circ * 360) % 360;
+      }
+    }
+    if (turns.length > 0) {
+      const lastT = turns[turns.length - 1];
+      return ((arcPos - lastT.arcStart) / lastT.circ * 360) % 360;
+    }
+    return 0;
+  }
+
+  // Constraint parameters
+  const tabZoneHalf = params.tab_zone_half_deg || 10;
+  const minClearance = params.min_clearance_deg || 30;
+  const keepOutHalf = tabZoneHalf + minClearance;  // total keep-out from tab zone center
+  const IN_TO_MM = 25.4;
+  const cathTabMinMm = (params.first_cath_tab_min_in || 4.5) * IN_TO_MM;
+  const cathTabMaxMm = (params.first_cath_tab_max_in || 5.0) * IN_TO_MM;
+  const anodTabMinMm = (params.first_anod_tab_min_in || 6.0) * IN_TO_MM;
+  const anodTabMaxMm = (params.first_anod_tab_max_in || 6.5) * IN_TO_MM;
+  const lengthTol = params.length_tolerance || 5;
+
+  // Compute fixed angular positions (determined by machine constants)
+  const cathStartAngle = cathode ? arcToAngle(cathode.off) : 0;
+  const anodStartAngle = anode ? arcToAngle(anode.off) : 0;
+
+  // === Solver: sweep first cathode tab position ===
+  let bestSolution = null;
+  let bestScore = -Infinity;
+  const solverWarnings = [];
+  const STEP = 0.5; // mm step for sweep
+
+  for (let cathTabMm = cathTabMinMm; cathTabMm <= cathTabMaxMm; cathTabMm += STEP) {
+    const firstCathArcAbs = (cathode ? cathode.off : 0) + cathTabMm;
+    const drillAng = computeDrillAngle(firstCathArcAbs);
+    const anodAng = (drillAng + 180) % 360;
+
+    // Check inner zone constraints: cathode start & anode start vs tab zones & each other
+    const cathStartVsCathZone = angDist(cathStartAngle, drillAng);
+    const cathStartVsAnodZone = angDist(cathStartAngle, anodAng);
+    const anodStartVsCathZone = angDist(anodStartAngle, drillAng);
+    const anodStartVsAnodZone = angDist(anodStartAngle, anodAng);
+    const startVsStart = angDist(cathStartAngle, anodStartAngle);
+
+    const innerOk = cathStartVsCathZone >= keepOutHalf &&
+                    cathStartVsAnodZone >= keepOutHalf &&
+                    anodStartVsCathZone >= keepOutHalf &&
+                    anodStartVsAnodZone >= keepOutHalf &&
+                    startVsStart >= minClearance;
+
+    // Place cathode tabs at this drill angle
+    const trialCTabs = [];
+    if (cathode) {
+      for (let ti = 0; ti < turns.length; ti++) {
+        const t = turns[ti];
+        const tabArc = t.arcStart + (drillAng / 360) * t.circ;
+        if (tabArc < firstCathArcAbs) continue;
+        if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
+          const cathInActive = t.active.find(l => l.name === cathode.name);
+          if (cathInActive) {
+            trialCTabs.push({ turn: t.turn, r: layerMidR(ti, cathInActive), pitch: t.pitch, arcLen: tabArc, idx: trialCTabs.length + 1, circ: t.circ, angleDeg: drillAng, turnIdx: ti });
+          }
         }
       }
     }
-  }
 
-  // Place anode tabs
-  if (anode) {
-    for (let ti = 0; ti < turns.length; ti++) {
-      const t = turns[ti];
-      if (t.turn < firstCathTabTurn) continue;
-      const fracA = anodAngleDeg / 360;
-      const tabArc = t.arcStart + fracA * t.circ;
-      if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
-        const anodInActive = t.active.find(l => l.name === anode.name);
-        if (anodInActive) {
-          aTabs.push({ turn: t.turn, r: layerMidR(ti, anodInActive), pitch: t.pitch, arcLen: tabArc, idx: aTabs.length + 1, circ: t.circ, angleDeg: anodAngleDeg });
+    // Place anode tabs
+    const trialATabs = [];
+    const firstCathTabTurn = trialCTabs.length > 0 ? trialCTabs[0].turn : 0;
+    if (anode) {
+      for (let ti = 0; ti < turns.length; ti++) {
+        const t = turns[ti];
+        if (t.turn < firstCathTabTurn) continue;
+        const tabArc = t.arcStart + (anodAng / 360) * t.circ;
+        if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
+          const anodInActive = t.active.find(l => l.name === anode.name);
+          if (anodInActive) {
+            trialATabs.push({ turn: t.turn, r: layerMidR(ti, anodInActive), pitch: t.pitch, arcLen: tabArc, idx: trialATabs.length + 1, circ: t.circ, angleDeg: anodAng, turnIdx: ti });
+          }
         }
       }
     }
+
+    // Check first anode tab position along anode strip
+    const firstAnodTabAlongAnode = trialATabs.length > 0 ? trialATabs[0].arcLen - anode.off : -1;
+    const anodTabRangeOk = firstAnodTabAlongAnode >= anodTabMinMm && firstAnodTabAlongAnode <= anodTabMaxMm;
+
+    if (!anodTabRangeOk) continue;  // skip this candidate
+
+    // Compute cathode end angle — maximize cathode length
+    // Find the last cathode tab, then extend cathode past it to maximize length
+    // while keeping cathode end angle out of keep-out zones
+    let cathEndArc = cathode ? cathode.off + effectiveLen(cathode) : 0;
+    let cathEndAngle = arcToAngle(cathEndArc);
+
+    // Compute anode end — extend past cathode end, find max length
+    // while keeping anode end angle out of keep-out zones and away from cathode end
+    let anodEndArc = anode ? anode.off + effectiveLen(anode) : 0;
+    let anodEndAngle = arcToAngle(anodEndArc);
+
+    // Check outer zone constraints
+    const cathEndVsCathZone = angDist(cathEndAngle, drillAng);
+    const cathEndVsAnodZone = angDist(cathEndAngle, anodAng);
+    const anodEndVsCathZone = angDist(anodEndAngle, drillAng);
+    const anodEndVsAnodZone = angDist(anodEndAngle, anodAng);
+    const endVsEnd = angDist(cathEndAngle, anodEndAngle);
+
+    const outerOk = cathEndVsCathZone >= keepOutHalf &&
+                    cathEndVsAnodZone >= keepOutHalf &&
+                    anodEndVsCathZone >= keepOutHalf &&
+                    anodEndVsAnodZone >= keepOutHalf &&
+                    endVsEnd >= minClearance;
+
+    // Score: prioritize max tabs, then max total electrode length
+    const totalTabs = trialCTabs.length + trialATabs.length;
+    const totalLen = (cathode ? effectiveLen(cathode) : 0) + (anode ? effectiveLen(anode) : 0);
+    const constraintsOk = innerOk && outerOk;
+    // Penalize constraint violations but still track best-effort
+    const score = (constraintsOk ? 100000 : 0) + totalTabs * 1000 + totalLen;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestSolution = {
+        cathTabMm, firstCathArcAbs, drillAng, anodAng,
+        cTabs: trialCTabs, aTabs: trialATabs,
+        firstAnodTabAlongAnode,
+        cathEndAngle, anodEndAngle, cathStartAngle, anodStartAngle,
+        innerOk, outerOk, constraintsOk,
+        totalTabs, totalLen,
+      };
+    }
   }
+
+  // If no solution found at all, use midpoint as fallback
+  if (!bestSolution) {
+    const fallbackMm = (cathTabMinMm + cathTabMaxMm) / 2;
+    const firstCathArcAbs = (cathode ? cathode.off : 0) + fallbackMm;
+    bestSolution = {
+      cathTabMm: fallbackMm, firstCathArcAbs,
+      drillAng: computeDrillAngle(firstCathArcAbs),
+      anodAng: (computeDrillAngle(firstCathArcAbs) + 180) % 360,
+      cTabs: [], aTabs: [],
+      firstAnodTabAlongAnode: -1,
+      cathEndAngle: 0, anodEndAngle: 0, cathStartAngle, anodStartAngle,
+      innerOk: false, outerOk: false, constraintsOk: false,
+      totalTabs: 0, totalLen: 0,
+    };
+  }
+
+  // Apply best solution
+  const cTabs = bestSolution.cTabs;
+  const aTabs = bestSolution.aTabs;
+  const drillAngleDeg = bestSolution.drillAng;
+  const anodAngleDeg = bestSolution.anodAng;
 
   // Filter tabs based on weld-from-tab setting (skip unwelded inner tabs)
   const cathWeldFrom = Math.max(1, params.cath_weld_from_tab || 1);
   const anodWeldFrom = Math.max(1, params.anod_weld_from_tab || 1);
   const cTabsSkipped = cTabs.splice(0, cathWeldFrom - 1);
   const aTabsSkipped = aTabs.splice(0, anodWeldFrom - 1);
-  // Renumber remaining tabs
   cTabs.forEach((t, i) => { t.idx = i + 1; });
   aTabs.forEach((t, i) => { t.idx = i + 1; });
 
   for (let i = 1; i < cTabs.length; i++) cTabs[i].spacing = cTabs[i].arcLen - cTabs[i-1].arcLen;
   for (let i = 1; i < aTabs.length; i++) aTabs[i].spacing = aTabs[i].arcLen - aTabs[i-1].arcLen;
 
+  // Build constraint warnings
+  const constraints = [];
+  if (!bestSolution.innerOk) {
+    const details = [];
+    if (angDist(bestSolution.cathStartAngle, drillAngleDeg) < keepOutHalf)
+      details.push(`Cathode start (${bestSolution.cathStartAngle.toFixed(0)}°) too close to cathode tab zone`);
+    if (angDist(bestSolution.cathStartAngle, anodAngleDeg) < keepOutHalf)
+      details.push(`Cathode start (${bestSolution.cathStartAngle.toFixed(0)}°) too close to anode tab zone`);
+    if (angDist(bestSolution.anodStartAngle, drillAngleDeg) < keepOutHalf)
+      details.push(`Anode start (${bestSolution.anodStartAngle.toFixed(0)}°) too close to cathode tab zone`);
+    if (angDist(bestSolution.anodStartAngle, anodAngleDeg) < keepOutHalf)
+      details.push(`Anode start (${bestSolution.anodStartAngle.toFixed(0)}°) too close to anode tab zone`);
+    if (angDist(bestSolution.cathStartAngle, bestSolution.anodStartAngle) < minClearance)
+      details.push(`Cathode start (${bestSolution.cathStartAngle.toFixed(0)}°) too close to anode start (${bestSolution.anodStartAngle.toFixed(0)}°)`);
+    constraints.push({ zone: 'Inner', ok: false, details });
+  }
+  if (!bestSolution.outerOk) {
+    const details = [];
+    if (angDist(bestSolution.cathEndAngle, drillAngleDeg) < keepOutHalf)
+      details.push(`Cathode end (${bestSolution.cathEndAngle.toFixed(0)}°) too close to cathode tab zone`);
+    if (angDist(bestSolution.cathEndAngle, anodAngleDeg) < keepOutHalf)
+      details.push(`Cathode end (${bestSolution.cathEndAngle.toFixed(0)}°) too close to anode tab zone`);
+    if (angDist(bestSolution.anodEndAngle, drillAngleDeg) < keepOutHalf)
+      details.push(`Anode end (${bestSolution.anodEndAngle.toFixed(0)}°) too close to cathode tab zone`);
+    if (angDist(bestSolution.anodEndAngle, anodAngleDeg) < keepOutHalf)
+      details.push(`Anode end (${bestSolution.anodEndAngle.toFixed(0)}°) too close to anode tab zone`);
+    if (angDist(bestSolution.cathEndAngle, bestSolution.anodEndAngle) < minClearance)
+      details.push(`Cathode end (${bestSolution.cathEndAngle.toFixed(0)}°) too close to anode end (${bestSolution.anodEndAngle.toFixed(0)}°)`);
+    constraints.push({ zone: 'Outer', ok: false, details });
+  }
+
   // ===== Phase 4b: Anode extension =====
-  // Anode always extends past cathode end, wrapping around until just before
-  // the next tab-line crossing. Two tab angles exist (cathode + anode at 180°).
-  // Compute the angular position at main wind end and find the next tab line.
+  // Anode extends past cathode end, but must keep end angle in a safe zone.
   let anodeExtended = false;
   let anodeEndArc = anodeArcAtMainEnd;
   phaseInfo.anodeExtTurns = 0;
   if (anode && anode.off >= 0 && r > 0) {
-    const clearance = params.anode_end_tab_clearance || 10;
-    const circ = 2 * Math.PI * r; // circumference at current radius
-    // Current angular position (0–360°) at end of main wind
+    const circ = 2 * Math.PI * r;
     const lastTurn = turns[turns.length - 1];
-    const arcIntoTurn = anodeArcAtMainEnd - (lastTurn ? lastTurn.arcStart : 0);
-    const currentAngle = lastTurn ? (arcIntoTurn / lastTurn.circ * 360) % 360 : 0;
-    // Two tab angles on the roll
-    const tabAngles = [drillAngleDeg % 360, anodAngleDeg % 360];
-    // Find the next tab-line crossing going forward from current angle
-    let bestForwardArc = circ; // max: one full turn
-    for (const tabAng of tabAngles) {
-      let fwdDeg = (tabAng - currentAngle + 360) % 360;
-      if (fwdDeg < 1) fwdDeg += 360; // skip if we're exactly on a tab line
-      const fwdArc = fwdDeg / 360 * circ;
-      if (fwdArc < bestForwardArc) bestForwardArc = fwdArc;
+    const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / lastTurn.circ * 360) % 360 : 0;
+
+    // Sweep forward to find maximum extension where anode end angle is safe
+    // (away from both tab zones and cathode end angle)
+    let bestExtArc = 0;
+    for (let tryArc = 1; tryArc < circ; tryArc += 1) {
+      const tryAngle = (currentAngle + tryArc / circ * 360) % 360;
+      const okCathZone = angDist(tryAngle, drillAngleDeg) >= keepOutHalf;
+      const okAnodZone = angDist(tryAngle, anodAngleDeg) >= keepOutHalf;
+      const okCathEnd = angDist(tryAngle, bestSolution.cathEndAngle) >= minClearance;
+      if (okCathZone && okAnodZone && okCathEnd && tryArc > bestExtArc) {
+        bestExtArc = tryArc;
+      }
     }
-    // Anode extends to just before that tab line
-    const anodeExtraArc = bestForwardArc - clearance;
-    if (anodeExtraArc > 0.01 && anodExtPitch > 0) {
-      anodeEndArc = anodeArcAtMainEnd + anodeExtraArc;
+
+    if (bestExtArc > 0.01 && anodExtPitch > 0) {
+      anodeEndArc = anodeArcAtMainEnd + bestExtArc;
       anodeExtended = true;
-      const frac = anodeExtraArc / (2 * Math.PI * (r + anodExtPitch / 2));
+      const frac = bestExtArc / (2 * Math.PI * (r + anodExtPitch / 2));
       const extCirc = 2 * Math.PI * (r + anodExtPitch / 2);
       const arcStart = arc;
       const rInc = anodExtPitch * frac;
-      arc += anodeExtraArc;
+      arc += bestExtArc;
       r += rInc;
       n += frac;
       turns.push({ turn: n, r, arc, pitch: anodExtPitch, circ: extCirc, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
@@ -1525,12 +1692,36 @@ function runSimulation() {
     cathodeLen: cathode ? cathode.computedLen : 0,
     anodeLen: anode ? anode.computedLen : 0,
     phaseInfo,
+    solver: bestSolution,
+    constraints,
   };
 
+  // Update drill angle info display
   const drillInfo = document.getElementById('drillAngleInfo');
   if (drillInfo) {
     const skipNote = (cTabsSkipped.length || aTabsSkipped.length) ? ` (skipped ${cTabsSkipped.length}C+${aTabsSkipped.length}A inner)` : '';
-    drillInfo.innerHTML = `Drill angle: <strong>${drillAngleDeg.toFixed(1)}°</strong> (cathode) / <strong>${anodAngleDeg.toFixed(1)}°</strong> (anode, +180°) &bull; ${cTabs.length}C + ${aTabs.length}A tabs${skipNote}`;
+    const solvedTab = bestSolution.cathTabMm.toFixed(1);
+    const anodTab = bestSolution.firstAnodTabAlongAnode >= 0 ? (bestSolution.firstAnodTabAlongAnode / IN_TO_MM).toFixed(2) + '"' : 'N/A';
+    drillInfo.innerHTML =
+      `Drill: <strong>${drillAngleDeg.toFixed(1)}°</strong>/<strong>${anodAngleDeg.toFixed(1)}°</strong> &bull; ` +
+      `1st cath tab: <strong>${solvedTab}mm</strong> (${(bestSolution.cathTabMm / IN_TO_MM).toFixed(2)}") &bull; ` +
+      `1st anod tab: <strong>${anodTab}</strong> &bull; ` +
+      `${cTabs.length}C + ${aTabs.length}A tabs${skipNote}`;
+  }
+
+  // Update constraint warnings display
+  const warnEl = document.getElementById('constraintWarnings');
+  if (warnEl) {
+    if (constraints.length === 0) {
+      warnEl.innerHTML = '<span style="color:#16a34a">All angular constraints satisfied</span>';
+      warnEl.style.background = 'rgba(22,163,106,0.1)';
+    } else {
+      const warnHtml = constraints.map(c =>
+        `<div style="color:#ef4444"><strong>${c.zone} zone:</strong> ${c.details.join('; ')}</div>`
+      ).join('');
+      warnEl.innerHTML = warnHtml;
+      warnEl.style.background = 'rgba(239,68,68,0.1)';
+    }
   }
 
   document.getElementById('btnRun').classList.remove('needs-run');
@@ -2773,9 +2964,15 @@ document.getElementById('fileLoad').addEventListener('change', e => {
         layers = data.layers;
         // Backward compat: clean up old fields
         layers.forEach(l => { delete l.startTurn; });
-        if (params.first_cath_tab === undefined) {
-          params.first_cath_tab = 200;
+        // Migrate old first_cath_tab (single value) to range-based params
+        if (params.first_cath_tab !== undefined && params.first_cath_tab_min_in === undefined) {
+          params.first_cath_tab_min_in = 4.5;
+          params.first_cath_tab_max_in = 5.0;
+          params.first_anod_tab_min_in = 6.0;
+          params.first_anod_tab_max_in = 6.5;
+          delete params.first_cath_tab;
           delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
+          delete params.anode_end_tab_clearance; delete params.first_cath_arc;
         }
         if (params.separator_grab_distance === undefined) {
           params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
@@ -2899,9 +3096,11 @@ document.getElementById('btnPDF').addEventListener('click', () => {
     <div><span>Mandrel diameter</span><span>${params.mandrel_d} mm</span></div>
     <div><span>Separator overhang</span><span>${params.sep_overhang} mm</span></div>
     <div><span>Computed OD</span><span>${(s.outerR*2).toFixed(1)} mm</span></div>
-    <div><span>1st cathode tab arc</span><span>${params.first_cath_tab} mm</span></div>
+    <div><span>1st cathode tab</span><span>${s.solver ? s.solver.cathTabMm.toFixed(1) + 'mm (' + (s.solver.cathTabMm/25.4).toFixed(2) + '")' : 'N/A'}</span></div>
+    <div><span>1st anode tab</span><span>${s.solver && s.solver.firstAnodTabAlongAnode >= 0 ? (s.solver.firstAnodTabAlongAnode/25.4).toFixed(2) + '"' : 'N/A'}</span></div>
     <div><span>Cathode drill angle</span><span>${s.drillAngleDeg.toFixed(1)}°</span></div>
     <div><span>Anode drill angle</span><span>${s.anodAngleDeg.toFixed(1)}° (+180°)</span></div>
+    <div><span>Constraints</span><span style="color:${s.constraints && s.constraints.length === 0 ? '#16a34a' : '#ef4444'}">${s.constraints && s.constraints.length === 0 ? 'All OK' : s.constraints.length + ' violation(s)'}</span></div>
     <div><span>Cell height</span><span>${params.cell_h} mm</span></div>
     <div><span>Pitch range</span><span>${s.minPitch.toFixed(2)}–${s.maxPitch.toFixed(2)} mm</span></div>
   </div>
@@ -3068,9 +3267,15 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
           params = design.params || design.cell_params || {};
           layers = design.layers || [];
           layers.forEach(l => { delete l.startTurn; });
-          if (params.first_cath_tab === undefined) {
-            params.first_cath_tab = 200;
+          // Migrate old params to new solver-based ranges
+          if (params.first_cath_tab_min_in === undefined) {
+            params.first_cath_tab_min_in = 4.5;
+            params.first_cath_tab_max_in = 5.0;
+            params.first_anod_tab_min_in = 6.0;
+            params.first_anod_tab_max_in = 6.5;
+            delete params.first_cath_tab; delete params.first_cath_arc;
             delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
+            delete params.anode_end_tab_clearance;
           }
           if (params.separator_grab_distance === undefined) {
             params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
