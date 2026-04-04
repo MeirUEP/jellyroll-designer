@@ -1459,7 +1459,7 @@ function runSimulation() {
   // Two-pass approach:
   //   Pass 1: Collect all valid candidates (constraints met + anode tab in range)
   //   Pass 2: Rank by max tabs, then max electrode length among ties
-  const STEP = 0.5; // mm step for sweep
+  const STEP = 1.0; // mm step for sweep (1mm ≈ 1.4° at outer radius — sufficient for 30° constraints)
   const candidates = [];
 
   function evaluateCandidate(cathTabMm) {
