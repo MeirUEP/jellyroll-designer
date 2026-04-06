@@ -110,11 +110,30 @@ class ExperimentalTabData(BaseModel):
     arc_position_mm: float
 
 class ExperimentalData(BaseModel):
-    measured_od: float | None = None
-    cathode_length: float | None = None
-    anode_length: float | None = None
+    # Cell measurements
+    measured_od: float | None = None             # mm — outer diameter of built cell
+    measured_id: float | None = None             # mm — inner diameter (if measurable)
+    num_turns: float | None = None               # counted turns from built cell
+
+    # Electrode lengths (as cut / measured)
+    cathode_length: float | None = None          # mm
+    anode_length: float | None = None            # mm
+    separator_length: float | None = None        # mm
+
+    # Tab measurements
     cathode_tabs: list[ExperimentalTabData] | None = None
     anode_tabs: list[ExperimentalTabData] | None = None
+    cathode_tab_spacings: list[float] | None = None   # consecutive spacings (mm)
+    anode_tab_spacings: list[float] | None = None     # consecutive spacings (mm)
+    first_cathode_tab_mm: float | None = None    # mm from cathode start to first tab
+    first_anode_tab_mm: float | None = None      # mm from anode start to first tab
+    num_cathode_tabs: int | None = None
+    num_anode_tabs: int | None = None
+
+    # Machine settings
+    machine_tension: float | None = None         # machine tension setting (for correlation)
+    winding_speed: float | None = None           # rpm or m/min
+
     notes: str | None = None
 
 
@@ -127,7 +146,10 @@ class DesignCreate(BaseModel):
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
+    reference_design_id: UUID | None = None
     cell_params: CellParams | None = None
+    layers: list[dict] | None = None
+    elec_props: dict | None = None
     experimental_data: ExperimentalData | None = None
 
 
@@ -139,7 +161,10 @@ class DesignUpdate(BaseModel):
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
+    reference_design_id: UUID | None = None
     cell_params: CellParams | None = None
+    layers: list[dict] | None = None
+    elec_props: dict | None = None
     experimental_data: ExperimentalData | None = None
 
 
@@ -185,7 +210,10 @@ class DesignDetail(DesignSummary):
     cathode_mix_id: UUID | None = None
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
+    reference_design_id: UUID | None = None
     cell_params: CellParams
+    layers: list[dict] | None = None
+    elec_props: dict | None = None
     experimental_data: ExperimentalData | None = None
     cathode_mix: MixSchema | None = None
     anode_mix: MixSchema | None = None

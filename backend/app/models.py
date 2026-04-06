@@ -68,6 +68,9 @@ class Design(Base):
     anode_mix_id = Column(UUID(as_uuid=True), ForeignKey("mixes.id"), nullable=True)
     layer_stack_id = Column(UUID(as_uuid=True), ForeignKey("layer_stacks.id"), nullable=True)
     cell_params = Column(JSONB, nullable=False)  # mandrel_d, target_od, cell_h, tabs, winding seq
+    layers = Column(JSONB, nullable=True)  # [{name, type, t, w, color, ...}] — complete layer stack snapshot
+    elec_props = Column(JSONB, nullable=True)  # electrode properties for capacity calc
+    reference_design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     experimental_data = Column(JSONB, nullable=True)  # measured OD, tab positions, electrode lengths
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
