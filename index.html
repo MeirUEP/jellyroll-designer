@@ -1561,11 +1561,13 @@ function runSimulation() {
     // Place anode tabs
     const trialATabs = [];
     const firstCathTabTurn = trialCTabs.length > 0 ? trialCTabs[0].turn : 0;
+    const firstAnodArcAbs = anode ? anode.off + Math.min(anodTabMinMm, 25.4) : 0;  // practical min: 1 inch or anod tab range min
     if (anode) {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
         if (t.turn < firstCathTabTurn) continue;
         const tabArc = t.arcStart + (anodAng / 360) * t.circ;
+        if (tabArc < firstAnodArcAbs) continue;  // skip tabs too close to anode start
         if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
           const anodInActive = t.active.find(l => l.name === anode.name);
           if (anodInActive) {
