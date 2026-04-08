@@ -3394,10 +3394,10 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
   const notes = document.getElementById('expNotes').value.trim() || null;
   const refDesignId = document.getElementById('expRefDesign').value || null;
 
-  // Resolve cell params to a preset FK (prompts user if needed).
-  const expCellParamsPresetId = await resolveCellParamsPresetId();
+  // Read selected cell params preset (must be picked in the preset panel).
+  const expCellParamsPresetId = getSelectedCellParamsPresetId();
   if (!expCellParamsPresetId) {
-    document.getElementById('expStatus').innerHTML = '<span style="color:#ef4444">Cancelled — cell params preset required</span>';
+    document.getElementById('expStatus').innerHTML = '<span style="color:#ef4444">Select or save a cell params preset first</span>';
     return;
   }
 
@@ -3448,96 +3448,17 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
   }
 });
 
-// Compare two cell-params dicts for value equality (shallow, numeric-tolerant).
-function cellParamsEqual(a, b) {
-  if (!a || !b) return false;
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const k of keys) {
-    const va = a[k], vb = b[k];
-    if (typeof va === 'number' && typeof vb === 'number') {
-      if (Math.abs(va - vb) > 1e-9) return false;
-    } else if (va !== vb) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Resolve current `params` to a cell_params_preset_id, prompting the user if needed.
-// Behavior:
-//   - If the currently selected cell-params preset matches `params` → reuse its id.
-//   - If a preset is selected but params differ → ask user:
-//       "update existing preset" OR "save as new preset" OR cancel.
-//   - If no preset is selected → ask user to save as a new preset.
-// Returns a preset id on success, or null if the user cancels (caller should abort).
-async function resolveCellParamsPresetId() {
+// Read the currently selected cell params preset from the dropdown.
+// Returns the cloud preset id, or null if nothing valid is selected.
+// The user is expected to manage cell params presets explicitly via the
+// preset panel (Save / Load buttons there). Save Design simply references
+// whatever preset is currently selected.
+function getSelectedCellParamsPresetId() {
   const sel = document.getElementById(PRESET_SELECTS.design);
-  const currentKey = sel ? sel.value : '';
-  const currentEntry = currentKey ? presetStores.design[currentKey] : null;
-  const currentIsCloud = currentEntry && currentEntry._cloud && currentEntry._cloudId;
-
-  // Case 1: a cloud preset is selected and its params match the current params → use it.
-  if (currentIsCloud && cellParamsEqual(currentEntry.params, params)) {
-    return currentEntry._cloudId;
-  }
-
-  // Case 2: a cloud preset is selected but params differ → ask update vs new.
-  if (currentIsCloud) {
-    const presetName = currentKey.replace(/^☁ /, '');
-    const choice = prompt(
-      `Cell params differ from preset "${presetName}".\n\n` +
-      `Type "update" to overwrite the preset,\n` +
-      `or type a new preset name to save as a new preset,\n` +
-      `or Cancel to abort save.`,
-      'update'
-    );
-    if (!choice) return null;
-    if (choice.trim().toLowerCase() === 'update') {
-      try {
-        const saved = await api.updateCellParamPreset(currentEntry._cloudId, {
-          name: presetName,
-          params: { ...params },
-        });
-        presetStores.design[currentKey] = { _cloudId: saved.id, _cloud: true, params: saved.params };
-        loadPresetList('design');
-        sel.value = currentKey;
-        showToast(`Updated preset: ${presetName}`);
-        return saved.id;
-      } catch(e) { showToast('Preset update failed: ' + e.message, true); return null; }
-    }
-    // else treat as new name
-    return await createNewCellParamsPreset(choice.trim());
-  }
-
-  // Case 3: no preset selected — prompt for a new preset name.
-  const defaultName = (currentDesignName || 'cell params') + ' v1';
-  const newName = prompt(
-    'Cell params must be saved as a preset.\n\nEnter a name for the new cell params preset:',
-    defaultName
-  );
-  if (!newName) return null;
-  return await createNewCellParamsPreset(newName.trim());
-}
-
-async function createNewCellParamsPreset(name) {
-  if (!name) return null;
-  try {
-    // If a preset with that name already exists in cloud, update it instead of colliding.
-    const key = '☁ ' + name;
-    const existing = presetStores.design[key];
-    let saved;
-    if (existing && existing._cloud && existing._cloudId) {
-      saved = await api.updateCellParamPreset(existing._cloudId, { name, params: { ...params } });
-    } else {
-      saved = await api.createCellParamPreset({ name, params: { ...params } });
-    }
-    presetStores.design[key] = { _cloudId: saved.id, _cloud: true, params: saved.params };
-    loadPresetList('design');
-    const sel = document.getElementById(PRESET_SELECTS.design);
-    if (sel) sel.value = key;
-    showToast(`Saved cell params preset: ${name}`);
-    return saved.id;
-  } catch(e) { showToast('Preset save failed: ' + e.message, true); return null; }
+  if (!sel) return null;
+  const entry = presetStores.design[sel.value];
+  if (entry && entry._cloud && entry._cloudId) return entry._cloudId;
+  return null;
 }
 
 document.getElementById('btnCloudSave').addEventListener('click', async () => {
@@ -3615,10 +3536,10 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
       } catch(e) { console.warn('Auto-save layer stack failed:', e); }
     }
 
-    // --- Resolve cell params to a preset FK (prompts user if needed) ---
-    const cellParamsPresetId = await resolveCellParamsPresetId();
+    // --- Read selected cell params preset (must be picked in the preset panel) ---
+    const cellParamsPresetId = getSelectedCellParamsPresetId();
     if (!cellParamsPresetId) {
-      showToast('Save cancelled — cell params preset required', true);
+      showToast('Select or save a cell params preset first', true);
       return;
     }
 
