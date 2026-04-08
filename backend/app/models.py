@@ -56,6 +56,16 @@ class LayerStack(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class CellParamsPreset(Base):
+    __tablename__ = "cell_param_presets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    name = Column(String(255), nullable=False, unique=True)
+    params = Column(JSONB, nullable=False)  # cell parameters snapshot (mandrel_d, target_od, tab zones, tension, etc.)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class Design(Base):
     __tablename__ = "designs"
 

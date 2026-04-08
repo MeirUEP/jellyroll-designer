@@ -579,6 +579,12 @@ const api = {
   deleteDesign(id) { return this.req('DELETE', `/api/v1/designs/${id}`); },
   saveSimResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/simulation`, data); },
   saveCapResult(id, data) { return this.req('POST', `/api/v1/designs/${id}/capacity`, data); },
+  // Cell parameter presets
+  listCellParamPresets() { return this.req('GET', '/api/v1/cell-param-presets'); },
+  getCellParamPreset(id) { return this.req('GET', `/api/v1/cell-param-presets/${id}`); },
+  createCellParamPreset(data) { return this.req('POST', '/api/v1/cell-param-presets', data); },
+  updateCellParamPreset(id, data) { return this.req('PUT', `/api/v1/cell-param-presets/${id}`, data); },
+  deleteCellParamPreset(id) { return this.req('DELETE', `/api/v1/cell-param-presets/${id}`); },
 };
 
 // ========== CLOUD COMPONENT CACHE ==========
@@ -623,37 +629,15 @@ async function refreshCloudPresets() {
       presetStores.layers['☁ ' + s.name] = { _cloudId: s.id, _cloud: true };
     }
   });
-  // NOTE: cell-parameter presets are local-only (localStorage). The full
-  // cloud design list is loaded via the header "Load Design" button, not
-  // this dropdown. This keeps the two concepts separate.
-  loadCellParamPresets();
+  // Merge cloud cell-parameter presets into design dropdown
+  try {
+    const items = await api.listCellParamPresets();
+    (items || []).forEach(p => {
+      presetStores.design['☁ ' + p.name] = { _cloudId: p.id, _cloud: true, params: p.params };
+    });
+  } catch(e) { /* ignore if endpoint missing (backend not yet restarted) */ }
   // Refresh all dropdowns
   ['cathode', 'anode', 'layers', 'design'].forEach(loadPresetList);
-}
-
-// --- Cell Parameters preset store (localStorage-only) ---
-const CELL_PARAM_PRESET_KEY = 'jellyroll_cell_param_presets_v1';
-function loadCellParamPresets() {
-  try {
-    const raw = localStorage.getItem(CELL_PARAM_PRESET_KEY);
-    if (!raw) return;
-    const stored = JSON.parse(raw);
-    if (stored && typeof stored === 'object') {
-      Object.keys(stored).forEach(name => {
-        presetStores.design[name] = stored[name];
-      });
-    }
-  } catch(e) { console.warn('Failed to load cell param presets:', e); }
-}
-function saveCellParamPresets() {
-  try {
-    // Persist only local entries (skip any legacy cloud entries if present)
-    const toStore = {};
-    Object.entries(presetStores.design).forEach(([name, entry]) => {
-      if (!entry || !entry._cloud) toStore[name] = entry;
-    });
-    localStorage.setItem(CELL_PARAM_PRESET_KEY, JSON.stringify(toStore));
-  } catch(e) { console.warn('Failed to save cell param presets:', e); }
 }
 
 // Convert frontend mix components → API format
@@ -1127,9 +1111,8 @@ document.querySelectorAll('.preset-load').forEach(btn => {
     const presets = getPresets(type);
     const entry = presets[name];
     if (!entry) return;
-    // Cloud preset: fetch from API and convert (NOT used for 'design' —
-    // cell-parameter presets are local-only. Full designs load via header.)
-    if (entry._cloud && isApiConfigured() && type !== 'design') {
+    // Cloud preset: fetch from API and convert
+    if (entry._cloud && isApiConfigured()) {
       try {
         if (type === 'cathode' || type === 'anode') {
           const mix = await api.getMix(entry._cloudId);
@@ -1138,6 +1121,12 @@ document.querySelectorAll('.preset-load').forEach(btn => {
           const stack = await api.getLayerStack(entry._cloudId);
           const layersArr = layerStackFromApi(stack);
           applyLayersPreset({ layers: layersArr });
+        } else if (type === 'design') {
+          // Cell Parameters preset (cloud)
+          const preset = await api.getCellParamPreset(entry._cloudId);
+          // Keep the cached entry in sync with the fresh fetch
+          presetStores.design[name] = { _cloudId: preset.id, _cloud: true, params: preset.params };
+          applyDesignPreset({ params: preset.params });
         }
         showToast(`Loaded ${PRESET_LABELS[type]}: ${name.replace('☁ ', '')}`);
       } catch(e) { showToast('Cloud load failed: ' + e.message, true); }
@@ -1195,15 +1184,25 @@ document.querySelectorAll('.preset-save').forEach(btn => {
       } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
     } else if (type === 'design') {
       // Cell Parameters preset — save ONLY the Cell Parameters tab values to
-      // localStorage (not the full design). For full design saves use the
-      // header "Save Design" button.
+      // the cloud. For full design saves use the header "Save Design" button.
       try {
-        presetStores.design[name] = getDesignPreset();
-        saveCellParamPresets();
+        const payload = { name, params: { ...params } };
+        // Check for existing cloud preset with this name to update in place
+        const existingKey = '☁ ' + name;
+        const existing = presetStores.design[existingKey];
+        let saved;
+        if (existing && existing._cloud && existing._cloudId) {
+          saved = await api.updateCellParamPreset(existing._cloudId, payload);
+        } else {
+          saved = await api.createCellParamPreset(payload);
+        }
+        presetStores.design[existingKey] = { _cloudId: saved.id, _cloud: true, params: saved.params };
+        // Remove any local-only entry with the same bare name
+        delete presetStores.design[name];
         loadPresetList('design');
-        sel.value = name;
+        sel.value = existingKey;
         showToast(`Saved cell parameters: ${name}`);
-      } catch(e) { showToast('Save failed: ' + e.message, true); console.error(e); }
+      } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
     }
   });
 });
@@ -1216,14 +1215,6 @@ document.querySelectorAll('.preset-del').forEach(btn => {
     if (!name) { showToast('Select a preset first', true); return; }
     if (!confirm(`Delete "${name.replace('☁ ', '')}"?`)) return;
     const entry = presetStores[type][name];
-    // Cell Parameters presets are localStorage-only
-    if (type === 'design') {
-      delete presetStores.design[name];
-      saveCellParamPresets();
-      loadPresetList('design');
-      showToast(`Deleted cell parameters: ${name}`);
-      return;
-    }
     if (!isApiConfigured()) { showToast('API not configured', true); return; }
     if (entry && entry._cloud) {
       try {
@@ -1233,6 +1224,8 @@ document.querySelectorAll('.preset-del').forEach(btn => {
         } else if (type === 'layers') {
           await api.deleteLayerStack(entry._cloudId);
           cloudLayerStacks = cloudLayerStacks.filter(s => s.id !== entry._cloudId);
+        } else if (type === 'design') {
+          await api.deleteCellParamPreset(entry._cloudId);
         }
         delete presetStores[type][name];
         loadPresetList(type);

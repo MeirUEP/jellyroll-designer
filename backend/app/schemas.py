@@ -88,6 +88,19 @@ class LayerStackDetail(LayerStackSchema):
     resolved_items: list[dict] | None = None
 
 
+# ========== Cell Parameters Preset (standalone named snapshots) ==========
+class CellParamsPresetCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    params: dict
+
+
+class CellParamsPresetSchema(CellParamsPresetCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
 # ========== Cell Parameters (JSONB in designs) ==========
 class CellParams(BaseModel):
     model_config = {"extra": "allow"}
