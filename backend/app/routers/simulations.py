@@ -39,6 +39,8 @@ async def save_simulation(design_id: UUID, body: SimResultCreate, db: AsyncSessi
         outer_r=body.outer_r,
         min_pitch=body.min_pitch,
         max_pitch=body.max_pitch,
+        cathode_len=body.cathode_len,
+        anode_len=body.anode_len,
     )
     db.add(sim)
     await db.commit()
