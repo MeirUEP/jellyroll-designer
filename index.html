@@ -1303,7 +1303,7 @@ const SEPARATOR_GRAB_DISTANCE = 129;  // mm — blade-to-mandrel distance, fixed
 let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
   pre_turns: 1.5,               // exact insulation pre-turns (separator-only before cathode)
-  min_cath_to_anod: 0.5,        // exact turns of cathode+sep winding before anode enters
+  min_cath_to_anod: 1.8,        // exact turns of cathode+sep winding before anode enters
   tab_w: 10, tab_h: 15,
   first_cath_tab_min_in: 4.5,   // min 1st cathode tab position along cathode (inches)
   first_cath_tab_max_in: 5.0,   // max 1st cathode tab position along cathode (inches)
@@ -1381,7 +1381,8 @@ function runSimulation() {
 
   // --- Helper: wind exact number of turns (supports fractional) ---
   function windTurns(numTurns, activeLayers, phaseName) {
-    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    // Apply tension factor consistently with main wind / overhang phases
+    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0) / tension;
     if (pitch < 0.01) return;
     let remaining = numTurns;
     while (remaining > 0.001) {
@@ -1402,7 +1403,8 @@ function runSimulation() {
   // mode: 'closest' = pick undershoot or overshoot whichever is closer (default)
   //        'undershoot' = always stop before exceeding target
   function windToRadius(tgtR, activeLayers, phaseName, mode = 'closest') {
-    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    // Apply tension factor consistently with windTurns / main wind phase
+    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0) / tension;
     if (pitch < 0.01) return;
     while (r < tgtR) {
       if (r + pitch > tgtR) {
