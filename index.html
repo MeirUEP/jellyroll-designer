@@ -3394,11 +3394,33 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
   const notes = document.getElementById('expNotes').value.trim() || null;
   const refDesignId = document.getElementById('expRefDesign').value || null;
 
-  // Read selected cell params preset (must be picked in the preset panel).
-  const expCellParamsPresetId = getSelectedCellParamsPresetId();
-  if (!expCellParamsPresetId) {
-    document.getElementById('expStatus').innerHTML = '<span style="color:#ef4444">Select or save a cell params preset first</span>';
-    return;
+  // Determine cell_params_preset_id for the experimental record:
+  //   1. If a Reference design is selected → inherit ITS cell_params_preset_id
+  //      (the experiment is the measured outcome of that simulated design,
+  //      so they should reference the exact same params).
+  //   2. Otherwise → fall back to whatever is selected in the main preset panel.
+  let expCellParamsPresetId = null;
+  if (refDesignId) {
+    try {
+      const refDesign = await api.getDesign(refDesignId);
+      expCellParamsPresetId = refDesign.cell_params_preset_id || null;
+      if (!expCellParamsPresetId) {
+        document.getElementById('expStatus').innerHTML =
+          '<span style="color:#ef4444">Reference design has no cell params preset linked</span>';
+        return;
+      }
+    } catch(e) {
+      document.getElementById('expStatus').innerHTML =
+        `<span style="color:#ef4444">Failed to read reference design: ${e.message}</span>`;
+      return;
+    }
+  } else {
+    expCellParamsPresetId = getSelectedCellParamsPresetId();
+    if (!expCellParamsPresetId) {
+      document.getElementById('expStatus').innerHTML =
+        '<span style="color:#ef4444">Select a Reference design (preferred) or a cell params preset in the main panel</span>';
+      return;
+    }
   }
 
   const payload = {
