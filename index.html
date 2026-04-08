@@ -318,7 +318,6 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Target OD (mm)</label><input type="number" id="p_target_od" step="0.1" value="94"></div>
           <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
           <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
-          <div class="param-item"><label>Sep grab dist (mm)</label><input type="number" id="p_separator_grab_distance" step="0.5" min="0" value="50" title="Blade-to-mandrel distance. Sets separator overhang length (machine constant)."></div>
           <div class="param-item"><label>Tension factor</label><input type="number" id="p_tension_factor" step="0.01" min="0.5" max="1" value="1" title="1 = perfect winding (no air gaps). Lower = looser winding with air gaps increasing effective pitch."></div>
         </div>
       </div>
@@ -1298,9 +1297,11 @@ let layers = [
   {name:'PVA lam.',type:'separator',t:0.1,w:224,color:'#a855f7'},
 ];
 
+// Machine constants (not user-editable, not saved per design)
+const SEPARATOR_GRAB_DISTANCE = 129;  // mm — blade-to-mandrel distance, fixed machine geometry
+
 let params = {
   mandrel_d: 10.75, target_od: 94, cell_h: 222,
-  separator_grab_distance: 50,  // blade-to-mandrel distance (mm), machine constant
   pre_turns: 1.5,               // exact insulation pre-turns (separator-only before cathode)
   min_cath_to_anod: 0.5,        // exact turns of cathode+sep winding before anode enters
   tab_w: 10, tab_h: 15,
@@ -1423,7 +1424,7 @@ function runSimulation() {
   // Separator tail folds around mandrel before winding begins.
   // The grab distance sets total separator material pre-positioned.
   separators.forEach(s => { s.off = 0; });
-  arc = params.separator_grab_distance || 0;
+  arc = SEPARATOR_GRAB_DISTANCE;
   r += sepPitch; // folded overhang adds one separator stack thickness
   // Record overhang as a single pseudo-turn for rendering
   if (arc > 0) {
@@ -3106,9 +3107,7 @@ document.getElementById('fileLoad').addEventListener('change', e => {
           delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
           delete params.anode_end_tab_clearance; delete params.first_cath_arc;
         }
-        if (params.separator_grab_distance === undefined) {
-          params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
-        }
+        delete params.separator_grab_distance; // now a machine constant
         delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
         if (data.elecProps) elecProps = data.elecProps;
         for (const [k, v] of Object.entries(params)) {
@@ -3621,9 +3620,7 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
             delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
             delete params.anode_end_tab_clearance;
           }
-          if (params.separator_grab_distance === undefined) {
-            params.separator_grab_distance = params.mandrel_d + 0.5 * Math.PI * params.mandrel_d;
-          }
+          delete params.separator_grab_distance; // now a machine constant
           delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
