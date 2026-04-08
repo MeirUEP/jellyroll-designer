@@ -715,6 +715,9 @@ function layerStackFromApi(stack) {
 }
 let currentDesignId = null;
 let currentDesignName = '';
+let currentDesignIsExperimental = false;  // tracks the flag of the loaded design
+                                           // so Save buttons can decide whether to
+                                           // update-in-place or force a new record
 
 function showToast(msg, isError=false) {
   const t = document.createElement('div');
@@ -1122,6 +1125,7 @@ document.querySelectorAll('.preset-load').forEach(btn => {
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
+          currentDesignIsExperimental = !!design.is_experimental;
           // Restore linked formulations if present
           if (design.cathode_mix) {
             applyCathodePreset(mixFromApi(design.cathode_mix));
@@ -3408,7 +3412,16 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
 
   try {
     document.getElementById('expStatus').textContent = 'Saving...';
+    // Experimental saves ALWAYS create a brand-new record — never update.
+    // This prevents accidentally overwriting a non-experimental design with
+    // experimental data, and ensures is_experimental=true is tied to the
+    // button that was clicked.
     const saved = await api.createDesign(payload);
+    // Track the new record as the loaded design so subsequent actions know
+    // its flag — but leave currentDesignId pointing to it (matches user intent).
+    currentDesignId = saved.id;
+    currentDesignName = saved.name;
+    currentDesignIsExperimental = true;
     document.getElementById('expStatus').innerHTML = `<span style="color:#16a34a">Saved: ${saved.name} (${saved.id})</span>`;
     showToast('Experimental result saved');
     setTimeout(() => document.getElementById('modalExperimental').classList.add('hidden'), 1500);
@@ -3421,6 +3434,12 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
   if (!getApiUrl()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
   try {
     const designName = currentDesignName || prompt('Design name:', 'Jellyroll Design') || 'Untitled';
+    // If the currently loaded design is experimental, force a new record so
+    // Save Design never silently overwrites/flips an experimental record.
+    if (currentDesignIsExperimental) {
+      currentDesignId = null;
+      currentDesignIsExperimental = false;
+    }
 
     // --- Auto-save cathode mix if not already in cloud ---
     let cathMixId = null;
@@ -3483,6 +3502,8 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
     // FKs:         cathode_mix_id / anode_mix_id / layer_stack_id for joined queries
     const designData = {
       name: designName,
+      is_experimental: false,   // Save Design button = non-experimental. The
+                                // Save Experimental button sets this to true.
       cell_params: { ...params },
       layers: JSON.parse(JSON.stringify(layers)),
       elec_props: { ...elecProps },
@@ -3498,6 +3519,7 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
       currentDesignId = saved.id;
       currentDesignName = saved.name;
     }
+    currentDesignIsExperimental = false;
 
     // --- Also persist the current simulation + capacity results so the
     //     design record is always in sync with what the user sees on screen.
@@ -3584,6 +3606,7 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
           if (design.elec_props) elecProps = design.elec_props;
           currentDesignId = design.id;
           currentDesignName = design.name;
+          currentDesignIsExperimental = !!design.is_experimental;
           // Restore linked formulations if present
           if (design.cathode_mix) {
             applyCathodePreset(mixFromApi(design.cathode_mix));
