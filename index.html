@@ -495,28 +495,12 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <input type="number" id="expMeasuredOD" step="0.01" placeholder="e.g. 83.5" style="width:100%">
       </div>
       <div>
-        <label style="font-size:10px;color:var(--fg2)">Measured ID (mm)</label>
-        <input type="number" id="expMeasuredID" step="0.01" placeholder="e.g. 10.8" style="width:100%">
-      </div>
-      <div>
-        <label style="font-size:10px;color:var(--fg2)">Num turns (counted)</label>
-        <input type="number" id="expNumTurns" step="0.5" placeholder="e.g. 27" style="width:100%">
-      </div>
-    </div>
-
-    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Electrode Lengths</h4>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
-      <div>
         <label style="font-size:10px;color:var(--fg2)">Cathode length (mm)</label>
         <input type="number" id="expCathLen" step="1" placeholder="e.g. 1920" style="width:100%">
       </div>
       <div>
         <label style="font-size:10px;color:var(--fg2)">Anode length (mm)</label>
         <input type="number" id="expAnodLen" step="1" placeholder="e.g. 1850" style="width:100%">
-      </div>
-      <div>
-        <label style="font-size:10px;color:var(--fg2)">Separator length (mm)</label>
-        <input type="number" id="expSepLen" step="1" placeholder="e.g. 4200" style="width:100%">
       </div>
     </div>
 
@@ -543,18 +527,6 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <option value="in" selected>inches (fractions OK)</option>
         <option value="mm">millimeters</option>
       </select>
-    </div>
-
-    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Machine Settings</h4>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-      <div>
-        <label style="font-size:10px;color:var(--fg2)">Machine tension</label>
-        <input type="number" id="expMachineTension" step="0.01" placeholder="e.g. 0.9" style="width:100%">
-      </div>
-      <div>
-        <label style="font-size:10px;color:var(--fg2)">Winding speed (rpm)</label>
-        <input type="number" id="expWindingSpeed" step="1" placeholder="e.g. 60" style="width:100%">
-      </div>
     </div>
 
     <button class="btn-primary" id="btnSaveExperimental" style="width:100%;background:#d97706;margin-top:6px">Save Experimental Result</button>
@@ -3304,8 +3276,8 @@ document.getElementById('btnAddExperimental').addEventListener('click', async ()
     });
   } catch(e) { console.error('Failed to load cloud data for experimental form:', e); }
   // Reset all fields
-  ['expMeasuredOD','expMeasuredID','expNumTurns','expCathLen','expAnodLen','expSepLen',
-   'expCathTabPos','expAnodTabPos','expMachineTension','expWindingSpeed'].forEach(id => {
+  ['expMeasuredOD','expCathLen','expAnodLen',
+   'expCathTabPos','expAnodTabPos'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('expCathTabPreview').textContent = '';
@@ -3409,11 +3381,8 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
     elec_props: { ...elecProps },      // snapshot of electrode properties
     experimental_data: {
       measured_od: numOrNull('expMeasuredOD'),
-      measured_id: numOrNull('expMeasuredID'),
-      num_turns: numOrNull('expNumTurns'),
       cathode_length: numOrNull('expCathLen'),
       anode_length: numOrNull('expAnodLen'),
-      separator_length: numOrNull('expSepLen'),
       cathode_tabs: cathTabs.tabs,
       anode_tabs: anodTabs.tabs,
       cathode_tab_spacings: cathTabs.spacings,
@@ -3422,8 +3391,6 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
       first_anode_tab_mm: anodTabs.first,
       num_cathode_tabs: cathTabs.count,
       num_anode_tabs: anodTabs.count,
-      machine_tension: numOrNull('expMachineTension'),
-      winding_speed: numOrNull('expWindingSpeed'),
       notes,
     },
   };
