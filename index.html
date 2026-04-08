@@ -520,36 +520,29 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       </div>
     </div>
 
-    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Tab Measurements</h4>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Tab Positions (absolute from electrode start)</h4>
+    <div style="font-size:9px;color:var(--fg2);margin-bottom:4px">
+      Accepts: <code>1: 6", 2: 11 3/4", 3: 18 5/16"</code> &nbsp;•&nbsp; or bare list: <code>6, 11.75, 18.3125</code>
+      &nbsp;•&nbsp; unit toggle below &nbsp;•&nbsp; fractions OK &nbsp;•&nbsp; labels optional
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px">
       <div>
-        <label style="font-size:10px;color:var(--fg2)">First cathode tab (mm from start)</label>
-        <input type="number" id="expFirstCathTab" step="0.1" placeholder="e.g. 98.0" style="width:100%">
+        <label style="font-size:10px;color:var(--fg2)">Cathode tab positions</label>
+        <textarea id="expCathTabPos" rows="3" placeholder='1: 6", 2: 11 3/4", 3: 18 5/16", 4: 25 3/4", 5: 34", 6: 43 1/8", 7: 53 1/8", 8: 64"' style="width:100%;font-size:10px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <div id="expCathTabPreview" style="font-size:9px;color:var(--fg2);margin-top:2px;min-height:12px"></div>
       </div>
       <div>
-        <label style="font-size:10px;color:var(--fg2)">First anode tab (mm from start)</label>
-        <input type="number" id="expFirstAnodTab" step="0.1" placeholder="e.g. 45.0" style="width:100%">
+        <label style="font-size:10px;color:var(--fg2)">Anode tab positions</label>
+        <textarea id="expAnodTabPos" rows="3" placeholder='1: 6", 2: 11 3/4", 3: 18 5/16", 4: 25 3/4", 5: 34", 6: 43 1/8", 7: 53 1/8", 8: 64"' style="width:100%;font-size:10px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <div id="expAnodTabPreview" style="font-size:9px;color:var(--fg2);margin-top:2px;min-height:12px"></div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
-      <div>
-        <label style="font-size:10px;color:var(--fg2)" title="Distances between consecutive cathode tabs, comma separated">Cathode tab spacings (mm, comma-sep)</label>
-        <textarea id="expCathSpacings" rows="2" placeholder="e.g. 195.3, 205.1, 218.4, 230.8" style="width:100%;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
-      </div>
-      <div>
-        <label style="font-size:10px;color:var(--fg2)" title="Distances between consecutive anode tabs, comma separated">Anode tab spacings (mm, comma-sep)</label>
-        <textarea id="expAnodSpacings" rows="2" placeholder="e.g. 180.2, 192.5, 210.1, 225.7" style="width:100%;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-      <div>
-        <label style="font-size:10px;color:var(--fg2)"># cathode tabs</label>
-        <input type="number" id="expNumCathTabs" step="1" placeholder="e.g. 8" style="width:100%">
-      </div>
-      <div>
-        <label style="font-size:10px;color:var(--fg2)"># anode tabs</label>
-        <input type="number" id="expNumAnodTabs" step="1" placeholder="e.g. 8" style="width:100%">
-      </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:10px;color:var(--fg2)">Input unit</label>
+      <select id="expTabUnit" style="font-size:10px;padding:2px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+        <option value="in" selected>inches (fractions OK)</option>
+        <option value="mm">millimeters</option>
+      </select>
     </div>
 
     <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Machine Settings</h4>
@@ -3312,36 +3305,94 @@ document.getElementById('btnAddExperimental').addEventListener('click', async ()
   } catch(e) { console.error('Failed to load cloud data for experimental form:', e); }
   // Reset all fields
   ['expMeasuredOD','expMeasuredID','expNumTurns','expCathLen','expAnodLen','expSepLen',
-   'expFirstCathTab','expFirstAnodTab','expCathSpacings','expAnodSpacings',
-   'expNumCathTabs','expNumAnodTabs','expMachineTension','expWindingSpeed'].forEach(id => {
+   'expCathTabPos','expAnodTabPos','expMachineTension','expWindingSpeed'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  document.getElementById('expCathTabPreview').textContent = '';
+  document.getElementById('expAnodTabPreview').textContent = '';
   document.getElementById('expStatus').textContent = '';
   modal.classList.remove('hidden');
+});
+
+// ========== TAB POSITION PARSER ==========
+// Parses mixed-format tab position input into an array of numbers (unit-preserved).
+// Accepts:
+//   "1: 6\", 2: 11 3/4\", 3: 18 5/16\""    (labeled with fractions)
+//   "6, 11.75, 18.3125"                    (bare decimals)
+//   "6\" 11 3/4\" 18 5/16\""               (whitespace-separated)
+//   one per line, mixed separators, etc.
+function parseTabPositions(raw) {
+  if (!raw || !raw.trim()) return null;
+  // Strip labels like "1:", "2)", "tab 3:" etc
+  let s = raw.replace(/\b(?:tab\s*)?\d+\s*[:)\.\-]\s*/gi, ' ');
+  // Replace inch marks and semicolons with commas for splitting
+  s = s.replace(/["'`]/g, ' ').replace(/;/g, ',');
+  // Split on commas or newlines
+  const tokens = s.split(/[,\n]+/).map(t => t.trim()).filter(t => t.length);
+  const values = [];
+  for (const tok of tokens) {
+    // A token might be "18 5/16" (whole + fraction), "11.75", "6", "5/8"
+    const m = tok.match(/^(-?\d+(?:\.\d+)?)\s+(\d+)\s*\/\s*(\d+)$/);
+    if (m) {
+      values.push(parseFloat(m[1]) + parseInt(m[2], 10) / parseInt(m[3], 10));
+      continue;
+    }
+    const f = tok.match(/^(-?\d+)\s*\/\s*(\d+)$/);
+    if (f) { values.push(parseInt(f[1], 10) / parseInt(f[2], 10)); continue; }
+    const n = parseFloat(tok);
+    if (!isNaN(n)) values.push(n);
+  }
+  return values.length > 0 ? values : null;
+}
+
+// Live preview for tab position textareas
+function updateTabPreview(inputId, previewId) {
+  const raw = document.getElementById(inputId).value;
+  const unit = document.getElementById('expTabUnit').value;
+  const vals = parseTabPositions(raw);
+  const el = document.getElementById(previewId);
+  if (!vals || vals.length === 0) { el.textContent = ''; return; }
+  const mm = unit === 'in' ? vals.map(v => v * 25.4) : vals;
+  const spacings = mm.slice(1).map((v, i) => v - mm[i]);
+  const spStr = spacings.length ? ` • spacings (mm): ${spacings.map(s => s.toFixed(1)).join(', ')}` : '';
+  el.innerHTML = `<span style="color:#16a34a">${vals.length} tabs</span> • first: <strong>${mm[0].toFixed(1)}mm</strong>${spStr}`;
+}
+
+['expCathTabPos', 'expAnodTabPos'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    updateTabPreview(id, id.replace('Pos', 'Preview'));
+  });
+});
+document.getElementById('expTabUnit').addEventListener('change', () => {
+  updateTabPreview('expCathTabPos', 'expCathTabPreview');
+  updateTabPreview('expAnodTabPos', 'expAnodTabPreview');
 });
 
 document.getElementById('btnSaveExperimental').addEventListener('click', async () => {
   const name = document.getElementById('expName').value.trim();
   if (!name) { document.getElementById('expStatus').textContent = 'Name is required'; return; }
 
-  // Helper: parse comma-separated floats → array or null
-  const parseSpacings = (raw) => {
-    if (!raw || !raw.trim()) return null;
-    const vals = raw.split(/[,\s]+/).map(s => s.trim()).filter(s => s.length)
-      .map(s => parseFloat(s)).filter(v => !isNaN(v));
-    return vals.length > 0 ? vals : null;
-  };
   const numOrNull = (id) => {
     const v = parseFloat(document.getElementById(id).value);
     return isNaN(v) ? null : v;
   };
-  const intOrNull = (id) => {
-    const v = parseInt(document.getElementById(id).value, 10);
-    return isNaN(v) ? null : v;
-  };
 
-  const cathSpacings = parseSpacings(document.getElementById('expCathSpacings').value);
-  const anodSpacings = parseSpacings(document.getElementById('expAnodSpacings').value);
+  // Parse tab positions → derive mm array, first-tab, spacings, tab-data list, count
+  const unit = document.getElementById('expTabUnit').value;
+  const toMm = (v) => unit === 'in' ? v * 25.4 : v;
+  const processTabInput = (inputId) => {
+    const raw = document.getElementById(inputId).value;
+    const vals = parseTabPositions(raw);
+    if (!vals || vals.length === 0) return { mm: null, first: null, spacings: null, tabs: null, count: null };
+    const mm = vals.map(toMm);
+    const first = mm[0];
+    const spacings = mm.length > 1 ? mm.slice(1).map((v, i) => +(v - mm[i]).toFixed(3)) : null;
+    const tabs = mm.map((pos, i) => ({ tab_num: i + 1, arc_position_mm: +pos.toFixed(3) }));
+    return { mm, first, spacings, tabs, count: mm.length };
+  };
+  const cathTabs = processTabInput('expCathTabPos');
+  const anodTabs = processTabInput('expAnodTabPos');
+
   const notes = document.getElementById('expNotes').value.trim() || null;
   const refDesignId = document.getElementById('expRefDesign').value || null;
 
@@ -3363,12 +3414,14 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
       cathode_length: numOrNull('expCathLen'),
       anode_length: numOrNull('expAnodLen'),
       separator_length: numOrNull('expSepLen'),
-      cathode_tab_spacings: cathSpacings,
-      anode_tab_spacings: anodSpacings,
-      first_cathode_tab_mm: numOrNull('expFirstCathTab'),
-      first_anode_tab_mm: numOrNull('expFirstAnodTab'),
-      num_cathode_tabs: intOrNull('expNumCathTabs'),
-      num_anode_tabs: intOrNull('expNumAnodTabs'),
+      cathode_tabs: cathTabs.tabs,
+      anode_tabs: anodTabs.tabs,
+      cathode_tab_spacings: cathTabs.spacings,
+      anode_tab_spacings: anodTabs.spacings,
+      first_cathode_tab_mm: cathTabs.first,
+      first_anode_tab_mm: anodTabs.first,
+      num_cathode_tabs: cathTabs.count,
+      num_anode_tabs: anodTabs.count,
       machine_tension: numOrNull('expMachineTension'),
       winding_speed: numOrNull('expWindingSpeed'),
       notes,
