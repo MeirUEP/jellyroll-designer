@@ -394,7 +394,6 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <button class="btn-sm" id="btnExport">CSV</button>
         <button class="btn-sm" id="btnPDF" style="background:#7c3aed;color:#fff">PDF</button>
         <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
-        <button class="btn-cloud" id="btnCloudSaveSim" style="font-size:9px">&#9729; Save Sim</button>
         <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
         <button class="btn-sm" id="btnAddExperimental" style="background:#d97706;color:#fff;font-size:9px" title="Add experimental result with measured data">+ Experimental</button>
         <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
@@ -3494,37 +3493,53 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
     let saved;
     if (currentDesignId) {
       saved = await api.updateDesign(currentDesignId, designData);
-      showToast('Design updated in cloud (with formulations & stack)');
     } else {
       saved = await api.createDesign(designData);
       currentDesignId = saved.id;
       currentDesignName = saved.name;
-      showToast('Design saved to cloud (with formulations & stack)');
     }
-  } catch (e) { showToast('Save failed: ' + e.message, true); }
-});
 
-// Separate button for saving simulation results — only when user explicitly wants it
-document.getElementById('btnCloudSaveSim')?.addEventListener('click', async () => {
-  if (!currentDesignId) { showToast('Save design first before saving simulation', true); return; }
-  try {
-    if (simResult) {
-      await api.saveSimResult(currentDesignId, {
-        turns: simResult.turns, c_tabs: simResult.cTabs, a_tabs: simResult.aTabs,
-        outer_r: simResult.outerR, min_pitch: simResult.minPitch, max_pitch: simResult.maxPitch,
-        cathode_len: simResult.cathodeLen || null, anode_len: simResult.anodeLen || null,
-      });
-    }
-    if (capResult) {
-      await api.saveCapResult(currentDesignId, {
-        cath_cap_ah: capResult.cathCapAh, anod_cap_ah: capResult.anodCapAh,
-        cell_cap_ah: capResult.cellCapAh, np_ratio: capResult.npRatio,
-        cell_energy_1e: capResult.cellEnergy1e, total_dry_mass: capResult.totalDryMass,
-        full_result: capResult,
-      });
-    }
-    showToast('Simulation & capacity results saved to cloud');
-  } catch (e) { showToast('Save sim failed: ' + e.message, true); }
+    // --- Also persist the current simulation + capacity results so the
+    //     design record is always in sync with what the user sees on screen.
+    //     This eliminates the "save design vs save sim" ambiguity: a single
+    //     Save Design click captures the full current state.
+    let simSaved = false, capSaved = false;
+    try {
+      if (simResult) {
+        await api.saveSimResult(currentDesignId, {
+          turns: simResult.turns,
+          c_tabs: simResult.cTabs,
+          a_tabs: simResult.aTabs,
+          outer_r: simResult.outerR,
+          min_pitch: simResult.minPitch,
+          max_pitch: simResult.maxPitch,
+          cathode_len: simResult.cathodeLen || null,
+          anode_len: simResult.anodeLen || null,
+        });
+        simSaved = true;
+      }
+    } catch (e) { console.warn('Sim result save failed:', e); }
+    try {
+      if (capResult) {
+        await api.saveCapResult(currentDesignId, {
+          cath_cap_ah: capResult.cathCapAh,
+          anod_cap_ah: capResult.anodCapAh,
+          cell_cap_ah: capResult.cellCapAh,
+          np_ratio: capResult.npRatio,
+          cell_energy_1e: capResult.cellEnergy1e,
+          total_dry_mass: capResult.totalDryMass,
+          full_result: capResult,
+        });
+        capSaved = true;
+      }
+    } catch (e) { console.warn('Capacity result save failed:', e); }
+
+    const extras = [];
+    if (simSaved) extras.push('simulation');
+    if (capSaved) extras.push('capacity');
+    const extrasMsg = extras.length ? ` + ${extras.join(' & ')}` : '';
+    showToast((currentDesignId ? 'Design updated' : 'Design saved') + ' in cloud' + extrasMsg);
+  } catch (e) { showToast('Save failed: ' + e.message, true); }
 });
 
 document.getElementById('btnCloudOpen').addEventListener('click', async () => {
