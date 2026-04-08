@@ -101,13 +101,14 @@ class CellParamsPresetSchema(CellParamsPresetCreate):
     model_config = {"from_attributes": True}
 
 
-# ========== Cell Parameters (JSONB in designs) ==========
+# ========== Cell Parameters (legacy inline JSONB in designs) ==========
+# DEPRECATED in favor of cell_params_preset_id FK on designs.
+# Kept so legacy design records that still have inline cell_params can be read.
 class CellParams(BaseModel):
     model_config = {"extra": "allow"}
     mandrel_d: float
     target_od: float
     cell_h: float
-    separator_grab_distance: float = 50
     pre_turns: float = 1.5
     tab_w: float = 10
     tab_h: float = 15
@@ -160,7 +161,8 @@ class DesignCreate(BaseModel):
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     reference_design_id: UUID | None = None
-    cell_params: CellParams | None = None
+    cell_params_preset_id: UUID | None = None  # preferred: FK into cell_param_presets
+    cell_params: CellParams | None = None      # legacy inline snapshot (ignored if preset_id provided)
     layers: list[dict] | None = None
     elec_props: dict | None = None
     experimental_data: ExperimentalData | None = None
@@ -175,6 +177,7 @@ class DesignUpdate(BaseModel):
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     reference_design_id: UUID | None = None
+    cell_params_preset_id: UUID | None = None
     cell_params: CellParams | None = None
     layers: list[dict] | None = None
     elec_props: dict | None = None
@@ -224,13 +227,15 @@ class DesignDetail(DesignSummary):
     anode_mix_id: UUID | None = None
     layer_stack_id: UUID | None = None
     reference_design_id: UUID | None = None
-    cell_params: CellParams
+    cell_params_preset_id: UUID | None = None
+    cell_params: dict | None = None  # resolved params (from preset if linked, else legacy inline)
     layers: list[dict] | None = None
     elec_props: dict | None = None
     experimental_data: ExperimentalData | None = None
     cathode_mix: MixSchema | None = None
     anode_mix: MixSchema | None = None
     layer_stack: LayerStackSchema | None = None
+    cell_params_preset: CellParamsPresetSchema | None = None
     sim_result: SimResultSchema | None = None
     cap_result: CapResultSchema | None = None
 

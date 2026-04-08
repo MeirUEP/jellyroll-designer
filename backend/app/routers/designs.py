@@ -20,9 +20,24 @@ def _design_query():
         selectinload(Design.cathode_mix),
         selectinload(Design.anode_mix),
         selectinload(Design.layer_stack),
+        selectinload(Design.cell_params_preset),
         selectinload(Design.sim_result),
         selectinload(Design.cap_result),
     )
+
+
+def _resolve_cell_params(design: Design) -> dict | None:
+    """Return effective cell_params — from linked preset if present, else legacy inline."""
+    if design.cell_params_preset is not None:
+        return design.cell_params_preset.params
+    return design.cell_params
+
+
+def _design_detail(design: Design):
+    """Build a DesignDetail with cell_params resolved from FK or inline fallback."""
+    detail = DesignDetail.model_validate(design)
+    detail.cell_params = _resolve_cell_params(design)
+    return detail
 
 
 @router.get("/designs", response_model=DesignList)
@@ -51,18 +66,17 @@ async def get_design(design_id: UUID, db: AsyncSession = Depends(get_db)):
     design = result.scalar_one_or_none()
     if not design:
         raise HTTPException(status_code=404, detail="Design not found")
-    return DesignDetail.model_validate(design)
+    return _design_detail(design)
 
 
 def _extract_cell_params(body):
-    """Extract cell_params from body — frontend may send 'params' instead of 'cell_params'."""
+    """Legacy inline cell_params extractor — used only for backward compat when no preset FK is given."""
     if body.cell_params:
         return body.cell_params.model_dump()
-    # Frontend sends 'params' as extra field
     extra = getattr(body, 'params', None)
     if extra:
         return extra if isinstance(extra, dict) else extra.model_dump()
-    return {}
+    return None
 
 
 def _extract_layers(body):
@@ -81,6 +95,11 @@ def _extract_elec_props(body):
 
 @router.post("/designs", response_model=DesignDetail, status_code=201)
 async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
+    if not body.cell_params_preset_id:
+        raise HTTPException(
+            status_code=400,
+            detail="cell_params_preset_id is required — save cell params as a preset first",
+        )
     design = Design(
         name=body.name,
         description=body.description,
@@ -88,8 +107,9 @@ async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
         cathode_mix_id=body.cathode_mix_id,
         anode_mix_id=body.anode_mix_id,
         layer_stack_id=body.layer_stack_id,
+        cell_params_preset_id=body.cell_params_preset_id,
+        cell_params=None,  # FK is source of truth; inline kept only for legacy reads
         reference_design_id=body.reference_design_id,
-        cell_params=_extract_cell_params(body),
         layers=_extract_layers(body),
         elec_props=_extract_elec_props(body),
         experimental_data=body.experimental_data.model_dump() if body.experimental_data else None,
@@ -99,7 +119,7 @@ async def create_design(body: DesignCreate, db: AsyncSession = Depends(get_db)):
     q = _design_query().where(Design.id == design.id)
     result = await db.execute(q)
     design = result.scalar_one()
-    return DesignDetail.model_validate(design)
+    return _design_detail(design)
 
 
 @router.put("/designs/{design_id}", response_model=DesignDetail)
@@ -110,14 +130,20 @@ async def update_design(design_id: UUID, body: DesignCreate, db: AsyncSession = 
     if not design:
         raise HTTPException(status_code=404, detail="Design not found")
 
+    if not body.cell_params_preset_id:
+        raise HTTPException(
+            status_code=400,
+            detail="cell_params_preset_id is required — save cell params as a preset first",
+        )
     design.name = body.name
     design.description = body.description
     design.is_experimental = body.is_experimental
     design.cathode_mix_id = body.cathode_mix_id
     design.anode_mix_id = body.anode_mix_id
     design.layer_stack_id = body.layer_stack_id
+    design.cell_params_preset_id = body.cell_params_preset_id
+    design.cell_params = None  # FK is source of truth
     design.reference_design_id = body.reference_design_id
-    design.cell_params = _extract_cell_params(body)
     layers = _extract_layers(body)
     if layers is not None:
         design.layers = layers
@@ -132,7 +158,7 @@ async def update_design(design_id: UUID, body: DesignCreate, db: AsyncSession = 
     q = _design_query().where(Design.id == design_id)
     result = await db.execute(q)
     design = result.scalar_one()
-    return DesignDetail.model_validate(design)
+    return _design_detail(design)
 
 
 @router.patch("/designs/{design_id}", response_model=DesignDetail)
@@ -157,9 +183,9 @@ async def patch_design(design_id: UUID, body: DesignUpdate, db: AsyncSession = D
         design.layer_stack_id = body.layer_stack_id
     if body.reference_design_id is not None:
         design.reference_design_id = body.reference_design_id
-    cp = _extract_cell_params(body)
-    if cp:
-        design.cell_params = cp
+    if body.cell_params_preset_id is not None:
+        design.cell_params_preset_id = body.cell_params_preset_id
+        design.cell_params = None
     if body.layers is not None:
         design.layers = body.layers
     if body.elec_props is not None:
@@ -172,7 +198,7 @@ async def patch_design(design_id: UUID, body: DesignUpdate, db: AsyncSession = D
     q = _design_query().where(Design.id == design_id)
     result = await db.execute(q)
     design = result.scalar_one()
-    return DesignDetail.model_validate(design)
+    return _design_detail(design)
 
 
 @router.delete("/designs/{design_id}", status_code=204)

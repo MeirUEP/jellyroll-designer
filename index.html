@@ -3394,6 +3394,13 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
   const notes = document.getElementById('expNotes').value.trim() || null;
   const refDesignId = document.getElementById('expRefDesign').value || null;
 
+  // Resolve cell params to a preset FK (prompts user if needed).
+  const expCellParamsPresetId = await resolveCellParamsPresetId();
+  if (!expCellParamsPresetId) {
+    document.getElementById('expStatus').innerHTML = '<span style="color:#ef4444">Cancelled — cell params preset required</span>';
+    return;
+  }
+
   const payload = {
     name,
     description: notes,
@@ -3402,7 +3409,7 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
     anode_mix_id: document.getElementById('expAnodMix').value || null,
     layer_stack_id: document.getElementById('expLayerStack').value || null,
     reference_design_id: refDesignId,
-    cell_params: { ...params },        // snapshot of current cell geometry
+    cell_params_preset_id: expCellParamsPresetId,
     layers: layers ? JSON.parse(JSON.stringify(layers)) : null, // snapshot of layer stack
     elec_props: { ...elecProps },      // snapshot of electrode properties
     experimental_data: {
@@ -3440,6 +3447,98 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
     document.getElementById('expStatus').innerHTML = `<span style="color:#ef4444">Error: ${e.message}</span>`;
   }
 });
+
+// Compare two cell-params dicts for value equality (shallow, numeric-tolerant).
+function cellParamsEqual(a, b) {
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const va = a[k], vb = b[k];
+    if (typeof va === 'number' && typeof vb === 'number') {
+      if (Math.abs(va - vb) > 1e-9) return false;
+    } else if (va !== vb) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Resolve current `params` to a cell_params_preset_id, prompting the user if needed.
+// Behavior:
+//   - If the currently selected cell-params preset matches `params` → reuse its id.
+//   - If a preset is selected but params differ → ask user:
+//       "update existing preset" OR "save as new preset" OR cancel.
+//   - If no preset is selected → ask user to save as a new preset.
+// Returns a preset id on success, or null if the user cancels (caller should abort).
+async function resolveCellParamsPresetId() {
+  const sel = document.getElementById(PRESET_SELECTS.design);
+  const currentKey = sel ? sel.value : '';
+  const currentEntry = currentKey ? presetStores.design[currentKey] : null;
+  const currentIsCloud = currentEntry && currentEntry._cloud && currentEntry._cloudId;
+
+  // Case 1: a cloud preset is selected and its params match the current params → use it.
+  if (currentIsCloud && cellParamsEqual(currentEntry.params, params)) {
+    return currentEntry._cloudId;
+  }
+
+  // Case 2: a cloud preset is selected but params differ → ask update vs new.
+  if (currentIsCloud) {
+    const presetName = currentKey.replace(/^☁ /, '');
+    const choice = prompt(
+      `Cell params differ from preset "${presetName}".\n\n` +
+      `Type "update" to overwrite the preset,\n` +
+      `or type a new preset name to save as a new preset,\n` +
+      `or Cancel to abort save.`,
+      'update'
+    );
+    if (!choice) return null;
+    if (choice.trim().toLowerCase() === 'update') {
+      try {
+        const saved = await api.updateCellParamPreset(currentEntry._cloudId, {
+          name: presetName,
+          params: { ...params },
+        });
+        presetStores.design[currentKey] = { _cloudId: saved.id, _cloud: true, params: saved.params };
+        loadPresetList('design');
+        sel.value = currentKey;
+        showToast(`Updated preset: ${presetName}`);
+        return saved.id;
+      } catch(e) { showToast('Preset update failed: ' + e.message, true); return null; }
+    }
+    // else treat as new name
+    return await createNewCellParamsPreset(choice.trim());
+  }
+
+  // Case 3: no preset selected — prompt for a new preset name.
+  const defaultName = (currentDesignName || 'cell params') + ' v1';
+  const newName = prompt(
+    'Cell params must be saved as a preset.\n\nEnter a name for the new cell params preset:',
+    defaultName
+  );
+  if (!newName) return null;
+  return await createNewCellParamsPreset(newName.trim());
+}
+
+async function createNewCellParamsPreset(name) {
+  if (!name) return null;
+  try {
+    // If a preset with that name already exists in cloud, update it instead of colliding.
+    const key = '☁ ' + name;
+    const existing = presetStores.design[key];
+    let saved;
+    if (existing && existing._cloud && existing._cloudId) {
+      saved = await api.updateCellParamPreset(existing._cloudId, { name, params: { ...params } });
+    } else {
+      saved = await api.createCellParamPreset({ name, params: { ...params } });
+    }
+    presetStores.design[key] = { _cloudId: saved.id, _cloud: true, params: saved.params };
+    loadPresetList('design');
+    const sel = document.getElementById(PRESET_SELECTS.design);
+    if (sel) sel.value = key;
+    showToast(`Saved cell params preset: ${name}`);
+    return saved.id;
+  } catch(e) { showToast('Preset save failed: ' + e.message, true); return null; }
+}
 
 document.getElementById('btnCloudSave').addEventListener('click', async () => {
   if (!getApiUrl()) { document.getElementById('modalSettings').classList.remove('hidden'); return; }
@@ -3516,16 +3615,23 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
       } catch(e) { console.warn('Auto-save layer stack failed:', e); }
     }
 
-    // --- Save design with linked FKs + full inline snapshot ---
-    // cell_params: cell geometry (Cell tab)
-    // layers:      complete layer stack snapshot (Layers tab)
-    // elec_props:  electrode properties (Formulation tab)
-    // FKs:         cathode_mix_id / anode_mix_id / layer_stack_id for joined queries
+    // --- Resolve cell params to a preset FK (prompts user if needed) ---
+    const cellParamsPresetId = await resolveCellParamsPresetId();
+    if (!cellParamsPresetId) {
+      showToast('Save cancelled — cell params preset required', true);
+      return;
+    }
+
+    // --- Save design with linked FKs ---
+    // cell_params_preset_id: FK into cell_param_presets table (single source of truth)
+    // layers:                complete layer stack snapshot (Layers tab)
+    // elec_props:            electrode properties (Formulation tab)
+    // FKs:                   cathode_mix_id / anode_mix_id / layer_stack_id for joined queries
     const designData = {
       name: designName,
       is_experimental: false,   // Save Design button = non-experimental. The
                                 // Save Experimental button sets this to true.
-      cell_params: { ...params },
+      cell_params_preset_id: cellParamsPresetId,
       layers: JSON.parse(JSON.stringify(layers)),
       elec_props: { ...elecProps },
       cathode_mix_id: cathMixId,
@@ -3649,6 +3755,13 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
             const layerSel = document.getElementById(PRESET_SELECTS.layers);
             const cloudName = '☁ ' + design.layer_stack.name;
             if (presetStores.layers[cloudName]) layerSel.value = cloudName;
+          }
+          // Select the linked cell-params preset in the dropdown so the UI
+          // reflects which preset the design points to.
+          if (design.cell_params_preset) {
+            const designSel = document.getElementById(PRESET_SELECTS.design);
+            const cloudName = '☁ ' + design.cell_params_preset.name;
+            if (presetStores.design[cloudName]) designSel.value = cloudName;
           }
           for (const [k, v] of Object.entries(params)) {
             const el = document.getElementById('p_' + k);
