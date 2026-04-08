@@ -1218,6 +1218,18 @@ document.querySelectorAll('.preset-save').forEach(btn => {
         loadPresetList(type);
         sel.value = '☁ ' + name;
       } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
+    } else if (type === 'design') {
+      // Save full cell design — reuses btnCloudSave's logic but with a user-chosen name
+      // that can force a new record (rather than silently updating the loaded design)
+      try {
+        const loadedName = currentDesignName;
+        // If user entered a different name than loaded, treat as Save As New
+        if (name !== loadedName) {
+          currentDesignId = null;
+        }
+        currentDesignName = name;
+        document.getElementById('btnCloudSave').click();
+      } catch(e) { showToast('Cloud save failed: ' + e.message, true); console.error(e); }
     }
   });
 });
