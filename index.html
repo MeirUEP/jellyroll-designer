@@ -473,19 +473,39 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
       </div>
     </div>
 
-    <div style="margin-bottom:8px">
-      <label style="font-size:10px;color:var(--fg2)">Layer stack</label>
-      <select id="expLayerStack" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
-        <option value="">-- Select --</option>
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Layer stack</label>
+        <select id="expLayerStack" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)" title="The theoretical design this cell was built from">Reference design</label>
+        <select id="expRefDesign" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- None --</option>
+        </select>
+      </div>
     </div>
 
-    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Measured Data</h4>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Cell Measurements</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
         <label style="font-size:10px;color:var(--fg2)">Measured OD (mm)</label>
-        <input type="number" id="expMeasuredOD" step="0.1" placeholder="e.g. 83.5" style="width:100%">
+        <input type="number" id="expMeasuredOD" step="0.01" placeholder="e.g. 83.5" style="width:100%">
       </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Measured ID (mm)</label>
+        <input type="number" id="expMeasuredID" step="0.01" placeholder="e.g. 10.8" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Num turns (counted)</label>
+        <input type="number" id="expNumTurns" step="0.5" placeholder="e.g. 27" style="width:100%">
+      </div>
+    </div>
+
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Electrode Lengths</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
         <label style="font-size:10px;color:var(--fg2)">Cathode length (mm)</label>
         <input type="number" id="expCathLen" step="1" placeholder="e.g. 1920" style="width:100%">
@@ -494,16 +514,53 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
         <label style="font-size:10px;color:var(--fg2)">Anode length (mm)</label>
         <input type="number" id="expAnodLen" step="1" placeholder="e.g. 1850" style="width:100%">
       </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Separator length (mm)</label>
+        <input type="number" id="expSepLen" step="1" placeholder="e.g. 4200" style="width:100%">
+      </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Tab Measurements</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
-        <label style="font-size:10px;color:var(--fg2)">Cathode tabs (JSON array)</label>
-        <textarea id="expCathTabs" rows="3" placeholder='[{"tab_num":1,"arc_position_mm":245.2},...]' style="width:100%;font-size:9px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <label style="font-size:10px;color:var(--fg2)">First cathode tab (mm from start)</label>
+        <input type="number" id="expFirstCathTab" step="0.1" placeholder="e.g. 98.0" style="width:100%">
       </div>
       <div>
-        <label style="font-size:10px;color:var(--fg2)">Anode tabs (JSON array)</label>
-        <textarea id="expAnodTabs" rows="3" placeholder='[{"tab_num":1,"arc_position_mm":312.8},...]' style="width:100%;font-size:9px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <label style="font-size:10px;color:var(--fg2)">First anode tab (mm from start)</label>
+        <input type="number" id="expFirstAnodTab" step="0.1" placeholder="e.g. 45.0" style="width:100%">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)" title="Distances between consecutive cathode tabs, comma separated">Cathode tab spacings (mm, comma-sep)</label>
+        <textarea id="expCathSpacings" rows="2" placeholder="e.g. 195.3, 205.1, 218.4, 230.8" style="width:100%;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)" title="Distances between consecutive anode tabs, comma separated">Anode tab spacings (mm, comma-sep)</label>
+        <textarea id="expAnodSpacings" rows="2" placeholder="e.g. 180.2, 192.5, 210.1, 225.7" style="width:100%;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)"># cathode tabs</label>
+        <input type="number" id="expNumCathTabs" step="1" placeholder="e.g. 8" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)"># anode tabs</label>
+        <input type="number" id="expNumAnodTabs" step="1" placeholder="e.g. 8" style="width:100%">
+      </div>
+    </div>
+
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Machine Settings</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Machine tension</label>
+        <input type="number" id="expMachineTension" step="0.01" placeholder="e.g. 0.9" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Winding speed (rpm)</label>
+        <input type="number" id="expWindingSpeed" step="1" placeholder="e.g. 60" style="width:100%">
       </div>
     </div>
 
@@ -1561,7 +1618,7 @@ function runSimulation() {
     // Place anode tabs
     const trialATabs = [];
     const firstCathTabTurn = trialCTabs.length > 0 ? trialCTabs[0].turn : 0;
-    const firstAnodArcAbs = anode ? anode.off + Math.min(anodTabMinMm, 25.4) : 0;  // practical min: 1 inch or anod tab range min
+    const firstAnodArcAbs = anode ? anode.off + anodTabMinMm : 0;  // honor user-set minimum distance from anode start
     if (anode) {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
@@ -3230,9 +3287,11 @@ document.getElementById('btnAddExperimental').addEventListener('click', async ()
   const cathSel = document.getElementById('expCathMix');
   const anodSel = document.getElementById('expAnodMix');
   const stackSel = document.getElementById('expLayerStack');
+  const refSel = document.getElementById('expRefDesign');
   cathSel.innerHTML = '<option value="">-- Select --</option>';
   anodSel.innerHTML = '<option value="">-- Select --</option>';
   stackSel.innerHTML = '<option value="">-- Select --</option>';
+  refSel.innerHTML = '<option value="">-- None --</option>';
   try {
     if (cloudMixes.length === 0) cloudMixes = await api.listMixes();
     cloudMixes.filter(m => m.type === 'cathode').forEach(m => {
@@ -3245,13 +3304,18 @@ document.getElementById('btnAddExperimental').addEventListener('click', async ()
     cloudLayerStacks.forEach(s => {
       stackSel.innerHTML += `<option value="${s.id}">${s.name}</option>`;
     });
+    // Populate reference design dropdown with non-experimental designs
+    const designsData = await api.listDesigns(0, 200);
+    (designsData.items || []).filter(d => !d.is_experimental).forEach(d => {
+      refSel.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+    });
   } catch(e) { console.error('Failed to load cloud data for experimental form:', e); }
-  // Pre-fill with current params if available
-  document.getElementById('expMeasuredOD').value = '';
-  document.getElementById('expCathLen').value = '';
-  document.getElementById('expAnodLen').value = '';
-  document.getElementById('expCathTabs').value = '';
-  document.getElementById('expAnodTabs').value = '';
+  // Reset all fields
+  ['expMeasuredOD','expMeasuredID','expNumTurns','expCathLen','expAnodLen','expSepLen',
+   'expFirstCathTab','expFirstAnodTab','expCathSpacings','expAnodSpacings',
+   'expNumCathTabs','expNumAnodTabs','expMachineTension','expWindingSpeed'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   document.getElementById('expStatus').textContent = '';
   modal.classList.remove('hidden');
 });
@@ -3260,21 +3324,26 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
   const name = document.getElementById('expName').value.trim();
   if (!name) { document.getElementById('expStatus').textContent = 'Name is required'; return; }
 
-  // Parse tab JSON
-  let cathTabs = null, anodTabs = null;
-  const cathTabsRaw = document.getElementById('expCathTabs').value.trim();
-  const anodTabsRaw = document.getElementById('expAnodTabs').value.trim();
-  try { if (cathTabsRaw) cathTabs = JSON.parse(cathTabsRaw); } catch(e) {
-    document.getElementById('expStatus').textContent = 'Invalid cathode tabs JSON'; return;
-  }
-  try { if (anodTabsRaw) anodTabs = JSON.parse(anodTabsRaw); } catch(e) {
-    document.getElementById('expStatus').textContent = 'Invalid anode tabs JSON'; return;
-  }
+  // Helper: parse comma-separated floats → array or null
+  const parseSpacings = (raw) => {
+    if (!raw || !raw.trim()) return null;
+    const vals = raw.split(/[,\s]+/).map(s => s.trim()).filter(s => s.length)
+      .map(s => parseFloat(s)).filter(v => !isNaN(v));
+    return vals.length > 0 ? vals : null;
+  };
+  const numOrNull = (id) => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? null : v;
+  };
+  const intOrNull = (id) => {
+    const v = parseInt(document.getElementById(id).value, 10);
+    return isNaN(v) ? null : v;
+  };
 
-  const measuredOD = parseFloat(document.getElementById('expMeasuredOD').value) || null;
-  const cathLen = parseFloat(document.getElementById('expCathLen').value) || null;
-  const anodLen = parseFloat(document.getElementById('expAnodLen').value) || null;
+  const cathSpacings = parseSpacings(document.getElementById('expCathSpacings').value);
+  const anodSpacings = parseSpacings(document.getElementById('expAnodSpacings').value);
   const notes = document.getElementById('expNotes').value.trim() || null;
+  const refDesignId = document.getElementById('expRefDesign').value || null;
 
   const payload = {
     name,
@@ -3283,13 +3352,25 @@ document.getElementById('btnSaveExperimental').addEventListener('click', async (
     cathode_mix_id: document.getElementById('expCathMix').value || null,
     anode_mix_id: document.getElementById('expAnodMix').value || null,
     layer_stack_id: document.getElementById('expLayerStack').value || null,
-    cell_params: { ...params },  // save current cell params for reference
+    reference_design_id: refDesignId,
+    cell_params: { ...params },        // snapshot of current cell geometry
+    layers: layers ? JSON.parse(JSON.stringify(layers)) : null, // snapshot of layer stack
+    elec_props: { ...elecProps },      // snapshot of electrode properties
     experimental_data: {
-      measured_od: measuredOD,
-      cathode_length: cathLen,
-      anode_length: anodLen,
-      cathode_tabs: cathTabs,
-      anode_tabs: anodTabs,
+      measured_od: numOrNull('expMeasuredOD'),
+      measured_id: numOrNull('expMeasuredID'),
+      num_turns: numOrNull('expNumTurns'),
+      cathode_length: numOrNull('expCathLen'),
+      anode_length: numOrNull('expAnodLen'),
+      separator_length: numOrNull('expSepLen'),
+      cathode_tab_spacings: cathSpacings,
+      anode_tab_spacings: anodSpacings,
+      first_cathode_tab_mm: numOrNull('expFirstCathTab'),
+      first_anode_tab_mm: numOrNull('expFirstAnodTab'),
+      num_cathode_tabs: intOrNull('expNumCathTabs'),
+      num_anode_tabs: intOrNull('expNumAnodTabs'),
+      machine_tension: numOrNull('expMachineTension'),
+      winding_speed: numOrNull('expWindingSpeed'),
       notes,
     },
   };
@@ -3364,10 +3445,16 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
       } catch(e) { console.warn('Auto-save layer stack failed:', e); }
     }
 
-    // --- Save design with linked FKs ---
+    // --- Save design with linked FKs + full inline snapshot ---
+    // cell_params: cell geometry (Cell tab)
+    // layers:      complete layer stack snapshot (Layers tab)
+    // elec_props:  electrode properties (Formulation tab)
+    // FKs:         cathode_mix_id / anode_mix_id / layer_stack_id for joined queries
     const designData = {
       name: designName,
-      params, layers, elec_props: elecProps,
+      cell_params: { ...params },
+      layers: JSON.parse(JSON.stringify(layers)),
+      elec_props: { ...elecProps },
       cathode_mix_id: cathMixId,
       anode_mix_id: anodMixId,
       layer_stack_id: layerStackId,
@@ -3430,7 +3517,7 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
       row.addEventListener('click', async () => {
         try {
           const design = await api.getDesign(row.dataset.id);
-          params = design.params || design.cell_params || {};
+          params = design.cell_params || design.params || {};
           layers = design.layers || [];
           layers.forEach(l => { delete l.startTurn; });
           // Migrate old params to new solver-based ranges
