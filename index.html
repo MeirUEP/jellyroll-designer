@@ -1501,33 +1501,39 @@ function runSimulation() {
   phaseInfo.cathWindTurns = cathToAnodTurns;
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
-  // ===== Phase 3: Main wind (all layers to target OD) =====
-  // Stop main wind one anodExtPitch short of targetR so the anode extension
-  // has radial room to sweep for a valid end angle near the target OD.
+  // ===== Phase 3: Main wind (all layers) =====
+  // The machine winds a fixed number of main-wind turns (default 9).
+  // The resulting OD is determined by geometry, not the other way around.
+  // Also cap at targetR - anodExtPitch so the anode extension has radial room.
   if (anode) anode.off = arc;
   const mainWindStart = n;
+  const maxMainTurns = 9;  // machine hard limit
   const electrodeTargetR = targetR - anodExtPitch;
+  let mainTurnsDone = 0;
   if (allPitch > 0.01 && electrodeTargetR > r) {
-    // Full turns
-    while (r + allPitch <= electrodeTargetR) {
+    // Full turns (limited by both target radius and max turn count)
+    while (r + allPitch <= electrodeTargetR && mainTurnsDone < maxMainTurns) {
       const circ = 2 * Math.PI * (r + allPitch / 2);
       const arcStart = arc;
       arc += circ;
       r += allPitch;
       n += 1;
+      mainTurnsDone += 1;
       turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind' });
     }
-    // Fractional last turn to hit electrode target radius
-    const remainingR = electrodeTargetR - r;
-    if (remainingR > 0.01) {
-      const frac = remainingR / allPitch;
-      const circ = 2 * Math.PI * (r + allPitch / 2);
-      const arcInc = circ * frac;
-      const arcStart = arc;
-      arc += arcInc;
-      r += remainingR;
-      n += frac;
-      turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
+    // Fractional last turn only if we haven't hit the turn limit
+    if (mainTurnsDone < maxMainTurns) {
+      const remainingR = electrodeTargetR - r;
+      if (remainingR > 0.01) {
+        const frac = remainingR / allPitch;
+        const circ = 2 * Math.PI * (r + allPitch / 2);
+        const arcInc = circ * frac;
+        const arcStart = arc;
+        arc += arcInc;
+        r += remainingR;
+        n += frac;
+        turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
+      }
     }
   }
   phaseInfo.mainTurns = n - mainWindStart;
@@ -2054,12 +2060,16 @@ function updateSummary() {
   const odVal = `${s.actualOD.toFixed(1)}mm`;
   const pi2 = s.phaseInfo || {};
   const sepLen2 = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
+  const mainTurnsOver = (pi2.mainTurns || 0) > 9.01;
+  const totalTurns = Math.round(s.turns.reduce((sum, t) => sum + (t.frac || 1), 0) * 10) / 10;
   const cards = [
     { lbl: 'Actual OD', val: odVal },
-    { lbl: 'Total turns', val: Math.round(s.turns.reduce((sum, t) => sum + (t.frac || 1), 0) * 10) / 10 },
-    { lbl: 'Electrode turns', val: Math.round(((pi2.cathWindTurns || 0) + (pi2.mainTurns || 0) + (pi2.anodeExtTurns || 0)) * 10) / 10 },
-    { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm${s.cathodeLen > 2000 ? ' !' : ''}`, cls: s.cathodeLen > 2000 ? 'color:var(--red)' : 'color:#3b82f6' },
-    { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}${s.anodeLen > 2000 ? ' !' : ''}`, cls: s.anodeLen > 2000 ? 'color:var(--red)' : 'color:#16a34a' },
+    { lbl: 'Total turns', val: totalTurns },
+    { lbl: 'Pre turns', val: (pi2.preTurns || 0).toFixed(1) },
+    { lbl: 'Sep+Cath turns', val: (pi2.cathWindTurns || 0).toFixed(1) },
+    { lbl: 'Main turns', val: (pi2.mainTurns || 0).toFixed(1), cls: mainTurnsOver ? 'color:var(--red)' : '' },
+    { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm`, cls: 'color:#3b82f6' },
+    { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}`, cls: 'color:#16a34a' },
     { lbl: 'Sep length', val: `${Math.round(sepLen2)}mm` },
     { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
     { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
