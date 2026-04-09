@@ -1645,6 +1645,7 @@ function runSimulation() {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
         const tabArc = t.arcStart + (drillAng / 360) * t.circ;
+        if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
         if (tabArc < firstCathArcAbs) continue;
         if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
           const cathInActive = t.active.find(l => l.name === cathode.name);
@@ -1664,6 +1665,7 @@ function runSimulation() {
         const t = turns[ti];
         if (t.turn < firstCathTabTurn) continue;
         const tabArc = t.arcStart + (anodAng / 360) * t.circ;
+        if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
         if (tabArc < firstAnodArcAbs) continue;  // skip tabs too close to anode start
         if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
           const anodInActive = t.active.find(l => l.name === anode.name);
