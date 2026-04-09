@@ -1637,13 +1637,25 @@ function runSimulation() {
                     angDist(anodStartAngle, anodAng) >= keepOutHalf &&
                     angDist(cathStartAngle, anodStartAngle) >= minClearance;
 
-    // Place cathode tabs
+    // Place cathode tabs using circumference-stepping model.
+    // The drill angle determines the first tab position. Subsequent tabs are
+    // exactly one turn's circumference apart — matching the physical reality
+    // that consecutive drill intersections are one revolution of electrode apart.
     const trialCTabs = [];
     if (cathode) {
+      let prevTabArc = -Infinity;
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
-        const tabArc = t.arcStart + (drillAng / 360) * t.circ;
-        if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
+        let tabArc;
+        if (trialCTabs.length === 0) {
+          // First tab: use drill angle to find initial position
+          tabArc = t.arcStart + (drillAng / 360) * t.circ;
+        } else {
+          // Subsequent tabs: step forward by previous turn's circumference
+          const prevTab = trialCTabs[trialCTabs.length - 1];
+          tabArc = prevTab.arcLen + turns[prevTab.turnIdx].circ;
+        }
+        if (tabArc >= t.arc || tabArc < t.arcStart) continue;  // outside this turn
         if (tabArc < firstCathArcAbs) continue;
         if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
           const cathInActive = t.active.find(l => l.name === cathode.name);
@@ -1654,17 +1666,25 @@ function runSimulation() {
       }
     }
 
-    // Place anode tabs
+    // Place anode tabs (same circumference-stepping model)
     const trialATabs = [];
     const firstCathTabTurn = trialCTabs.length > 0 ? trialCTabs[0].turn : 0;
-    const firstAnodArcAbs = anode ? anode.off + anodTabMinMm : 0;  // honor user-set minimum distance from anode start
+    const firstAnodArcAbs = anode ? anode.off + anodTabMinMm : 0;
     if (anode) {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
         if (t.turn < firstCathTabTurn) continue;
-        const tabArc = t.arcStart + (anodAng / 360) * t.circ;
-        if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
-        if (tabArc < firstAnodArcAbs) continue;  // skip tabs too close to anode start
+        let tabArc;
+        if (trialATabs.length === 0) {
+          // First tab: use anode angle to find initial position
+          tabArc = t.arcStart + (anodAng / 360) * t.circ;
+        } else {
+          // Subsequent tabs: step forward by previous turn's circumference
+          const prevTab = trialATabs[trialATabs.length - 1];
+          tabArc = prevTab.arcLen + turns[prevTab.turnIdx].circ;
+        }
+        if (tabArc >= t.arc || tabArc < t.arcStart) continue;
+        if (tabArc < firstAnodArcAbs) continue;
         if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
           const anodInActive = t.active.find(l => l.name === anode.name);
           if (anodInActive) {
