@@ -1502,13 +1502,11 @@ function runSimulation() {
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers to target OD) =====
-  // Reserve radius for: anode extension (avg ~0.35 turn) + final sep wrap (min 0.5 turn).
-  // Variable final sep wrap fills exact remaining gap after anode extension.
+  // Reserve radius for anode extension only (no final separator wrap — sep ends with anode).
   if (anode) anode.off = arc;
   const mainWindStart = n;
   const anodeExtReserve = anode ? anodExtPitch * 0.35 : 0;
-  const minFinalWrapTurns = 0.5;
-  const electrodeTargetR = targetR - sepPitch * minFinalWrapTurns - anodeExtReserve;
+  const electrodeTargetR = targetR - anodeExtReserve;
   if (allPitch > 0.01 && electrodeTargetR > r) {
     // Full turns
     while (r + allPitch <= electrodeTargetR) {
@@ -1680,39 +1678,37 @@ function runSimulation() {
     const firstAnodTabAlongAnode = trialATabs.length > 0 && anode ? trialATabs[0].arcLen - anode.off : -1;
     const anodTabRangeOk = firstAnodTabAlongAnode >= anodTabMinMm && firstAnodTabAlongAnode <= anodTabMaxMm;
 
-    // Outer zone: try adjusting electrode end within ±tolerance for best fit
-    // Tolerance must cover enough arc to rotate past all keep-out zones.
-    // At the outer radius, minClearance deg = minClearance/360 * outerCirc mm.
+    // Outer zone: adjust electrode ends to avoid tab zones and each other.
+    // Cathode end: tight tolerance (±lengthTol) — cut length is controlled.
+    // Anode end: full flexibility (up to one outer circumference) — just needs
+    // to avoid cathode end angle and both tab zone angles.
     let cathEndArc = cathode ? cathode.off + effectiveLen(cathode) : 0;
     let anodEndArc = anode ? anode.off + effectiveLen(anode) : 0;
     let bestCathEndArc = cathEndArc;
     let bestAnodEndArc = anodEndArc;
     let outerOk = false;
     const outerCirc = turns.length > 0 ? turns[turns.length - 1].circ : 200;
-    const outerTol = Math.max(lengthTol, Math.ceil(keepOutHalf / 360 * outerCirc) + 1);
 
-    // Sweep cathode end within ±outerTol to find a valid angle
-    for (let adj = 0; adj <= outerTol && !outerOk; adj += 1) {
+    // Sweep cathode end within ±lengthTol
+    for (let adj = 0; adj <= lengthTol && !outerOk; adj += 1) {
       for (const sign of [0, -1, 1]) {
         const tryCathEnd = cathEndArc + sign * adj;
         const tryCathAng = arcToAngle(tryCathEnd);
         if (angDist(tryCathAng, drillAng) < keepOutHalf) continue;
         if (angDist(tryCathAng, anodAng) < keepOutHalf) continue;
-        // Now sweep anode end
-        for (let adj2 = 0; adj2 <= outerTol; adj2 += 1) {
-          for (const sign2 of [0, 1, -1]) {
-            const tryAnodEnd = anodEndArc + sign2 * adj2;
-            const tryAnodAng = arcToAngle(tryAnodEnd);
-            if (angDist(tryAnodAng, drillAng) < keepOutHalf) continue;
-            if (angDist(tryAnodAng, anodAng) < keepOutHalf) continue;
-            if (angDist(tryCathAng, tryAnodAng) < minClearance) continue;
-            // Valid outer zone configuration found
-            bestCathEndArc = tryCathEnd;
-            bestAnodEndArc = tryAnodEnd;
-            outerOk = true;
-            break;
-          }
-          if (outerOk) break;
+        // Anode end: sweep forward up to one full outer circumference
+        // Prefer shortest extension that clears all constraints
+        for (let adj2 = 0; adj2 <= outerCirc; adj2 += 1) {
+          const tryAnodEnd = anodEndArc + adj2;  // only extend forward, never shorten
+          const tryAnodAng = arcToAngle(tryAnodEnd);
+          if (angDist(tryAnodAng, drillAng) < keepOutHalf) continue;
+          if (angDist(tryAnodAng, anodAng) < keepOutHalf) continue;
+          if (angDist(tryCathAng, tryAnodAng) < minClearance) continue;
+          // Valid — pick first (shortest) valid extension
+          bestCathEndArc = tryCathEnd;
+          bestAnodEndArc = tryAnodEnd;
+          outerOk = true;
+          break;
         }
         if (outerOk) break;
       }
@@ -1823,8 +1819,8 @@ function runSimulation() {
     const lastTurn = turns[turns.length - 1];
     const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / lastTurn.circ * 360) % 360 : 0;
 
-    // Sweep forward to find maximum extension where anode end angle is safe
-    // (away from both tab zones and cathode end angle)
+    // Sweep forward to find longest valid extension (closest to target OD)
+    // while avoiding both tab zones and cathode end angle
     let bestExtArc = 0;
     for (let tryArc = 1; tryArc < circ; tryArc += 1) {
       const tryAngle = (currentAngle + tryArc / circ * 360) % 360;
@@ -1852,16 +1848,10 @@ function runSimulation() {
     anode.computedLen = anodeEndArc - anode.off;
   }
 
-  // ===== Final separator wrap: fill remaining gap to target OD =====
-  // After main wind + anode extension, wind separator to fill exact gap to targetR.
-  const remainingToTarget = targetR - r;
-  const sepWrapTurns = remainingToTarget > 0.001 ? remainingToTarget / sepPitch : minFinalWrapTurns;
-  const actualWrapTurns = Math.max(sepWrapTurns, minFinalWrapTurns);
-  windTurns(actualWrapTurns, separators, 'final_wrap');
-  phaseInfo.finalWrapTurns = actualWrapTurns;
-
-  // Set separator computed lengths
+  // No final separator wrap — separator ends together with the anode.
+  // Set separator computed lengths (separator runs from its offset to current arc).
   separators.forEach(s => { s.computedLen = arc - s.off; });
+  phaseInfo.finalWrapTurns = 0;
 
   // Build result
   const outerR = turns.length > 0 ? turns[turns.length - 1].r : r0;
@@ -2020,7 +2010,7 @@ function updateInfoBar() {
   const pi = s.phaseInfo || {};
   const sepLen = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   let html =
-    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)}${pi.anodeExtTurns > 0.001 ? ' + anod ' + pi.anodeExtTurns.toFixed(2) : ''} + wrap ${(pi.finalWrapTurns||1).toFixed(1)})</span></span>` +
+    `<span>Turns: <strong>${s.turns.length}</strong> <span style="font-size:9px;color:var(--fg2)">(pre ${(pi.preTurns||0).toFixed(1)} + s+c ${(pi.cathWindTurns||0).toFixed(1)} + all ${(pi.mainTurns||0).toFixed(1)}${pi.anodeExtTurns > 0.001 ? ' + anod ' + pi.anodeExtTurns.toFixed(2) : ''}${pi.finalWrapTurns > 0.001 ? ' + wrap ' + pi.finalWrapTurns.toFixed(1) : ''})</span></span>` +
     odLabel +
     `<span>Cath L: <strong style="color:${s.cathodeLen > 2000 ? 'var(--red)' : '#3b82f6'}">${Math.round(s.cathodeLen)}mm</strong>${s.cathodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
     `<span>Anod L: <strong style="color:${s.anodeLen > 2000 ? 'var(--red)' : '#16a34a'}">${Math.round(s.anodeLen)}mm</strong>${s.anodeExtended ? ' <span style="color:var(--red)" title="Extended to clear tab">*</span>' : ''}${s.anodeLen > 2000 ? ' <span title="Exceeds 2m coater limit">!</span>' : ''}</span>` +
