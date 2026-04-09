@@ -1681,21 +1681,25 @@ function runSimulation() {
     const anodTabRangeOk = firstAnodTabAlongAnode >= anodTabMinMm && firstAnodTabAlongAnode <= anodTabMaxMm;
 
     // Outer zone: try adjusting electrode end within ±tolerance for best fit
+    // Tolerance must cover enough arc to rotate past all keep-out zones.
+    // At the outer radius, minClearance deg = minClearance/360 * outerCirc mm.
     let cathEndArc = cathode ? cathode.off + effectiveLen(cathode) : 0;
     let anodEndArc = anode ? anode.off + effectiveLen(anode) : 0;
     let bestCathEndArc = cathEndArc;
     let bestAnodEndArc = anodEndArc;
     let outerOk = false;
+    const outerCirc = turns.length > 0 ? turns[turns.length - 1].circ : 200;
+    const outerTol = Math.max(lengthTol, Math.ceil(keepOutHalf / 360 * outerCirc) + 1);
 
-    // Sweep cathode end within ±tolerance to find a valid angle
-    for (let adj = 0; adj <= lengthTol && !outerOk; adj += 1) {
+    // Sweep cathode end within ±outerTol to find a valid angle
+    for (let adj = 0; adj <= outerTol && !outerOk; adj += 1) {
       for (const sign of [0, -1, 1]) {
         const tryCathEnd = cathEndArc + sign * adj;
         const tryCathAng = arcToAngle(tryCathEnd);
         if (angDist(tryCathAng, drillAng) < keepOutHalf) continue;
         if (angDist(tryCathAng, anodAng) < keepOutHalf) continue;
         // Now sweep anode end
-        for (let adj2 = 0; adj2 <= lengthTol; adj2 += 1) {
+        for (let adj2 = 0; adj2 <= outerTol; adj2 += 1) {
           for (const sign2 of [0, 1, -1]) {
             const tryAnodEnd = anodEndArc + sign2 * adj2;
             const tryAnodAng = arcToAngle(tryAnodEnd);
