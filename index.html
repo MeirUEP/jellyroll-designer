@@ -1502,11 +1502,11 @@ function runSimulation() {
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers to target OD) =====
-  // Reserve radius for anode extension only (no final separator wrap — sep ends with anode).
+  // Stop main wind one anodExtPitch short of targetR so the anode extension
+  // has radial room to sweep for a valid end angle near the target OD.
   if (anode) anode.off = arc;
   const mainWindStart = n;
-  const anodeExtReserve = anode ? anodExtPitch * 0.35 : 0;
-  const electrodeTargetR = targetR - anodeExtReserve;
+  const electrodeTargetR = targetR - anodExtPitch;
   if (allPitch > 0.01 && electrodeTargetR > r) {
     // Full turns
     while (r + allPitch <= electrodeTargetR) {
@@ -1819,10 +1819,11 @@ function runSimulation() {
     const lastTurn = turns[turns.length - 1];
     const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / lastTurn.circ * 360) % 360 : 0;
 
-    // Sweep forward to find longest valid extension (closest to target OD)
+    // Sweep forward to find longest valid extension that stays within targetR
     // while avoiding both tab zones and cathode end angle
+    const maxExtArc = (targetR - r) / anodExtPitch * circ;  // max arc before exceeding targetR
     let bestExtArc = 0;
-    for (let tryArc = 1; tryArc < circ; tryArc += 1) {
+    for (let tryArc = 1; tryArc < circ && tryArc <= maxExtArc; tryArc += 1) {
       const tryAngle = (currentAngle + tryArc / circ * 360) % 360;
       const okCathZone = angDist(tryAngle, drillAngleDeg) >= keepOutHalf;
       const okAnodZone = angDist(tryAngle, anodAngleDeg) >= keepOutHalf;
