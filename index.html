@@ -1422,38 +1422,77 @@ function runSimulation() {
     }
   }
 
-  // ===== Phase 0: Separator Overhang =====
-  // Separator tail folds around mandrel before winding begins.
-  // The grab distance sets total separator material pre-positioned.
+  // ===== Phases 0–2: Overhang + Pre-wind + Cathode wind =====
+  // Physical process:
+  //   - Separator is inserted through the split mandrel slot, extending 129mm to the left.
+  //   - Mandrel starts rotating. The left-side overhang wraps around simultaneously with
+  //     the right-side continuous feed — doubling the separator pitch until overhang is consumed.
+  //   - After pre_turns (1.5), cathode is fed in from the same angle as the separator feed.
+  //   - After an additional min_cath_to_anod turns (1.8), anode is fed in from the same angle.
+  //   - The overhang may still be wrapping when cathode enters (1.5 × π × mandrel_d < 129).
+
   separators.forEach(s => { s.off = 0; });
-  arc = SEPARATOR_GRAB_DISTANCE;
-  r += sepPitch; // folded overhang adds one separator stack thickness
-  // Record overhang as a single pseudo-turn for rendering
-  if (arc > 0) {
+  const cathToAnodTurns = params.min_cath_to_anod || 0.5;
+  const totalPreAnodeTurns = (params.pre_turns || 0) + cathToAnodTurns;
+  let overhangRemaining = SEPARATOR_GRAB_DISTANCE; // mm of overhang left to wrap
+
+  // Wind fractional steps through pre-wind, cathode-wind, consuming overhang
+  const FRAC_STEP = 0.1;  // fractional turn step for accuracy
+  let remaining = totalPreAnodeTurns;
+  const preWindStart = n;
+  let cathodeEntered = false;
+  let overhangDone = false;
+
+  while (remaining > 0.001) {
+    const frac = Math.min(remaining, FRAC_STEP);
+    const cathodeActive = (n >= (params.pre_turns || 0) - 0.001);
+    const doubleOH = overhangRemaining > 0.01;
+
+    // Build active layers and pitch for this sub-step
+    let stepPitch = doubleOH ? (2 * sepPitch) : sepPitch;
+    const activeLayers = [...separators];
+    if (cathodeActive && cathode) {
+      stepPitch += cathode.t / tension;
+      if (!cathodeEntered) {
+        cathode.off = arc;
+        cathodeEntered = true;
+      }
+    }
+
+    const circ = 2 * Math.PI * (r + stepPitch / 2);
+    const arcInc = circ * frac;
+    const rInc = stepPitch * frac;
+    const arcStart = arc;
+    arc += arcInc;
+    r += rInc;
+    n += frac;
+    remaining -= frac;
+
+    // Consume overhang: wraps at the rate of circumference per full turn
+    if (overhangRemaining > 0) {
+      overhangRemaining = Math.max(0, overhangRemaining - circ * frac);
+    }
+
+    // Determine phase name
+    let phase;
+    if (doubleOH && !cathodeActive) phase = 'overhang';
+    else if (!cathodeActive) phase = 'pre_wind';
+    else phase = 'cathode_wind';
+
     turns.push({
-      turn: 0, r, arc, pitch: sepPitch,
-      circ: arc, arcStart: 0,
-      active: [...separators], phase: 'overhang', frac: 1
+      turn: n, r, arc, pitch: stepPitch, circ, arcStart,
+      active: cathodeActive && cathode ? [...separators, cathode] : [...separators],
+      phase, frac
     });
+
+    if (!overhangDone && overhangRemaining <= 0.01) {
+      overhangDone = true;
+    }
   }
 
-  // ===== Phase 1: Pre-wind (separator only) =====
-  const preWindStart = n;
-  windTurns(params.pre_turns, separators, 'pre_wind');
-  phaseInfo.preTurns = n - preWindStart;
-
-  // ===== Phase 2: Cathode wind (separator + cathode) =====
-  // Cathode enters after pre-wind. Anode enters at 180° from cathode
-  // (opposite conveyor). Compute the soonest half-turn opportunity (N+0.5 turns).
-  if (cathode) cathode.off = arc;
-
-  // Compute anode entry: anode enters from opposite conveyor (180° on mandrel).
-  // The delay is simply how many turns of cathode+sep winding before anode joins.
-  // Tab 180° alignment is handled by the drill angle, not by entry timing.
-  const cathToAnodTurns = params.min_cath_to_anod || 0.5;
-  const cathWindStart = n;
-  windTurns(cathToAnodTurns, sepAndCathLayers, 'cathode_wind');
-  phaseInfo.cathWindTurns = n - cathWindStart;
+  if (cathode && !cathodeEntered) cathode.off = arc;
+  phaseInfo.preTurns = Math.min(n, params.pre_turns || 0);
+  phaseInfo.cathWindTurns = cathToAnodTurns;
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers to target OD) =====
