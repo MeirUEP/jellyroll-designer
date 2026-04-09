@@ -1651,9 +1651,12 @@ function runSimulation() {
           // First tab: use drill angle to find initial position
           tabArc = t.arcStart + (drillAng / 360) * t.circ;
         } else {
-          // Subsequent tabs: step forward by previous turn's circumference
+          // Subsequent tabs: step forward by one revolution's arc length.
+          // Add π×pitch to the turn circ to account for radius growth during
+          // the revolution (half-pitch correction, independent of drill angle).
           const prevTab = trialCTabs[trialCTabs.length - 1];
-          tabArc = prevTab.arcLen + turns[prevTab.turnIdx].circ;
+          const prevTurn = turns[prevTab.turnIdx];
+          tabArc = prevTab.arcLen + prevTurn.circ + Math.PI * prevTurn.pitch;
         }
         if (tabArc >= t.arc || tabArc < t.arcStart) continue;  // outside this turn
         if (tabArc < firstCathArcAbs) continue;
@@ -1679,9 +1682,10 @@ function runSimulation() {
           // First tab: use anode angle to find initial position
           tabArc = t.arcStart + (anodAng / 360) * t.circ;
         } else {
-          // Subsequent tabs: step forward by previous turn's circumference
+          // Subsequent tabs: step forward by one revolution's arc length.
           const prevTab = trialATabs[trialATabs.length - 1];
-          tabArc = prevTab.arcLen + turns[prevTab.turnIdx].circ;
+          const prevTurn = turns[prevTab.turnIdx];
+          tabArc = prevTab.arcLen + prevTurn.circ + Math.PI * prevTurn.pitch;
         }
         if (tabArc >= t.arc || tabArc < t.arcStart) continue;
         if (tabArc < firstAnodArcAbs) continue;
