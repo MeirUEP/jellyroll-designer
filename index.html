@@ -1821,7 +1821,7 @@ function runSimulation() {
 
     // Sweep forward to find longest valid extension that stays within targetR
     // while avoiding both tab zones and cathode end angle
-    const maxExtArc = (targetR - r) / anodExtPitch * circ;  // max arc before exceeding targetR
+    const maxExtArc = (targetR + 1 - r) / anodExtPitch * circ;  // allow up to 1mm over targetR
     let bestExtArc = 0;
     for (let tryArc = 1; tryArc < circ && tryArc <= maxExtArc; tryArc += 1) {
       const tryAngle = (currentAngle + tryArc / circ * 360) % 360;
