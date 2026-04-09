@@ -2056,8 +2056,8 @@ function updateSummary() {
   const sepLen2 = layers.filter(l => l.type === 'separator').reduce((max, l) => Math.max(max, l.computedLen || 0), 0);
   const cards = [
     { lbl: 'Actual OD', val: odVal },
-    { lbl: 'Total turns', val: s.turns.length },
-    { lbl: 'Electrode turns', val: Math.round(pi2.mainTurns || 0) },
+    { lbl: 'Total turns', val: Math.round(s.turns.reduce((sum, t) => sum + (t.frac || 1), 0) * 10) / 10 },
+    { lbl: 'Electrode turns', val: Math.round(((pi2.cathWindTurns || 0) + (pi2.mainTurns || 0) + (pi2.anodeExtTurns || 0)) * 10) / 10 },
     { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm${s.cathodeLen > 2000 ? ' !' : ''}`, cls: s.cathodeLen > 2000 ? 'color:var(--red)' : 'color:#3b82f6' },
     { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}${s.anodeLen > 2000 ? ' !' : ''}`, cls: s.anodeLen > 2000 ? 'color:var(--red)' : 'color:#16a34a' },
     { lbl: 'Sep length', val: `${Math.round(sepLen2)}mm` },
