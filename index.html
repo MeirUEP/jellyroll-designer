@@ -319,6 +319,7 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
           <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
           <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
           <div class="param-item"><label>Tension factor</label><input type="number" id="p_tension_factor" step="0.01" min="0.5" max="1" value="1" title="1 = perfect winding (no air gaps). Lower = looser winding with air gaps increasing effective pitch."></div>
+          <div class="param-item"><label>Inner gap factor (k)</label><input type="number" id="p_winding_gap_k" step="0.1" min="0" max="20" value="0" title="Separator wrinkling at inner radii: sep_pitch × (1 + k × exp(-(r-r0)/(2r0))). Only inflates separator thickness, electrode thickness stays constant. Higher k = more air gap at tight bending radii. 0 = no effect."></div>
         </div>
       </div>
       <div class="panel">
@@ -1315,6 +1316,7 @@ let params = {
   cath_weld_from_tab: 1,        // start cathode welding from tab N (skip inner tabs)
   anod_weld_from_tab: 1,        // start anode welding from tab N (skip inner tabs)
   tension_factor: 1,            // 1 = perfect winding, <1 = looser (air gap increases pitch)
+  winding_gap_k: 0,             // radius-dependent gap: pitch *= (1 + k*r0/r). Models inner wrinkling.
 };
 
 let simResult = null;
@@ -1364,14 +1366,42 @@ function runSimulation() {
   // Reset computed state
   allLayers.forEach(l => { l.off = -1; l.computedLen = 0; });
 
-  // Pitch calculations — tension_factor < 1 means looser winding (air gap increases pitch)
+  // Pitch calculations — radius-dependent model
+  // effective_pitch(r) = nominal_pitch / tension × (1 + k × r0 / r)
+  // At inner radii (r ≈ r0): pitch inflated by (1+k) — separator wrinkling, air gaps
+  // At outer radii (r >> r0): converges to nominal — tight winding
   const tension = Math.max(0.01, Math.min(1, params.tension_factor || 1));
-  const sepPitch = separators.reduce((sum, l) => sum + l.t, 0) / tension;
+  const gapK = Math.max(0, params.winding_gap_k || 0);
+
+  // Nominal pitches (sum of layer thicknesses, no tension/gap adjustment)
+  const nomSepPitch = separators.reduce((sum, l) => sum + l.t, 0);
   const sepAndCathLayers = layers.filter(l => l.type === 'separator' || l.type === 'cathode');
   const sepAndAnodLayers = layers.filter(l => l.type === 'separator' || l.type === 'anode');
-  const phase2Pitch = sepAndCathLayers.reduce((sum, l) => sum + l.t, 0) / tension;
-  const anodExtPitch = sepAndAnodLayers.reduce((sum, l) => sum + l.t, 0) / tension;
-  const allPitch = allLayers.reduce((sum, l) => sum + l.t, 0) / tension;
+  const nomPhase2Pitch = sepAndCathLayers.reduce((sum, l) => sum + l.t, 0);
+  const nomAnodExtPitch = sepAndAnodLayers.reduce((sum, l) => sum + l.t, 0);
+  const nomAllPitch = allLayers.reduce((sum, l) => sum + l.t, 0);
+
+  // Radius-dependent pitch function — physically motivated model
+  // Only SEPARATOR layers wrinkle at tight bending radii, creating air gaps.
+  // Electrode (cathode/anode) thickness remains constant regardless of radius.
+  // Model: sep_effective = sep_nominal × (1 + k × exp(-(r-r0)/r0))
+  // Total pitch = (inflated sep thickness + constant electrode thickness) / tension
+  //
+  // This preserves electrode length better than inflating total pitch, because
+  // the electrode arc per turn still grows with the inflated radius.
+  function pitchAtR(nominalPitch, currentR) {
+    if (gapK <= 0) return nominalPitch / tension;
+    const dist = Math.max(0, currentR - r0);
+    const decayLen = 2 * r0;  // characteristic decay length — wrinkling persists ~2× mandrel radii
+    const sepInflation = gapK * Math.exp(-dist / decayLen);
+    // Split nominal pitch into separator portion and electrode portion
+    const sepFrac = nomSepPitch / Math.max(nominalPitch, 0.01);
+    // Only inflate the separator fraction; electrode stays constant
+    const inflatedPitch = nominalPitch * (1 + sepInflation * sepFrac);
+    return inflatedPitch / tension;
+  }
+
+  // (All pitch calculations now use pitchAtR() per-step — no constant pitch variables needed)
 
   let r = r0;
   let arc = 0;
@@ -1381,12 +1411,12 @@ function runSimulation() {
 
   // --- Helper: wind exact number of turns (supports fractional) ---
   function windTurns(numTurns, activeLayers, phaseName) {
-    // Apply tension factor consistently with main wind / overhang phases
-    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0) / tension;
-    if (pitch < 0.01) return;
+    const nomPitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    if (nomPitch < 0.01) return;
     let remaining = numTurns;
     while (remaining > 0.001) {
       const frac = Math.min(remaining, 1.0);
+      const pitch = pitchAtR(nomPitch, r);
       const circ = 2 * Math.PI * (r + pitch / 2);
       const arcInc = circ * frac;
       const rInc = pitch * frac;
@@ -1403,10 +1433,10 @@ function runSimulation() {
   // mode: 'closest' = pick undershoot or overshoot whichever is closer (default)
   //        'undershoot' = always stop before exceeding target
   function windToRadius(tgtR, activeLayers, phaseName, mode = 'closest') {
-    // Apply tension factor consistently with windTurns / main wind phase
-    const pitch = activeLayers.reduce((sum, l) => sum + l.t, 0) / tension;
-    if (pitch < 0.01) return;
+    const nomPitch = activeLayers.reduce((sum, l) => sum + l.t, 0);
+    if (nomPitch < 0.01) return;
     while (r < tgtR) {
+      const pitch = pitchAtR(nomPitch, r);
       if (r + pitch > tgtR) {
         if (mode === 'undershoot') break;
         const undershoot = tgtR - r;
@@ -1459,14 +1489,17 @@ function runSimulation() {
       const cathodeActive = (n >= (params.pre_turns || 0) - 0.001);
       const doubleOH = overhangRemaining > 0.01;
 
-      let stepPitch = doubleOH ? (2 * sepPitch) : sepPitch;
+      // Build nominal pitch from active layers at this sub-step
+      let nomStep = doubleOH ? (2 * nomSepPitch) : nomSepPitch;
       if (cathodeActive && cathode) {
-        stepPitch += cathode.t / tension;
+        nomStep += cathode.t;
         if (!cathodeEntered) {
           cathode.off = arc;
           cathodeEntered = true;
         }
       }
+      // Apply radius-dependent gap + tension
+      const stepPitch = pitchAtR(nomStep, r);
 
       const circ = 2 * Math.PI * (r + stepPitch / 2);
       arc += circ * subFrac;
@@ -1504,35 +1537,40 @@ function runSimulation() {
   // ===== Phase 3: Main wind (all layers) =====
   // The machine winds a fixed number of main-wind turns (default 9).
   // The resulting OD is determined by geometry, not the other way around.
-  // Also cap at targetR - anodExtPitch so the anode extension has radial room.
+  // Also cap at targetR - estimated anode extension pitch.
   if (anode) anode.off = arc;
   const mainWindStart = n;
   const maxMainTurns = 9;  // machine hard limit
-  const electrodeTargetR = targetR - anodExtPitch;
+  const estAnodExtPitch = pitchAtR(nomAnodExtPitch, targetR);  // pitch at outer radius for extension
+  const electrodeTargetR = targetR - estAnodExtPitch;
   let mainTurnsDone = 0;
-  if (allPitch > 0.01 && electrodeTargetR > r) {
+  if (nomAllPitch > 0.01 && electrodeTargetR > r) {
     // Full turns (limited by both target radius and max turn count)
-    while (r + allPitch <= electrodeTargetR && mainTurnsDone < maxMainTurns) {
-      const circ = 2 * Math.PI * (r + allPitch / 2);
+    // Pitch varies with radius at each turn
+    while (mainTurnsDone < maxMainTurns) {
+      const turnPitch = pitchAtR(nomAllPitch, r);
+      if (r + turnPitch > electrodeTargetR) break;
+      const circ = 2 * Math.PI * (r + turnPitch / 2);
       const arcStart = arc;
       arc += circ;
-      r += allPitch;
+      r += turnPitch;
       n += 1;
       mainTurnsDone += 1;
-      turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind' });
+      turns.push({ turn: n, r, arc, pitch: turnPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind' });
     }
     // Fractional last turn only if we haven't hit the turn limit
     if (mainTurnsDone < maxMainTurns) {
       const remainingR = electrodeTargetR - r;
       if (remainingR > 0.01) {
-        const frac = remainingR / allPitch;
-        const circ = 2 * Math.PI * (r + allPitch / 2);
+        const turnPitch = pitchAtR(nomAllPitch, r);
+        const frac = remainingR / turnPitch;
+        const circ = 2 * Math.PI * (r + turnPitch / 2);
         const arcInc = circ * frac;
         const arcStart = arc;
         arc += arcInc;
         r += remainingR;
         n += frac;
-        turns.push({ turn: n, r, arc, pitch: allPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
+        turns.push({ turn: n, r, arc, pitch: turnPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
       }
     }
   }
@@ -1845,13 +1883,14 @@ function runSimulation() {
   let anodeEndArc = anodeArcAtMainEnd;
   phaseInfo.anodeExtTurns = 0;
   if (anode && anode.off >= 0 && r > 0) {
+    const extPitch = pitchAtR(nomAnodExtPitch, r);  // pitch at current (outer) radius
     const circ = 2 * Math.PI * r;
     const lastTurn = turns[turns.length - 1];
     const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / lastTurn.circ * 360) % 360 : 0;
 
     // Sweep forward to find longest valid extension that stays within targetR
     // while avoiding both tab zones and cathode end angle
-    const maxExtArc = (targetR + 1 - r) / anodExtPitch * circ;  // allow up to 1mm over targetR
+    const maxExtArc = (targetR + 1 - r) / extPitch * circ;  // allow up to 1mm over targetR
     let bestExtArc = 0;
     for (let tryArc = 1; tryArc < circ && tryArc <= maxExtArc; tryArc += 1) {
       const tryAngle = (currentAngle + tryArc / circ * 360) % 360;
@@ -1863,17 +1902,17 @@ function runSimulation() {
       }
     }
 
-    if (bestExtArc > 0.01 && anodExtPitch > 0) {
+    if (bestExtArc > 0.01 && extPitch > 0) {
       anodeEndArc = anodeArcAtMainEnd + bestExtArc;
       anodeExtended = true;
-      const frac = bestExtArc / (2 * Math.PI * (r + anodExtPitch / 2));
-      const extCirc = 2 * Math.PI * (r + anodExtPitch / 2);
+      const frac = bestExtArc / (2 * Math.PI * (r + extPitch / 2));
+      const extCirc = 2 * Math.PI * (r + extPitch / 2);
       const arcStart = arc;
-      const rInc = anodExtPitch * frac;
+      const rInc = extPitch * frac;
       arc += bestExtArc;
       r += rInc;
       n += frac;
-      turns.push({ turn: n, r, arc, pitch: anodExtPitch, circ: extCirc, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
+      turns.push({ turn: n, r, arc, pitch: extPitch, circ: extCirc, arcStart, active: [...sepAndAnodLayers], phase: 'anode_ext', frac });
       phaseInfo.anodeExtTurns = frac;
     }
     anode.computedLen = anodeEndArc - anode.off;
@@ -2071,7 +2110,7 @@ function updateSummary() {
     { lbl: 'Cathode length', val: `${Math.round(s.cathodeLen)}mm`, cls: 'color:#3b82f6' },
     { lbl: 'Anode length', val: `${Math.round(s.anodeLen)}mm${s.anodeExtended ? ' *' : ''}`, cls: 'color:#16a34a' },
     { lbl: 'Sep length', val: `${Math.round(sepLen2)}mm` },
-    { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm` },
+    { lbl: 'Pitch range', val: `${s.minPitch.toFixed(2)}&ndash;${s.maxPitch.toFixed(2)}mm`, cls: s.minPitch < s.maxPitch * 0.85 ? 'color:var(--accent)' : '' },
     { lbl: 'Cathode tabs', val: s.cTabs.length, cls: 'color:#3b82f6' },
     { lbl: 'Anode tabs', val: s.aTabs.length, cls: 'color:#16a34a' },
   ];
