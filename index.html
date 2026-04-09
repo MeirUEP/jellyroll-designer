@@ -1436,58 +1436,64 @@ function runSimulation() {
   const totalPreAnodeTurns = (params.pre_turns || 0) + cathToAnodTurns;
   let overhangRemaining = SEPARATOR_GRAB_DISTANCE; // mm of overhang left to wrap
 
-  // Wind fractional steps through pre-wind, cathode-wind, consuming overhang
-  const FRAC_STEP = 0.1;  // fractional turn step for accuracy
-  let remaining = totalPreAnodeTurns;
+  // Wind full turns through pre-wind + cathode-wind, consuming overhang.
+  // Uses sub-steps internally for pitch changes (overhang consumed / cathode entry)
+  // but emits one turn entry per full revolution for correct tab placement.
   const preWindStart = n;
   let cathodeEntered = false;
-  let overhangDone = false;
+  let turnsRemaining = totalPreAnodeTurns;
 
-  while (remaining > 0.001) {
-    const frac = Math.min(remaining, FRAC_STEP);
-    const cathodeActive = (n >= (params.pre_turns || 0) - 0.001);
-    const doubleOH = overhangRemaining > 0.01;
+  while (turnsRemaining > 0.001) {
+    // This iteration covers one full turn (or final fractional turn)
+    const turnFrac = Math.min(turnsRemaining, 1.0);
+    const turnArcStart = arc;
+    const turnRStart = r;
+    const turnNStart = n;
 
-    // Build active layers and pitch for this sub-step
-    let stepPitch = doubleOH ? (2 * sepPitch) : sepPitch;
-    const activeLayers = [...separators];
-    if (cathodeActive && cathode) {
-      stepPitch += cathode.t / tension;
-      if (!cathodeEntered) {
-        cathode.off = arc;
-        cathodeEntered = true;
+    // Sub-step this turn at high resolution to track overhang + cathode entry
+    const SUB_STEPS = 20;
+    const subFrac = turnFrac / SUB_STEPS;
+    let turnPitchSum = 0;
+
+    for (let s = 0; s < SUB_STEPS; s++) {
+      const cathodeActive = (n >= (params.pre_turns || 0) - 0.001);
+      const doubleOH = overhangRemaining > 0.01;
+
+      let stepPitch = doubleOH ? (2 * sepPitch) : sepPitch;
+      if (cathodeActive && cathode) {
+        stepPitch += cathode.t / tension;
+        if (!cathodeEntered) {
+          cathode.off = arc;
+          cathodeEntered = true;
+        }
+      }
+
+      const circ = 2 * Math.PI * (r + stepPitch / 2);
+      arc += circ * subFrac;
+      r += stepPitch * subFrac;
+      n += subFrac;
+      turnPitchSum += stepPitch;
+
+      if (overhangRemaining > 0) {
+        overhangRemaining = Math.max(0, overhangRemaining - circ * subFrac);
       }
     }
 
-    const circ = 2 * Math.PI * (r + stepPitch / 2);
-    const arcInc = circ * frac;
-    const rInc = stepPitch * frac;
-    const arcStart = arc;
-    arc += arcInc;
-    r += rInc;
-    n += frac;
-    remaining -= frac;
+    turnsRemaining -= turnFrac;
 
-    // Consume overhang: wraps at the rate of circumference per full turn
-    if (overhangRemaining > 0) {
-      overhangRemaining = Math.max(0, overhangRemaining - circ * frac);
-    }
-
-    // Determine phase name
+    // Emit one turn entry for this full revolution
+    const avgPitch = turnPitchSum / SUB_STEPS;
+    const turnCirc = arc - turnArcStart;  // actual arc for this turn (accounts for pitch changes)
+    const cathodeActive = (turnNStart >= (params.pre_turns || 0) - 0.001);
     let phase;
-    if (doubleOH && !cathodeActive) phase = 'overhang';
-    else if (!cathodeActive) phase = 'pre_wind';
+    if (turnNStart < (params.pre_turns || 0) - 0.001) phase = 'pre_wind';
     else phase = 'cathode_wind';
 
     turns.push({
-      turn: n, r, arc, pitch: stepPitch, circ, arcStart,
+      turn: n, r, arc, pitch: avgPitch, circ: turnCirc / turnFrac, arcStart: turnArcStart,
       active: cathodeActive && cathode ? [...separators, cathode] : [...separators],
-      phase, frac
+      phase, frac: turnFrac
     });
-
-    if (!overhangDone && overhangRemaining <= 0.01) {
-      overhangDone = true;
-    }
   }
 
   if (cathode && !cathodeEntered) cathode.off = arc;
