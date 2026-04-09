@@ -1557,27 +1557,18 @@ function runSimulation() {
     return t.r;
   }
 
-  // Use start-of-turn circumference for tab angle calculations.
-  // In a wound cell the layers settle into concentric rings; the tab's angular
-  // position within a turn corresponds to a fraction of the ring circumference
-  // at the START of the turn, not the spiral-average circumference.
-  function tabCirc(t) {
-    const rStart = t.r - t.pitch;
-    return 2 * Math.PI * Math.max(rStart, r0);
-  }
-
   function computeDrillAngle(firstArc) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
       if (firstArc >= t.arcStart && firstArc < t.arc) {
-        return (firstArc - t.arcStart) / tabCirc(t) * 360;
+        return (firstArc - t.arcStart) / t.circ * 360;
       }
     }
     if (turns.length > 0) {
       const lastT = turns[turns.length - 1];
       const firstT = turns[0];
-      if (firstArc < firstT.arcStart) return ((firstArc / tabCirc(firstT)) % 1) * 360;
-      return (((firstArc - lastT.arcStart) / tabCirc(lastT)) % 1) * 360;
+      if (firstArc < firstT.arcStart) return ((firstArc / firstT.circ) % 1) * 360;
+      return (((firstArc - lastT.arcStart) / lastT.circ) % 1) * 360;
     }
     return 0;
   }
@@ -1597,17 +1588,17 @@ function runSimulation() {
     return angDist(angle, center) < halfWidth;
   }
 
-  // Compute angular position at a given arc length (using settled-ring model)
+  // Compute angular position at a given arc length
   function arcToAngle(arcPos) {
     for (let ti = 0; ti < turns.length; ti++) {
       const t = turns[ti];
       if (arcPos >= t.arcStart && arcPos < t.arc) {
-        return ((arcPos - t.arcStart) / tabCirc(t) * 360) % 360;
+        return ((arcPos - t.arcStart) / t.circ * 360) % 360;
       }
     }
     if (turns.length > 0) {
       const lastT = turns[turns.length - 1];
-      return ((arcPos - lastT.arcStart) / tabCirc(lastT) * 360) % 360;
+      return ((arcPos - lastT.arcStart) / lastT.circ * 360) % 360;
     }
     return 0;
   }
@@ -1651,7 +1642,7 @@ function runSimulation() {
     if (cathode) {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
-        const tabArc = t.arcStart + (drillAng / 360) * tabCirc(t);
+        const tabArc = t.arcStart + (drillAng / 360) * t.circ;
         if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
         if (tabArc < firstCathArcAbs) continue;
         if (tabArc >= cathode.off && tabArc < cathode.off + effectiveLen(cathode)) {
@@ -1671,7 +1662,7 @@ function runSimulation() {
       for (let ti = 0; ti < turns.length; ti++) {
         const t = turns[ti];
         if (t.turn < firstCathTabTurn) continue;
-        const tabArc = t.arcStart + (anodAng / 360) * tabCirc(t);
+        const tabArc = t.arcStart + (anodAng / 360) * t.circ;
         if (tabArc >= t.arc) continue;  // tab falls outside this turn's actual arc span (fractional turn)
         if (tabArc < firstAnodArcAbs) continue;  // skip tabs too close to anode start
         if (tabArc >= anode.off && tabArc < anode.off + effectiveLen(anode)) {
@@ -1826,7 +1817,7 @@ function runSimulation() {
   if (anode && anode.off >= 0 && r > 0) {
     const circ = 2 * Math.PI * r;
     const lastTurn = turns[turns.length - 1];
-    const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / tabCirc(lastTurn) * 360) % 360 : 0;
+    const currentAngle = lastTurn ? ((anodeArcAtMainEnd - lastTurn.arcStart) / lastTurn.circ * 360) % 360 : 0;
 
     // Sweep forward to find longest valid extension that stays within targetR
     // while avoiding both tab zones and cathode end angle
