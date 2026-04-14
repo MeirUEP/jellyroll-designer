@@ -127,3 +127,58 @@ class CapacityResult(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
 
     design = relationship("Design", back_populates="cap_result")
+
+
+# ========== Inventory & BOM ==========
+
+class InventoryItem(Base):
+    """Current stock of a material. One row per material+lot combination."""
+    __tablename__ = "inventory_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Float, nullable=False)            # current quantity
+    unit = Column(String(30), nullable=False)            # 'linear_ft', 'kg', 'sheets', 'rolls', 'each'
+    lot_number = Column(String(100), nullable=True)
+    location = Column(String(100), nullable=True)        # 'warehouse', 'line-1', etc.
+    expiry_date = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
+
+    material = relationship("Material")
+    transactions = relationship("InventoryTransaction", back_populates="inventory_item", cascade="all, delete-orphan")
+
+
+class InventoryTransaction(Base):
+    """Append-only ledger of every inventory change."""
+    __tablename__ = "inventory_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    qty_change = Column(Float, nullable=False)           # positive = received, negative = consumed/scrapped
+    reason = Column(String(50), nullable=False)          # 'received', 'production', 'scrap', 'adjustment', 'return'
+    batch_id = Column(String(100), nullable=True)        # reference to FileMaker batch
+    design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+
+    inventory_item = relationship("InventoryItem", back_populates="transactions")
+
+
+class DesignBOM(Base):
+    """Bill of materials for a design — auto-generated from simulation results."""
+    __tablename__ = "design_bom"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
+    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="RESTRICT"), nullable=False)
+    layer_name = Column(String(255), nullable=True)      # human-readable: 'Cathode', 'Kraft paper', etc.
+    role = Column(String(50), nullable=True)              # 'cathode', 'anode', 'separator'
+    qty_per_cell = Column(Float, nullable=False)          # quantity needed per cell
+    unit = Column(String(30), nullable=False)             # 'mm' (length), 'each' (tabs), 'cm2' (area)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+
+    design = relationship("Design")
+    material = relationship("Material")

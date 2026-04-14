@@ -266,3 +266,80 @@ class CapResultCreate(BaseModel):
     cell_energy_1e: float
     total_dry_mass: float
     full_result: dict
+
+
+# ========== Inventory ==========
+class InventoryItemCreate(BaseModel):
+    material_id: UUID
+    quantity: float
+    unit: str = Field(..., max_length=30)
+    lot_number: str | None = None
+    location: str | None = None
+    expiry_date: datetime | None = None
+    notes: str | None = None
+
+
+class InventoryItemUpdate(BaseModel):
+    quantity: float | None = None
+    unit: str | None = None
+    lot_number: str | None = None
+    location: str | None = None
+    expiry_date: datetime | None = None
+    notes: str | None = None
+
+
+class InventoryItemSchema(InventoryItemCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class InventoryItemDetail(InventoryItemSchema):
+    """Inventory item with resolved material name."""
+    material_name: str | None = None
+    material_type: str | None = None
+
+
+# ========== Inventory Transactions ==========
+class InventoryTransactionCreate(BaseModel):
+    inventory_item_id: UUID
+    qty_change: float
+    reason: str = Field(..., max_length=50)  # received, production, scrap, adjustment, return
+    batch_id: str | None = None
+    design_id: UUID | None = None
+    notes: str | None = None
+
+
+class InventoryTransactionSchema(InventoryTransactionCreate):
+    id: UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# ========== Design BOM ==========
+class BOMLineSchema(BaseModel):
+    id: UUID
+    design_id: UUID
+    material_id: UUID
+    layer_name: str | None = None
+    role: str | None = None
+    qty_per_cell: float
+    unit: str
+    notes: str | None = None
+    created_at: datetime
+    material_name: str | None = None
+    model_config = {"from_attributes": True}
+
+
+class BOMGenerateRequest(BaseModel):
+    """Request to generate BOM from a saved design's simulation results."""
+    design_id: UUID
+
+
+class ProductionConsumeRequest(BaseModel):
+    """Consume inventory for a production batch."""
+    design_id: UUID
+    cell_count: int
+    batch_id: str | None = None
+    notes: str | None = None

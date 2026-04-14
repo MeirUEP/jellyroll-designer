@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import get_settings
 from app.database import engine
-from app.routers import chemicals, materials, mixes, layer_stacks, designs, simulations, cell_param_presets
+from app.routers import chemicals, materials, mixes, layer_stacks, designs, simulations, cell_param_presets, inventory
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(layer_stacks.router, prefix="/api/v1")
 app.include_router(cell_param_presets.router, prefix="/api/v1")
 app.include_router(designs.router, prefix="/api/v1")
 app.include_router(simulations.router, prefix="/api/v1")
+app.include_router(inventory.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
