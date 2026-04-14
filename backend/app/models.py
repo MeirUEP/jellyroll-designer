@@ -132,21 +132,28 @@ class CapacityResult(Base):
 # ========== Inventory & BOM ==========
 
 class InventoryItem(Base):
-    """Current stock of a material. One row per material+lot combination."""
+    """Standalone inventory catalog item. Covers everything: chemicals, separators,
+    electrolyte, finished goods, packaging, electronics, etc."""
     __tablename__ = "inventory_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
-    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="RESTRICT"), nullable=False)
-    quantity = Column(Float, nullable=False)            # current quantity
-    unit = Column(String(30), nullable=False)            # 'linear_ft', 'kg', 'sheets', 'rolls', 'each'
+    name = Column(String(255), nullable=False)
+    category = Column(String(50), nullable=False)        # raw_chemical, separator, collector, electrolyte, finished_good, packaging, electronics, other
+    unit = Column(String(30), nullable=False)             # kg, lbs, ft, m, L, pcs, rolls
+    package_unit = Column(String(50), nullable=True)      # bag, supersack, roll, drum, tote, jar, bottle, box
+    package_size = Column(Float, nullable=True)           # qty per package
+    quantity = Column(Float, nullable=False, server_default="0")  # current stock
     lot_number = Column(String(100), nullable=True)
-    location = Column(String(100), nullable=True)        # 'warehouse', 'line-1', etc.
-    expiry_date = Column(DateTime(timezone=True), nullable=True)
+    location = Column(String(100), nullable=True)
+    reorder_point = Column(Float, nullable=True)
+    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="SET NULL"), nullable=True)
+    chemical_id = Column(UUID(as_uuid=True), ForeignKey("chemicals.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 
     material = relationship("Material")
+    chemical = relationship("Chemical")
     transactions = relationship("InventoryTransaction", back_populates="inventory_item", cascade="all, delete-orphan")
 
 
@@ -157,9 +164,10 @@ class InventoryTransaction(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
     qty_change = Column(Float, nullable=False)           # positive = received, negative = consumed/scrapped
-    reason = Column(String(50), nullable=False)          # 'received', 'production', 'scrap', 'adjustment', 'return'
+    reason = Column(String(50), nullable=False)          # received, production, scrap, adjustment, count, return
     batch_id = Column(String(100), nullable=True)        # reference to FileMaker batch
     design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
+    performed_by = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
 
@@ -172,13 +180,15 @@ class DesignBOM(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
-    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="RESTRICT"), nullable=False)
-    layer_name = Column(String(255), nullable=True)      # human-readable: 'Cathode', 'Kraft paper', etc.
-    role = Column(String(50), nullable=True)              # 'cathode', 'anode', 'separator'
-    qty_per_cell = Column(Float, nullable=False)          # quantity needed per cell
-    unit = Column(String(30), nullable=False)             # 'mm' (length), 'each' (tabs), 'cm2' (area)
+    inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True)
+    material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="SET NULL"), nullable=True)
+    layer_name = Column(String(255), nullable=True)
+    role = Column(String(50), nullable=True)              # cathode, anode, separator, electrolyte, can, tab
+    qty_per_cell = Column(Float, nullable=False)
+    unit = Column(String(30), nullable=False)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
 
     design = relationship("Design")
+    inventory_item = relationship("InventoryItem")
     material = relationship("Material")

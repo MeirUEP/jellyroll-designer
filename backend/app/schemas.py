@@ -270,21 +270,32 @@ class CapResultCreate(BaseModel):
 
 # ========== Inventory ==========
 class InventoryItemCreate(BaseModel):
-    material_id: UUID
-    quantity: float
-    unit: str = Field(..., max_length=30)
+    name: str = Field(..., max_length=255)
+    category: str = Field(..., max_length=50)   # raw_chemical, separator, collector, electrolyte, finished_good, packaging, electronics, other
+    unit: str = Field(..., max_length=30)        # kg, lbs, ft, m, L, pcs, rolls
+    package_unit: str | None = None              # bag, supersack, roll, drum, tote, jar, bottle, box
+    package_size: float | None = None            # qty per package
+    quantity: float = 0
     lot_number: str | None = None
     location: str | None = None
-    expiry_date: datetime | None = None
+    reorder_point: float | None = None
+    material_id: UUID | None = None              # optional link to design material
+    chemical_id: UUID | None = None              # optional link to chemical
     notes: str | None = None
 
 
 class InventoryItemUpdate(BaseModel):
-    quantity: float | None = None
+    name: str | None = None
+    category: str | None = None
     unit: str | None = None
+    package_unit: str | None = None
+    package_size: float | None = None
+    quantity: float | None = None
     lot_number: str | None = None
     location: str | None = None
-    expiry_date: datetime | None = None
+    reorder_point: float | None = None
+    material_id: UUID | None = None
+    chemical_id: UUID | None = None
     notes: str | None = None
 
 
@@ -295,19 +306,14 @@ class InventoryItemSchema(InventoryItemCreate):
     model_config = {"from_attributes": True}
 
 
-class InventoryItemDetail(InventoryItemSchema):
-    """Inventory item with resolved material name."""
-    material_name: str | None = None
-    material_type: str | None = None
-
-
 # ========== Inventory Transactions ==========
 class InventoryTransactionCreate(BaseModel):
     inventory_item_id: UUID
     qty_change: float
-    reason: str = Field(..., max_length=50)  # received, production, scrap, adjustment, return
+    reason: str = Field(..., max_length=50)  # received, production, scrap, adjustment, count, return
     batch_id: str | None = None
     design_id: UUID | None = None
+    performed_by: str | None = None
     notes: str | None = None
 
 
@@ -321,7 +327,8 @@ class InventoryTransactionSchema(InventoryTransactionCreate):
 class BOMLineSchema(BaseModel):
     id: UUID
     design_id: UUID
-    material_id: UUID
+    inventory_item_id: UUID | None = None
+    material_id: UUID | None = None
     layer_name: str | None = None
     role: str | None = None
     qty_per_cell: float
@@ -329,6 +336,7 @@ class BOMLineSchema(BaseModel):
     notes: str | None = None
     created_at: datetime
     material_name: str | None = None
+    inventory_item_name: str | None = None
     model_config = {"from_attributes": True}
 
 
@@ -342,4 +350,5 @@ class ProductionConsumeRequest(BaseModel):
     design_id: UUID
     cell_count: int
     batch_id: str | None = None
+    performed_by: str | None = None
     notes: str | None = None

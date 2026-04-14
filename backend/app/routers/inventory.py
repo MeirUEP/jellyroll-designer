@@ -1,18 +1,18 @@
 """Inventory management endpoints — stock levels, transactions, and BOM."""
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.database import get_db
 from app.models import (
     InventoryItem, InventoryTransaction, DesignBOM,
-    Material, Design, SimulationResult,
+    Material, Chemical, Design, SimulationResult,
 )
 from app.schemas import (
-    InventoryItemCreate, InventoryItemUpdate, InventoryItemSchema, InventoryItemDetail,
+    InventoryItemCreate, InventoryItemUpdate, InventoryItemSchema,
     InventoryTransactionCreate, InventoryTransactionSchema,
-    BOMLineSchema, BOMGenerateRequest, ProductionConsumeRequest,
+    BOMLineSchema, ProductionConsumeRequest,
 )
 
 router = APIRouter(tags=["inventory"], dependencies=[Depends(verify_api_key)])
@@ -20,29 +20,20 @@ router = APIRouter(tags=["inventory"], dependencies=[Depends(verify_api_key)])
 
 # ==================== INVENTORY ITEMS ====================
 
-@router.get("/inventory", response_model=list[InventoryItemDetail])
-async def list_inventory(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(InventoryItem, Material.name, Material.type)
-        .join(Material, InventoryItem.material_id == Material.id)
-        .order_by(Material.name)
-    )
-    items = []
-    for row in result.all():
-        inv, mat_name, mat_type = row
-        d = InventoryItemSchema.model_validate(inv).model_dump()
-        d["material_name"] = mat_name
-        d["material_type"] = mat_type
-        items.append(InventoryItemDetail(**d))
-    return items
+@router.get("/inventory", response_model=list[InventoryItemSchema])
+async def list_inventory(
+    category: str | None = Query(None, description="Filter by category"),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(InventoryItem).order_by(InventoryItem.category, InventoryItem.name)
+    if category:
+        q = q.where(InventoryItem.category == category)
+    result = await db.execute(q)
+    return result.scalars().all()
 
 
 @router.post("/inventory", response_model=InventoryItemSchema, status_code=201)
 async def create_inventory_item(data: InventoryItemCreate, db: AsyncSession = Depends(get_db)):
-    # Verify material exists
-    mat = await db.get(Material, data.material_id)
-    if not mat:
-        raise HTTPException(404, "Material not found")
     item = InventoryItem(**data.model_dump())
     db.add(item)
     await db.commit()
@@ -50,21 +41,12 @@ async def create_inventory_item(data: InventoryItemCreate, db: AsyncSession = De
     return item
 
 
-@router.get("/inventory/{item_id}", response_model=InventoryItemDetail)
+@router.get("/inventory/{item_id}", response_model=InventoryItemSchema)
 async def get_inventory_item(item_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(InventoryItem, Material.name, Material.type)
-        .join(Material, InventoryItem.material_id == Material.id)
-        .where(InventoryItem.id == item_id)
-    )
-    row = result.first()
-    if not row:
+    item = await db.get(InventoryItem, item_id)
+    if not item:
         raise HTTPException(404, "Inventory item not found")
-    inv, mat_name, mat_type = row
-    d = InventoryItemSchema.model_validate(inv).model_dump()
-    d["material_name"] = mat_name
-    d["material_type"] = mat_type
-    return InventoryItemDetail(**d)
+    return item
 
 
 @router.put("/inventory/{item_id}", response_model=InventoryItemSchema)
@@ -102,17 +84,46 @@ async def list_transactions(item_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/inventory/transactions", response_model=InventoryTransactionSchema, status_code=201)
 async def create_transaction(data: InventoryTransactionCreate, db: AsyncSession = Depends(get_db)):
-    # Verify inventory item exists
     item = await db.get(InventoryItem, data.inventory_item_id)
     if not item:
         raise HTTPException(404, "Inventory item not found")
 
-    # Create transaction
     txn = InventoryTransaction(**data.model_dump())
     db.add(txn)
 
-    # Update inventory quantity
+    # Update running quantity
     item.quantity += data.qty_change
+
+    await db.commit()
+    await db.refresh(txn)
+    return txn
+
+
+# ==================== PHYSICAL COUNT (reconciliation) ====================
+
+@router.post("/inventory/{item_id}/count", response_model=InventoryTransactionSchema, status_code=201)
+async def record_physical_count(
+    item_id: UUID,
+    counted_qty: float = Query(..., description="Actual counted quantity"),
+    performed_by: str | None = Query(None),
+    notes: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a physical count — creates an adjustment transaction to reconcile."""
+    item = await db.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(404, "Inventory item not found")
+
+    diff = counted_qty - item.quantity
+    txn = InventoryTransaction(
+        inventory_item_id=item_id,
+        qty_change=diff,
+        reason="count",
+        performed_by=performed_by,
+        notes=notes or f"Physical count: {counted_qty} {item.unit} (was {item.quantity})",
+    )
+    db.add(txn)
+    item.quantity = counted_qty
 
     await db.commit()
     await db.refresh(txn)
@@ -124,17 +135,16 @@ async def create_transaction(data: InventoryTransactionCreate, db: AsyncSession 
 @router.get("/designs/{design_id}/bom", response_model=list[BOMLineSchema])
 async def get_design_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(DesignBOM, Material.name)
-        .join(Material, DesignBOM.material_id == Material.id)
+        select(DesignBOM)
         .where(DesignBOM.design_id == design_id)
         .order_by(DesignBOM.role, DesignBOM.layer_name)
     )
     lines = []
-    for row in result.all():
-        bom, mat_name = row
+    for bom in result.scalars().all():
         d = {
             "id": bom.id,
             "design_id": bom.design_id,
+            "inventory_item_id": bom.inventory_item_id,
             "material_id": bom.material_id,
             "layer_name": bom.layer_name,
             "role": bom.role,
@@ -142,8 +152,18 @@ async def get_design_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
             "unit": bom.unit,
             "notes": bom.notes,
             "created_at": bom.created_at,
-            "material_name": mat_name,
+            "material_name": None,
+            "inventory_item_name": None,
         }
+        # Resolve names
+        if bom.material_id:
+            mat = await db.get(Material, bom.material_id)
+            if mat:
+                d["material_name"] = mat.name
+        if bom.inventory_item_id:
+            inv = await db.get(InventoryItem, bom.inventory_item_id)
+            if inv:
+                d["inventory_item_name"] = inv.name
         lines.append(BOMLineSchema(**d))
     return lines
 
@@ -151,12 +171,10 @@ async def get_design_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/designs/{design_id}/bom/generate", response_model=list[BOMLineSchema])
 async def generate_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
     """Auto-generate BOM from a design's simulation results and layer stack."""
-    # Load design with layers
     design = await db.get(Design, design_id)
     if not design:
         raise HTTPException(404, "Design not found")
 
-    # Load simulation result
     sim_result = await db.execute(
         select(SimulationResult).where(SimulationResult.design_id == design_id)
     )
@@ -164,21 +182,16 @@ async def generate_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
     if not sim:
         raise HTTPException(400, "No simulation result found — run simulation first")
 
-    # Get layer data from design
     design_layers = design.layers or []
     if not design_layers:
-        raise HTTPException(400, "Design has no layer data — save with layers first")
+        raise HTTPException(400, "Design has no layer data")
 
-    # Delete existing BOM for this design
+    # Delete existing BOM
     existing = await db.execute(select(DesignBOM).where(DesignBOM.design_id == design_id))
     for row in existing.scalars().all():
         await db.delete(row)
 
-    # Build BOM lines from simulation data + layers
     bom_lines = []
-
-    # Process each layer — find its material and computed length from sim
-    turns_data = sim.turns or []
 
     for layer in design_layers:
         layer_name = layer.get("name", "Unknown")
@@ -190,71 +203,63 @@ async def generate_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
         if layer_type == "mandrel":
             continue
 
-        # Find matching material in DB
+        # Try to find matching design material
         mat_result = await db.execute(
             select(Material).where(Material.name == layer_name)
         )
         mat = mat_result.scalar_one_or_none()
-        if not mat:
-            continue  # skip layers without a matching material record
 
-        # Length BOM line (mm)
+        # Try to find matching inventory item
+        inv_result = await db.execute(
+            select(InventoryItem).where(InventoryItem.name == layer_name)
+        )
+        inv_item = inv_result.scalar_one_or_none()
+
+        if not mat and not inv_item:
+            continue  # skip layers without matching records
+
         if computed_len > 0:
             bom_line = DesignBOM(
                 design_id=design_id,
-                material_id=mat.id,
+                material_id=mat.id if mat else None,
+                inventory_item_id=inv_item.id if inv_item else None,
                 layer_name=layer_name,
                 role=layer_type,
                 qty_per_cell=round(computed_len, 1),
                 unit="mm",
-                notes=f"{layer_width}mm wide × {layer_thickness}mm thick",
+                notes=f"{layer_width}mm wide x {layer_thickness}mm thick",
             )
             db.add(bom_line)
             bom_lines.append(bom_line)
 
-    # Add tab count as BOM lines (cathode and anode tabs)
+    # Tab counts
     c_tabs = sim.c_tabs or []
     a_tabs = sim.a_tabs or []
     if c_tabs:
-        # Find cathode material
-        cath_mat = await db.execute(
-            select(Material).where(Material.name.ilike("%cathode%"))
+        bom_line = DesignBOM(
+            design_id=design_id,
+            layer_name="Cathode tabs",
+            role="cathode",
+            qty_per_cell=len(c_tabs),
+            unit="each",
+            notes="Welded tabs",
         )
-        cath = cath_mat.scalar_one_or_none()
-        if cath:
-            bom_line = DesignBOM(
-                design_id=design_id,
-                material_id=cath.id,
-                layer_name="Cathode tabs",
-                role="cathode",
-                qty_per_cell=len(c_tabs),
-                unit="each",
-                notes="Welded tabs",
-            )
-            db.add(bom_line)
-            bom_lines.append(bom_line)
+        db.add(bom_line)
+        bom_lines.append(bom_line)
 
     if a_tabs:
-        anode_mat = await db.execute(
-            select(Material).where(Material.name.ilike("%anode%"))
+        bom_line = DesignBOM(
+            design_id=design_id,
+            layer_name="Anode tabs",
+            role="anode",
+            qty_per_cell=len(a_tabs),
+            unit="each",
+            notes="Welded tabs",
         )
-        anode = anode_mat.scalar_one_or_none()
-        if anode:
-            bom_line = DesignBOM(
-                design_id=design_id,
-                material_id=anode.id,
-                layer_name="Anode tabs",
-                role="anode",
-                qty_per_cell=len(a_tabs),
-                unit="each",
-                notes="Welded tabs",
-            )
-            db.add(bom_line)
-            bom_lines.append(bom_line)
+        db.add(bom_line)
+        bom_lines.append(bom_line)
 
     await db.commit()
-
-    # Reload with material names for response
     return await get_design_bom(design_id, db)
 
 
@@ -262,8 +267,7 @@ async def generate_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/inventory/consume", response_model=list[InventoryTransactionSchema])
 async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSession = Depends(get_db)):
-    """Consume inventory based on design BOM × cell count."""
-    # Load BOM
+    """Consume inventory based on design BOM x cell count."""
     bom_result = await db.execute(
         select(DesignBOM).where(DesignBOM.design_id == data.design_id)
     )
@@ -273,13 +277,12 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
 
     transactions = []
     for bom in bom_lines:
-        # Find inventory item for this material
-        inv_result = await db.execute(
-            select(InventoryItem).where(InventoryItem.material_id == bom.material_id)
-        )
-        inv_item = inv_result.scalar_one_or_none()
+        if not bom.inventory_item_id:
+            continue  # skip BOM lines not linked to inventory
+
+        inv_item = await db.get(InventoryItem, bom.inventory_item_id)
         if not inv_item:
-            continue  # skip if no inventory for this material
+            continue
 
         consumed = bom.qty_per_cell * data.cell_count
         txn = InventoryTransaction(
@@ -288,13 +291,11 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
             reason="production",
             batch_id=data.batch_id,
             design_id=data.design_id,
-            notes=data.notes or f"{data.cell_count} cells × {bom.qty_per_cell} {bom.unit}/cell ({bom.layer_name})",
+            performed_by=data.performed_by,
+            notes=data.notes or f"{data.cell_count} cells x {bom.qty_per_cell} {bom.unit}/cell ({bom.layer_name})",
         )
         db.add(txn)
-
-        # Update inventory quantity
         inv_item.quantity -= consumed
-
         transactions.append(txn)
 
     await db.commit()
@@ -307,19 +308,29 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
 
 @router.get("/inventory/summary")
 async def inventory_summary(db: AsyncSession = Depends(get_db)):
-    """Get summary of all inventory with current stock levels."""
+    """Summary grouped by category."""
     result = await db.execute(
         select(
-            Material.name,
-            Material.type,
+            InventoryItem.category,
+            func.count(InventoryItem.id).label("item_count"),
             func.sum(InventoryItem.quantity).label("total_qty"),
-            InventoryItem.unit,
         )
-        .join(Material, InventoryItem.material_id == Material.id)
-        .group_by(Material.name, Material.type, InventoryItem.unit)
-        .order_by(Material.type, Material.name)
+        .group_by(InventoryItem.category)
+        .order_by(InventoryItem.category)
     )
     return [
-        {"material": r.name, "type": r.type, "quantity": r.total_qty, "unit": r.unit}
+        {"category": r.category, "item_count": r.item_count, "total_qty": r.total_qty}
         for r in result.all()
     ]
+
+
+@router.get("/inventory/low-stock")
+async def low_stock_alerts(db: AsyncSession = Depends(get_db)):
+    """Items where quantity is at or below reorder point."""
+    result = await db.execute(
+        select(InventoryItem)
+        .where(InventoryItem.reorder_point.isnot(None))
+        .where(InventoryItem.quantity <= InventoryItem.reorder_point)
+        .order_by(InventoryItem.category, InventoryItem.name)
+    )
+    return result.scalars().all()
