@@ -4,29 +4,52 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.database import get_db
-from app.models import Chemical, Mix
+from app.models import Chemical, InventoryItem, Mix
 from app.schemas import MixCreate, MixDetail, MixSchema
 
 router = APIRouter(tags=["mixes"], dependencies=[Depends(verify_api_key)])
 
 
 async def _resolve_components(mix: Mix, db: AsyncSession) -> list[dict]:
-    """Resolve chemical_id references to full chemical details."""
-    chem_ids = [c["chemical_id"] for c in (mix.components or [])]
-    if not chem_ids:
+    """Resolve each mix component to a full detail row. A component may
+    point at an inventory_item_id (the new source of truth) or a legacy
+    chemical_id. Capacity prefers the user's per-design override over the
+    source record's default.
+    """
+    comps = mix.components or []
+    if not comps:
         return []
-    result = await db.execute(select(Chemical).where(Chemical.id.in_(chem_ids)))
-    chem_map = {str(c.id): c for c in result.scalars().all()}
+
+    inv_ids = [c["inventory_item_id"] for c in comps if c.get("inventory_item_id")]
+    chem_ids = [c["chemical_id"] for c in comps if c.get("chemical_id")]
+
+    inv_map = {}
+    if inv_ids:
+        r = await db.execute(select(InventoryItem).where(InventoryItem.id.in_(inv_ids)))
+        inv_map = {str(i.id): i for i in r.scalars().all()}
+
+    chem_map = {}
+    if chem_ids:
+        r = await db.execute(select(Chemical).where(Chemical.id.in_(chem_ids)))
+        chem_map = {str(c.id): c for c in r.scalars().all()}
+
     resolved = []
-    for comp in mix.components:
-        chem = chem_map.get(comp["chemical_id"])
+    for comp in comps:
+        inv = inv_map.get(comp.get("inventory_item_id")) if comp.get("inventory_item_id") else None
+        chem = chem_map.get(comp.get("chemical_id")) if comp.get("chemical_id") else None
+        src = inv or chem
+        src_cap = (inv.capacity if inv else (chem.capacity if chem else 0)) or 0
+        override = comp.get("capacity_override")
+        cap = override if override is not None else src_cap
         resolved.append({
-            "chemical_id": comp["chemical_id"],
+            "inventory_item_id": comp.get("inventory_item_id"),
+            "chemical_id": comp.get("chemical_id"),
             "wt_pct": comp["wt_pct"],
             "is_active": comp.get("is_active", False),
-            "name": chem.name if chem else "Unknown",
-            "density": chem.density if chem else 0,
-            "capacity": chem.capacity if chem else 0,
+            "capacity_override": override,
+            "name": (src.name if src else comp.get("name_snapshot") or "Unknown"),
+            "density": (src.density if src else 0) or 0,
+            "capacity": cap,
         })
     return resolved
 

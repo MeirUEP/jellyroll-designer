@@ -152,6 +152,7 @@ async function refreshCloudPresets() {
 // Convert frontend mix components → API format.
 // Prefer inventory_item_id (the new source of truth); fall back to
 // chemical_id via name lookup for legacy rows that haven't been remapped.
+// capacity_override carries the user's per-design capacity choice (mAh/g).
 function mixToApi(presetData, type) {
   const components = (presetData.components || []).map(c => {
     const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
@@ -162,6 +163,7 @@ function mixToApi(presetData, type) {
       name_snapshot: c.name || (inv ? inv.name : null),
       wt_pct: c.wt,
       is_active: !!c.isActive,
+      capacity_override: (c.cap != null) ? c.cap : null,
     };
   }).filter(c => c.inventory_item_id || c.chemical_id); // skip fully-unknown rows
   return {
@@ -176,18 +178,21 @@ function mixToApi(presetData, type) {
 
 // Convert API mix → frontend preset format.
 // Resolve each component through inventory first, then fall back to the
-// legacy chemicals cache so existing designs still load.
+// legacy chemicals cache so existing designs still load. Capacity prefers
+// the stored override (the user's design choice) over the inventory default.
 function mixFromApi(mix) {
   const components = (mix.components || []).map(c => {
     const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
     const chem = !inv && c.chemical_id ? chemById(c.chemical_id) : null;
     const src = inv || chem || null;
+    const invDefaultCap = inv ? (inv.capacity || 0) : (chem ? (chem.capacity || 0) : 0);
+    const cap = (c.capacity_override != null) ? c.capacity_override : invDefaultCap;
     return {
       inventory_item_id: inv ? inv.id : null,
       name: src ? src.name : (c.name_snapshot || 'Unknown'),
       wt: c.wt_pct,
       density: src ? (src.density || 0) : 0,
-      cap: inv ? (inv.capacity || 0) : (chem ? (chem.capacity || 0) : 0),
+      cap,
       isActive: !!c.is_active,
     };
   });

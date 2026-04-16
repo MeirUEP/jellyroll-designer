@@ -37,10 +37,18 @@ class MaterialSchema(MaterialCreate):
 
 
 # ========== Mix ==========
+# As of the inventory-driven rewrite, a mix component can point at either
+# an inventory item (the new source of truth) or a legacy chemical. At
+# least one must be set — enforced by the router, not here. capacity_override
+# carries the user's per-design capacity choice (mAh/g); if null, consumers
+# fall back to the inventory item's or chemical's default capacity.
 class MixComponent(BaseModel):
-    chemical_id: UUID
+    inventory_item_id: UUID | None = None
+    chemical_id: UUID | None = None
+    name_snapshot: str | None = None
     wt_pct: float
     is_active: bool = False
+    capacity_override: float | None = None
 
 
 class MixCreate(BaseModel):

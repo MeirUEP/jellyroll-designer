@@ -23,11 +23,18 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
   components.forEach((c, i) => {
     const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
     const orphan = !inv;
-    // Prefer live inventory values over the snapshot on the component (keeps
-    // edits to the inventory record reflected immediately). Fall back to
-    // whatever's cached on the component for legacy/unmapped rows.
+    // Density is a physical property — always read from live inventory when
+    // we have a link, otherwise fall back to whatever was snapshotted.
     const densVal = inv ? (inv.density ?? 0) : (c.density || 0);
-    const capVal = inv ? (inv.capacity ?? 0) : (c.cap || 0);
+    // Capacity is a DESIGN CHOICE (derating, spec targets, lot-specific
+    // numbers). Owned by the component, seeded from inventory on add,
+    // user-editable thereafter. We surface the inventory default in the
+    // tooltip so users can see how far they've deviated.
+    const capVal = c.cap != null ? c.cap : (inv ? (inv.capacity || 0) : 0);
+    const invCapDefault = inv ? (inv.capacity || 0) : null;
+    const capTooltip = invCapDefault != null
+      ? `Inventory default: ${invCapDefault} mAh/g — override for this design`
+      : 'Specific capacity (mAh/g)';
     const nameDisplay = inv ? inv.name : (c.name || '(unlinked)');
     const stockHint = inv ? `${inv.quantity} ${inv.unit} in stock` : '';
     const tr = document.createElement('tr');
@@ -39,7 +46,7 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
       </td>
       <td><input type="number" step="0.01" value="${c.wt}" data-ci="${i}" data-field="wt" style="width:50px"></td>
       <td style="color:var(--fg2);font-size:10px">${densVal ? densVal.toFixed(2) : '—'}</td>
-      <td style="color:var(--fg2);font-size:10px">${capVal ? capVal.toFixed(0) : '—'}</td>
+      <td><input type="number" step="1" value="${capVal}" data-ci="${i}" data-field="cap" title="${capTooltip}" style="width:55px"></td>
       <td style="white-space:nowrap">
         <button class="btn-sm" data-del-comp="${i}" data-electrode="${electrode}" title="Remove" style="padding:1px 3px;font-size:8px;background:var(--red);color:#fff">&times;</button>
       </td>`;
@@ -51,6 +58,16 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
     inp.addEventListener('change', e => {
       const ci = +e.target.dataset.ci;
       components[ci].wt = +e.target.value;
+      updateFormulation(components, totalId, solidDensId, compCapId, electrode);
+      markDirty();
+    });
+  });
+
+  // Capacity override input — user-owned, persists with the design
+  body.querySelectorAll('input[data-field="cap"]').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const ci = +e.target.dataset.ci;
+      components[ci].cap = +e.target.value;
       updateFormulation(components, totalId, solidDensId, compCapId, electrode);
       markDirty();
     });
@@ -190,15 +207,28 @@ function updateFormulation(components, totalId, solidDensId, compCapId, electrod
   totalEl.textContent = `Total: ${totalWt.toFixed(2)}%`;
   totalEl.className = 'comp-total ' + (Math.abs(totalWt - 100) < 0.1 ? 'ok' : 'err');
 
+  // Resolve density from live inventory (physical property, not a design
+  // choice) and capacity from the component itself (design override; seeded
+  // from inventory on add, but the user owns it).
+  const densOf = c => {
+    const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
+    return inv ? (inv.density || 0) : (c.density || 0);
+  };
+  const capOf = c => c.cap || 0;   // component is authoritative for capacity
+
   // Harmonic weighted average solid density
   let densSum = 0;
-  components.forEach(c => { if (c.wt > 0 && c.density > 0) densSum += (c.wt / 100) / c.density; });
+  components.forEach(c => {
+    const d = densOf(c);
+    if (c.wt > 0 && d > 0) densSum += (c.wt / 100) / d;
+  });
   const solidDens = densSum > 0 ? 1 / densSum : 0;
   document.getElementById(solidDensId).textContent = solidDens.toFixed(3);
 
-  // Composite specific capacity (weighted by active components)
+  // Composite specific capacity (weighted by every component, active or not —
+  // inactive ones typically have cap=0 so they drop out)
   let compCap = 0;
-  components.forEach(c => { if (c.cap > 0) compCap += (c.wt / 100) * c.cap; });
+  components.forEach(c => { const k = capOf(c); if (k > 0) compCap += (c.wt / 100) * k; });
   document.getElementById(compCapId).textContent = compCap.toFixed(1);
 
   // Update elecProps from formulation
