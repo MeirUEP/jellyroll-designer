@@ -155,6 +155,8 @@ document.querySelectorAll('.preset-save').forEach(btn => {
             cloudMixes.push(saved);
           }
           presetStores[type]['☁ ' + name] = { _cloudId: saved.id, _cloud: true };
+          // New/updated mix appears in the add-layer dropdown immediately
+          if (typeof refreshLayerAddDropdowns === 'function') refreshLayerAddDropdowns();
         } else if (type === 'layers') {
           const payload = await layerStackToApi(layers);
           payload.name = name;
@@ -214,6 +216,11 @@ document.querySelectorAll('.preset-del').forEach(btn => {
         if (type === 'cathode' || type === 'anode') {
           await api.deleteMix(entry._cloudId);
           cloudMixes = cloudMixes.filter(m => m.id !== entry._cloudId);
+          if (typeof refreshLayerAddDropdowns === 'function') refreshLayerAddDropdowns();
+          // Layers that pointed at this mix are now orphans — re-render so
+          // the amber banner appears.
+          if (typeof hydrateLayerSnapshots === 'function') hydrateLayerSnapshots();
+          if (typeof buildLayerUI === 'function') buildLayerUI();
         } else if (type === 'layers') {
           await api.deleteLayerStack(entry._cloudId);
           cloudLayerStacks = cloudLayerStacks.filter(s => s.id !== entry._cloudId);

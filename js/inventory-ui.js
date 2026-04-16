@@ -6,7 +6,7 @@
 //   4. Enter product recipe
 //   5. Log production
 
-const INV_CATEGORIES = ['raw_chemical', 'separator', 'collector', 'tab', 'electrolyte', 'finished_good', 'packaging', 'electronics', 'other'];
+const INV_CATEGORIES = ['raw_chemical', 'separator', 'collector', 'tab', 'tape', 'electrolyte', 'finished_good', 'packaging', 'electronics', 'other'];
 const INV_UNITS = ['kg', 'lbs', 'g', 'L', 'mL', 'ft', 'm', 'in', 'mm', 'LM', 'Lf', 'pcs', 'rolls'];
 const INV_PACKAGE_UNITS = ['', 'bag', 'supersack', 'roll', 'drum', 'tote', 'jar', 'bottle', 'box', 'case', 'pallet'];
 const INV_LOCATIONS = ['warehouse', 'production', 'lab', 'shipping'];

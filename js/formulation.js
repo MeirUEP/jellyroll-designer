@@ -163,6 +163,12 @@ function refreshFormulationFromInventory() {
   // Re-sync the width readout on each electrode from its current mesh selection
   syncElectrodeWidthFromMesh('cathode');
   syncElectrodeWidthFromMesh('anode');
+  // Refresh the layer-stack add dropdowns and re-hydrate linked layers
+  if (typeof refreshLayerAddDropdowns === 'function') refreshLayerAddDropdowns();
+  if (typeof hydrateLayerSnapshots === 'function') {
+    hydrateLayerSnapshots();
+    if (typeof buildLayerUI === 'function') buildLayerUI();
+  }
 }
 
 // When a mesh is selected, the electrode inherits its width. Also stamps
@@ -384,57 +390,145 @@ function refreshCompLibDropdowns() {
   });
 }
 
-function refreshLayerLibDropdown() {
-  const lib = getLayerLib();
-  const sel = document.getElementById('layerLib');
-  if (!sel) return;
-  while (sel.options.length > 1) sel.remove(1);
-  Object.keys(lib).sort().forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = `${name} (${lib[name].type}, ${lib[name].t}mm)`;
-    sel.appendChild(opt);
+// refreshLayerLibDropdown kept as a no-op so legacy callers don't throw.
+// The layer-library dropdown was replaced by the two inventory/mix dropdowns
+// — see refreshLayerAddDropdowns() below.
+function refreshLayerLibDropdown() { /* deprecated — no-op */ }
+
+// ========== LAYER ADD FLOW (inventory + mix dropdowns) ==========
+// Two dropdowns drive every layer add:
+//   1. addLayerMix  — saved electrode mixes from cloudMixes (cathode / anode)
+//   2. addLayerInv  — inventory items filtered by "layerable" categories
+//                     (separator, collector, tab, tape, other)
+// A layer added this way carries either `mix_id` or `inventory_item_id` so
+// save/load round-trips the link; name/thickness/width/color are stamped
+// as a snapshot from the source, and re-hydrated on every refresh so edits
+// to inventory flow through without breaking the design.
+
+const LAYERABLE_INV_CATEGORIES = ['separator', 'collector', 'tab', 'tape', 'other'];
+
+function addLayerFromMix() {
+  const sel = document.getElementById('addLayerMix');
+  const mixId = sel.value;
+  if (!mixId) return;
+  const mix = cloudMixes.find(m => m.id === mixId);
+  if (!mix) { showToast('Mix not found', true); sel.value = ''; return; }
+  // Electrode layer: width comes from the mesh stamped on elecProps
+  // (set by the mesh dropdown in the Formulation tab).
+  const widthFromMesh = mix.type === 'cathode'
+    ? (elecProps.cath_width_mm || 220)
+    : (elecProps.anod_width_mm || 220);
+  const color = mix.type === 'cathode' ? '#3b82f6' : '#16a34a';
+  layers.push({
+    mix_id: mixId,
+    name: mix.name,
+    type: mix.type,         // 'cathode' or 'anode'
+    t: 1.0,                 // paste thickness — a design input, user edits later
+    w: widthFromMesh,
+    color,
   });
-}
-
-function addCompFromLib(electrode) {
-  const selId = electrode === 'cathode' ? 'cathCompLib' : 'anodCompLib';
-  const sel = document.getElementById(selId);
-  const name = sel.value;
-  if (!name) { showToast('Select a chemical from the library', true); return; }
-  const lib = getCompLib();
-  const c = lib[name];
-  if (!c) return;
-  const comps = electrode === 'cathode' ? cathComponents : anodComponents;
-  comps.push({ name, wt: 0, density: c.density, cap: c.cap });
-  const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
-    ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
-    : ['anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap'];
-  buildMixTable(comps, bodyId, totalId, solidDensId, compCapId, electrode);
-  sel.value = '';
-  markDirty();
-}
-
-function addBlankComp(electrode) {
-  const comps = electrode === 'cathode' ? cathComponents : anodComponents;
-  comps.push({ name: 'New Component', wt: 0, density: 1.0, cap: 0 });
-  const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
-    ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
-    : ['anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap'];
-  buildMixTable(comps, bodyId, totalId, solidDensId, compCapId, electrode);
-  markDirty();
-}
-
-function addLayerFromLib() {
-  const sel = document.getElementById('layerLib');
-  const name = sel.value;
-  if (!name) { showToast('Select a material from the library', true); return; }
-  const lib = getLayerLib();
-  const l = lib[name];
-  if (!l) return;
-  layers.push({ name, type: l.type, t: l.t, w: l.w, color: l.color });
   buildLayerUI();
   sel.value = '';
   markDirty();
+}
+
+function addLayerFromInventory() {
+  const sel = document.getElementById('addLayerInv');
+  const invId = sel.value;
+  if (!invId) return;
+  const inv = invById(invId);
+  if (!inv) { showToast('Inventory item not found', true); sel.value = ''; return; }
+  layers.push({
+    inventory_item_id: invId,
+    name: inv.name,
+    type: inv.category,                     // 'separator' | 'collector' | 'tab' | 'tape' | 'other'
+    t: inv.thickness_mm || 0.1,
+    w: inv.width_mm || 220,
+    color: inv.color || '#888888',
+    // `len` is only defined for fixed-length layers (tape, tab, other);
+    // open-ended types (separator) are phase-driven.
+    ...(LAYER_TYPES.includes(inv.category) && !['separator','cathode','anode'].includes(inv.category)
+        ? { len: 0 }
+        : {}),
+  });
+  buildLayerUI();
+  sel.value = '';
+  markDirty();
+}
+
+// Populate the two add-dropdowns from cloudMixes + cloudInventory.
+// Called from refreshFormulationFromInventory() and refreshCloudPresets().
+function refreshLayerAddDropdowns() {
+  // Mix dropdown — cathode mixes first, then anode
+  const mixSel = document.getElementById('addLayerMix');
+  if (mixSel) {
+    const cur = mixSel.value;
+    const cathMixes = cloudMixes.filter(m => m.type === 'cathode').sort((a, b) => a.name.localeCompare(b.name));
+    const anodMixes = cloudMixes.filter(m => m.type === 'anode').sort((a, b) => a.name.localeCompare(b.name));
+    let html = `<option value="">+ Add electrode from saved mixes...</option>`;
+    if (cathMixes.length) {
+      html += `<optgroup label="Cathode mixes">` +
+        cathMixes.map(m => `<option value="${m.id}">${m.name}</option>`).join('') +
+        `</optgroup>`;
+    }
+    if (anodMixes.length) {
+      html += `<optgroup label="Anode mixes">` +
+        anodMixes.map(m => `<option value="${m.id}">${m.name}</option>`).join('') +
+        `</optgroup>`;
+    }
+    mixSel.innerHTML = html;
+    mixSel.value = cur;
+  }
+
+  // Inventory dropdown — layerable categories only, grouped by category
+  const invSel = document.getElementById('addLayerInv');
+  if (invSel) {
+    const cur = invSel.value;
+    let html = `<option value="">+ Add separator/collector/tab/tape from inventory...</option>`;
+    LAYERABLE_INV_CATEGORIES.forEach(cat => {
+      const items = invByCategory(cat).sort((a, b) => a.name.localeCompare(b.name));
+      if (!items.length) return;
+      html += `<optgroup label="${cat}">` +
+        items.map(i => {
+          const spec = [
+            i.thickness_mm ? `${i.thickness_mm}mm thick` : null,
+            i.width_mm ? `${i.width_mm}mm wide` : null,
+          ].filter(Boolean).join(', ');
+          const specTag = spec ? ` (${spec})` : '';
+          const stockTag = (i.quantity != null) ? ` — ${i.quantity} ${i.unit}` : '';
+          return `<option value="${i.id}">${i.name}${specTag}${stockTag}</option>`;
+        }).join('') +
+        `</optgroup>`;
+    });
+    invSel.innerHTML = html;
+    invSel.value = cur;
+  }
+}
+
+// Re-hydrate each linked layer's snapshot (name/t/w/color) from its live
+// inventory or mix source. Orphans (no link at all) are left alone so the
+// user can see their legacy data and fix them by deleting + re-adding.
+function hydrateLayerSnapshots() {
+  layers.forEach(l => {
+    if (l.inventory_item_id) {
+      const inv = invById(l.inventory_item_id);
+      if (inv) {
+        l.name = inv.name;
+        if (inv.thickness_mm) l.t = inv.thickness_mm;
+        if (inv.width_mm) l.w = inv.width_mm;
+        if (inv.color) l.color = inv.color;
+        l.type = inv.category;
+      }
+    } else if (l.mix_id) {
+      const mix = cloudMixes.find(m => m.id === l.mix_id);
+      if (mix) {
+        l.name = mix.name;
+        l.type = mix.type;   // normalize
+        // Width is always the current mesh width for this electrode type
+        if (mix.type === 'cathode' && elecProps.cath_width_mm) l.w = elecProps.cath_width_mm;
+        if (mix.type === 'anode' && elecProps.anod_width_mm) l.w = elecProps.anod_width_mm;
+      }
+    }
+  });
 }
 

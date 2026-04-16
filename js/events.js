@@ -411,6 +411,7 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
         cathMixId = saved.id;
         presetStores.cathode['☁ ' + saved.name] = { _cloudId: saved.id, _cloud: true };
         loadPresetList('cathode');
+        if (typeof refreshLayerAddDropdowns === 'function') refreshLayerAddDropdowns();
       } catch(e) { console.warn('Auto-save cathode mix failed:', e); }
     }
 
@@ -429,6 +430,7 @@ document.getElementById('btnCloudSave').addEventListener('click', async () => {
         anodMixId = saved.id;
         presetStores.anode['☁ ' + saved.name] = { _cloudId: saved.id, _cloud: true };
         loadPresetList('anode');
+        if (typeof refreshLayerAddDropdowns === 'function') refreshLayerAddDropdowns();
       } catch(e) { console.warn('Auto-save anode mix failed:', e); }
     }
 
@@ -606,6 +608,10 @@ document.getElementById('btnCloudOpen').addEventListener('click', async () => {
             const el = document.getElementById('ep_' + k);
             if (el) el.value = v;
           }
+          // Re-hydrate linked layers (inventory_item_id / mix_id) with
+          // the current inventory/mix snapshot. Legacy layers with no
+          // link render as orphans with an amber banner.
+          if (typeof hydrateLayerSnapshots === 'function') hydrateLayerSnapshots();
           buildLayerUI();
           runSimulation();
           document.getElementById('modalCloudOpen').classList.add('hidden');

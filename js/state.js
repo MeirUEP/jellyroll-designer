@@ -1,4 +1,4 @@
-const LAYER_TYPES = ['anode','cathode','separator','collector','tape','other'];
+const LAYER_TYPES = ['anode','cathode','separator','collector','tape','tab','other'];
 let layers = [
   {name:'Anode',type:'anode',t:1.0,w:222,color:'#16a34a'},
   {name:'Kraft paper',type:'separator',t:0.15,w:228,color:'#b45309'},

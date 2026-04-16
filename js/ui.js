@@ -148,39 +148,71 @@ function updateTable() {
 function buildLayerUI() {
   const list = document.getElementById('layerList');
   list.innerHTML = '';
+  const readonlyStyle = 'background:var(--bg3);color:var(--fg2);cursor:not-allowed';
   layers.forEach((l, i) => {
+    // Resolve source: either inventory (non-electrode) or mix (electrode)
+    const inv = l.inventory_item_id ? invById(l.inventory_item_id) : null;
+    const mix = l.mix_id ? cloudMixes.find(m => m.id === l.mix_id) : null;
+    const isElectrode = l.type === 'cathode' || l.type === 'anode';
+    // Orphan = layer has no backing link. Could be legacy data from before
+    // the inventory-driven refactor, or a broken reference after an
+    // inventory/mix deletion.
+    const orphan = !inv && !mix;
+    // Thickness editable for electrodes (paste thickness is a design
+    // input) and for orphans (so users can still tweak legacy data).
+    // For inventory-backed passive layers it's readonly (from inv).
+    const thickReadonly = !isElectrode && !orphan;
+    // Width always readonly when we have a source — electrode width is
+    // mesh-driven (set in Formulation tab), passive width is from inventory.
+    const widthReadonly = !orphan;
+    // Length only editable for fixed-length layers without a link; for
+    // inventory tape/tab/other we could allow override, but keep it simple
+    // and user-editable since length is design-specific.
+    const lenEditable = !isElectrode && l.type !== 'separator';
+
+    const sourceTag = orphan
+      ? `<span title="Not linked to inventory or a mix — legacy data" style="font-size:8px;color:#f59e0b">⚠ orphan</span>`
+      : inv
+        ? `<span title="From inventory • ${inv.quantity} ${inv.unit} on hand" style="font-size:8px;color:var(--fg2)">&#128230; inv</span>`
+        : `<span title="From saved mix" style="font-size:8px;color:var(--fg2)">mix</span>`;
+
     const card = document.createElement('div');
     card.className = 'layer-card';
+    if (orphan) card.style.borderLeft = '3px solid #f59e0b';
     card.innerHTML = `
       <div class="layer-header">
-        <input type="color" value="${l.color}" data-i="${i}" data-f="color">
-        <input type="text" value="${l.name}" data-i="${i}" data-f="name">
-        <select data-i="${i}" data-f="type">${LAYER_TYPES.map(t=>`<option value="${t}"${t===l.type?' selected':''}>${t}</option>`).join('')}</select>
+        <input type="color" value="${l.color}" data-i="${i}" data-f="color" ${widthReadonly ? 'disabled title="Color inherited from source"' : ''}>
+        <input type="text" value="${l.name}" data-i="${i}" data-f="name" ${!orphan ? `readonly style="${readonlyStyle}" title="Name inherited from ${inv ? 'inventory item' : 'mix'}"` : ''}>
+        ${sourceTag}
         ${l.type==='cathode'?`<span class="badge">${simResult ? simResult.drillAngleDeg.toFixed(1) : '—'}&deg;</span>`:l.type==='anode'?`<span class="badge">${simResult ? simResult.anodAngleDeg.toFixed(1) : '—'}&deg;</span>`:''}
         <div class="layer-actions">
-          <button class="btn-sm" data-save-layer="${i}" title="Save to library" style="padding:1px 3px;font-size:8px">&#128190;</button>
           <button class="btn-sm" data-move="${i}" data-dir="-1" ${i===0?'disabled':''}>&#9650;</button>
           <button class="btn-sm" data-move="${i}" data-dir="1" ${i===layers.length-1?'disabled':''}>&#9660;</button>
           <button class="btn-danger" data-del="${i}">&times;</button>
         </div>
       </div>
+      ${orphan ? `<div style="font-size:9px;color:#f59e0b;padding:2px 4px;background:rgba(245,158,11,0.1);border-radius:3px;margin-bottom:3px">
+        Legacy layer — no inventory or mix link. Delete and re-add from the dropdowns below to connect it.
+      </div>` : ''}
       <div class="layer-props">
-        <div class="param-item"><label>Thick</label><input type="number" step="0.01" value="${l.t}" data-i="${i}" data-f="t"></div>
-        <div class="param-item"><label>Width</label><input type="number" step="0.1" value="${l.w}" data-i="${i}" data-f="w"></div>
-        ${l.type === 'anode' || l.type === 'cathode' || l.type === 'separator'
-          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : '—'}" data-i="${i}" data-f="len" readonly style="background:var(--bg3);color:${l.computedLen > 2000 ? 'var(--red)' : 'var(--fg2)'};cursor:not-allowed" title="Computed from target OD"></div>`
-          : `<div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len}" data-i="${i}" data-f="len"></div>`}
+        <div class="param-item"><label>Thick${thickReadonly ? ' <span style="font-size:8px;color:var(--fg2)">(inv)</span>' : ''}</label>
+          <input type="number" step="0.01" value="${l.t}" data-i="${i}" data-f="t" ${thickReadonly ? `readonly style="${readonlyStyle}" title="From inventory — edit the inventory item to change"` : ''}></div>
+        <div class="param-item"><label>Width${widthReadonly ? ` <span style="font-size:8px;color:var(--fg2)">(${isElectrode ? 'mesh' : 'inv'})</span>` : ''}</label>
+          <input type="number" step="0.1" value="${l.w}" data-i="${i}" data-f="w" ${widthReadonly ? `readonly style="${readonlyStyle}" title="${isElectrode ? 'Inherited from selected mesh (Formulation tab)' : 'From inventory item'}"` : ''}></div>
+        ${isElectrode || l.type === 'separator'
+          ? `<div class="param-item"><label>Length <span style="font-size:8px;color:var(--accent)">(computed)</span></label><input type="number" value="${l.computedLen ? Math.round(l.computedLen) : '—'}" data-i="${i}" data-f="len" readonly style="${readonlyStyle};color:${l.computedLen > 2000 ? 'var(--red)' : 'var(--fg2)'}" title="Computed from target OD"></div>`
+          : `<div class="param-item"><label>Length</label><input type="number" step="1" value="${l.len || 0}" data-i="${i}" data-f="len" ${lenEditable ? '' : `readonly style="${readonlyStyle}"`}></div>`}
       </div>`;
     list.appendChild(card);
   });
 
-  list.querySelectorAll('input,select').forEach(el => {
+  // Editable-field change handler (readonly fields don't fire change events)
+  list.querySelectorAll('input:not([readonly]):not([disabled]),select').forEach(el => {
     el.addEventListener('change', e => {
       const i = +e.target.dataset.i, f = e.target.dataset.f;
-      if (f === 'name' || f === 'color' || f === 'type') layers[i][f] = e.target.value;
+      if (f === 'name' || f === 'color') layers[i][f] = e.target.value;
       else layers[i][f] = +e.target.value;
       markDirty();
-      if (f === 'type') buildLayerUI();
     });
   });
   list.querySelectorAll('[data-move]').forEach(el => {
@@ -200,13 +232,6 @@ function buildLayerUI() {
       buildLayerUI(); markDirty();
     });
   });
-  list.querySelectorAll('[data-save-layer]').forEach(el => {
-    el.addEventListener('click', e => {
-      const btn = e.target.closest('[data-save-layer]');
-      const l = layers[+btn.dataset.saveLayer];
-      saveLayerToLib(l);
-    });
-  });
 }
 
 function markDirty() {
@@ -214,10 +239,9 @@ function markDirty() {
   document.getElementById('btnRun').classList.add('needs-run');
 }
 
-document.getElementById('btnAddLayer').addEventListener('click', () => {
-  layers.push({name:'New Layer',type:'separator',t:0.1,w:220,color:'#888888'});
-  buildLayerUI(); markDirty();
-});
+// btnAddLayer ("+ New") was removed — layers are now added exclusively
+// via the Mix and Inventory dropdowns (see js/formulation.js
+// addLayerFromMix / addLayerFromInventory). No blank layer path exists.
 
 // Param inputs — auto-run on change
 document.querySelectorAll('.param-grid input').forEach(el => {
