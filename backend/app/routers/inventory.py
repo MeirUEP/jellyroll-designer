@@ -43,6 +43,38 @@ async def create_inventory_item(data: InventoryItemCreate, db: AsyncSession = De
     return item
 
 
+# NOTE: literal-path GETs (summary, low-stock) MUST be declared before
+# /inventory/{item_id} so FastAPI doesn't try to parse "summary" as a UUID.
+@router.get("/inventory/summary")
+async def inventory_summary(db: AsyncSession = Depends(get_db)):
+    """Summary grouped by category."""
+    result = await db.execute(
+        select(
+            InventoryItem.category,
+            func.count(InventoryItem.id).label("item_count"),
+            func.sum(InventoryItem.quantity).label("total_qty"),
+        )
+        .group_by(InventoryItem.category)
+        .order_by(InventoryItem.category)
+    )
+    return [
+        {"category": r.category, "item_count": r.item_count, "total_qty": r.total_qty}
+        for r in result.all()
+    ]
+
+
+@router.get("/inventory/low-stock")
+async def low_stock_alerts(db: AsyncSession = Depends(get_db)):
+    """Items where quantity is at or below reorder point."""
+    result = await db.execute(
+        select(InventoryItem)
+        .where(InventoryItem.reorder_point.isnot(None))
+        .where(InventoryItem.quantity <= InventoryItem.reorder_point)
+        .order_by(InventoryItem.category, InventoryItem.name)
+    )
+    return result.scalars().all()
+
+
 @router.get("/inventory/{item_id}", response_model=InventoryItemSchema)
 async def get_inventory_item(item_id: UUID, db: AsyncSession = Depends(get_db)):
     item = await db.get(InventoryItem, item_id)
@@ -304,38 +336,6 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
     for txn in transactions:
         await db.refresh(txn)
     return transactions
-
-
-# ==================== INVENTORY SUMMARY ====================
-
-@router.get("/inventory/summary")
-async def inventory_summary(db: AsyncSession = Depends(get_db)):
-    """Summary grouped by category."""
-    result = await db.execute(
-        select(
-            InventoryItem.category,
-            func.count(InventoryItem.id).label("item_count"),
-            func.sum(InventoryItem.quantity).label("total_qty"),
-        )
-        .group_by(InventoryItem.category)
-        .order_by(InventoryItem.category)
-    )
-    return [
-        {"category": r.category, "item_count": r.item_count, "total_qty": r.total_qty}
-        for r in result.all()
-    ]
-
-
-@router.get("/inventory/low-stock")
-async def low_stock_alerts(db: AsyncSession = Depends(get_db)):
-    """Items where quantity is at or below reorder point."""
-    result = await db.execute(
-        select(InventoryItem)
-        .where(InventoryItem.reorder_point.isnot(None))
-        .where(InventoryItem.quantity <= InventoryItem.reorder_point)
-        .order_by(InventoryItem.category, InventoryItem.name)
-    )
-    return result.scalars().all()
 
 
 # ==================== RECEIVE SHIPMENT ====================
