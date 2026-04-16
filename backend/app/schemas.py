@@ -271,16 +271,23 @@ class CapResultCreate(BaseModel):
 # ========== Inventory ==========
 class InventoryItemCreate(BaseModel):
     name: str = Field(..., max_length=255)
-    category: str = Field(..., max_length=50)   # raw_chemical, separator, collector, electrolyte, finished_good, packaging, electronics, other
-    unit: str = Field(..., max_length=30)        # kg, lbs, ft, m, L, pcs, rolls
+    category: str = Field(..., max_length=50)   # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
+    unit: str = Field(..., max_length=30)        # kg, lbs, ft, m, L, pcs, rolls, LM
     package_unit: str | None = None              # bag, supersack, roll, drum, tote, jar, bottle, box
     package_size: float | None = None            # qty per package
     quantity: float = 0
     lot_number: str | None = None
     location: str | None = None
     reorder_point: float | None = None
-    material_id: UUID | None = None              # optional link to design material
-    chemical_id: UUID | None = None              # optional link to chemical
+    # Spec fields — only populated for categories that need them
+    density: float | None = None                 # g/cm^3 — raw_chemical
+    capacity: float | None = None                # mAh/g — raw_chemical (active materials)
+    is_active_mat: bool = False                  # raw_chemical: participates in capacity
+    thickness_mm: float | None = None            # separator, collector, tab
+    width_mm: float | None = None                # separator, collector
+    color: str | None = None                     # separator, collector — for rendering
+    material_id: UUID | None = None              # optional link to design material (legacy)
+    chemical_id: UUID | None = None              # optional link to chemical (legacy)
     notes: str | None = None
 
 
@@ -294,6 +301,12 @@ class InventoryItemUpdate(BaseModel):
     lot_number: str | None = None
     location: str | None = None
     reorder_point: float | None = None
+    density: float | None = None
+    capacity: float | None = None
+    is_active_mat: bool | None = None
+    thickness_mm: float | None = None
+    width_mm: float | None = None
+    color: str | None = None
     material_id: UUID | None = None
     chemical_id: UUID | None = None
     notes: str | None = None

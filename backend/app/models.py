@@ -138,7 +138,7 @@ class InventoryItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     name = Column(String(255), nullable=False)
-    category = Column(String(50), nullable=False)        # raw_chemical, separator, collector, electrolyte, finished_good, packaging, electronics, other
+    category = Column(String(50), nullable=False)        # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
     unit = Column(String(30), nullable=False)             # kg, lbs, ft, m, L, pcs, rolls
     package_unit = Column(String(50), nullable=True)      # bag, supersack, roll, drum, tote, jar, bottle, box
     package_size = Column(Float, nullable=True)           # qty per package
@@ -146,6 +146,14 @@ class InventoryItem(Base):
     lot_number = Column(String(100), nullable=True)
     location = Column(String(100), nullable=True)
     reorder_point = Column(Float, nullable=True)
+    # Spec columns — used for designer feasibility math. Each only populated
+    # for the categories that need it.
+    density = Column(Float, nullable=True)                # g/cm^3 — raw_chemical
+    capacity = Column(Float, nullable=True)               # mAh/g — raw_chemical (active materials)
+    is_active_mat = Column(Boolean, nullable=False, server_default="false")  # raw_chemical: participates in capacity
+    thickness_mm = Column(Float, nullable=True)           # separator, collector, tab
+    width_mm = Column(Float, nullable=True)               # separator, collector
+    color = Column(String(20), nullable=True)             # separator, collector — for rendering
     material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="SET NULL"), nullable=True)
     chemical_id = Column(UUID(as_uuid=True), ForeignKey("chemicals.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
