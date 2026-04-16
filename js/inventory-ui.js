@@ -6,7 +6,7 @@
 //   4. Enter product recipe
 //   5. Log production
 
-const INV_CATEGORIES = ['raw_chemical', 'separator', 'collector', 'electrolyte', 'finished_good', 'packaging', 'electronics', 'other'];
+const INV_CATEGORIES = ['raw_chemical', 'separator', 'collector', 'tab', 'electrolyte', 'finished_good', 'packaging', 'electronics', 'other'];
 const INV_UNITS = ['kg', 'lbs', 'g', 'L', 'mL', 'ft', 'm', 'in', 'mm', 'LM', 'Lf', 'pcs', 'rolls'];
 const INV_PACKAGE_UNITS = ['', 'bag', 'supersack', 'roll', 'drum', 'tote', 'jar', 'bottle', 'box', 'case', 'pallet'];
 const INV_LOCATIONS = ['warehouse', 'production', 'lab', 'shipping'];
@@ -89,7 +89,7 @@ function renderAddItemForm() {
       </div>
       <div class="inv-field">
         <label>Category *</label>
-        <select id="aiCategory">
+        <select id="aiCategory" onchange="renderAddItemSpecs()">
           ${INV_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
         </select>
       </div>
@@ -124,6 +124,10 @@ function renderAddItemForm() {
         <input type="number" id="aiReorder" step="any" placeholder="alert below this">
       </div>
       <div class="inv-field">
+        <label>Cost per unit ($)</label>
+        <input type="number" id="aiCost" step="any" placeholder="e.g. 12.50 per kg">
+      </div>
+      <div class="inv-field">
         <label>Lot number</label>
         <input type="text" id="aiLot">
       </div>
@@ -132,23 +136,98 @@ function renderAddItemForm() {
         <textarea id="aiNotes" rows="2"></textarea>
       </div>
     </div>
+    <div id="aiSpecs" style="margin-top:10px"></div>
     <button class="btn-primary inv-submit" onclick="submitAddItem()">Add Item</button>
   `;
+  renderAddItemSpecs();
+}
+
+// Show spec fields conditionally based on the selected category.
+// Chemicals get density/capacity/active-material flag.
+// Separators/collectors/tabs get thickness + width + color.
+function renderAddItemSpecs() {
+  const cat = document.getElementById('aiCategory').value;
+  const wrap = document.getElementById('aiSpecs');
+  if (!wrap) return;
+  let html = '';
+  if (cat === 'raw_chemical') {
+    html = `
+      <h4 style="margin-bottom:6px">Chemical specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Density (g/cm&sup3;)</label>
+          <input type="number" id="aiDensity" step="any" placeholder="e.g. 1.32">
+        </div>
+        <div class="inv-field">
+          <label>Capacity (mAh/g)</label>
+          <input type="number" id="aiCapacity" step="any" placeholder="active materials only">
+        </div>
+        <div class="inv-field inv-full">
+          <label><input type="checkbox" id="aiIsActive"> Active material (participates in capacity)</label>
+        </div>
+      </div>`;
+  } else if (cat === 'separator' || cat === 'collector') {
+    html = `
+      <h4 style="margin-bottom:6px">${cat === 'separator' ? 'Separator' : 'Collector'} specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Thickness (mm)</label>
+          <input type="number" id="aiThickness" step="any" placeholder="e.g. 0.05">
+        </div>
+        <div class="inv-field">
+          <label>Width (mm)</label>
+          <input type="number" id="aiWidth" step="any" placeholder="e.g. 200">
+        </div>
+        <div class="inv-field">
+          <label>Color (for diagrams)</label>
+          <input type="color" id="aiColor" value="#888888">
+        </div>
+      </div>`;
+  } else if (cat === 'tab') {
+    html = `
+      <h4 style="margin-bottom:6px">Tab specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Thickness (mm)</label>
+          <input type="number" id="aiThickness" step="any" placeholder="e.g. 0.127">
+        </div>
+        <div class="inv-field">
+          <label>Color (for diagrams)</label>
+          <input type="color" id="aiColor" value="#c0c0c0">
+        </div>
+      </div>`;
+  }
+  wrap.innerHTML = html;
 }
 
 async function submitAddItem() {
+  const cat = document.getElementById('aiCategory').value;
   const data = {
     name: document.getElementById('aiName').value.trim(),
-    category: document.getElementById('aiCategory').value,
+    category: cat,
     unit: document.getElementById('aiUnit').value,
     package_unit: document.getElementById('aiPackageUnit').value || null,
     package_size: parseFloat(document.getElementById('aiPackageSize').value) || null,
     quantity: parseFloat(document.getElementById('aiQty').value) || 0,
     location: document.getElementById('aiLocation').value,
     reorder_point: parseFloat(document.getElementById('aiReorder').value) || null,
+    cost_per_unit: parseFloat(document.getElementById('aiCost').value) || null,
     lot_number: document.getElementById('aiLot').value.trim() || null,
     notes: document.getElementById('aiNotes').value.trim() || null,
   };
+  // Category-specific specs
+  const specDensity = document.getElementById('aiDensity');
+  const specCapacity = document.getElementById('aiCapacity');
+  const specIsActive = document.getElementById('aiIsActive');
+  const specThickness = document.getElementById('aiThickness');
+  const specWidth = document.getElementById('aiWidth');
+  const specColor = document.getElementById('aiColor');
+  if (specDensity) data.density = parseFloat(specDensity.value) || null;
+  if (specCapacity) data.capacity = parseFloat(specCapacity.value) || null;
+  if (specIsActive) data.is_active_mat = specIsActive.checked;
+  if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
+  if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;
+  if (specColor) data.color = specColor.value || null;
   if (!data.name) { setInvStatus('Name is required', true); return; }
 
   try {

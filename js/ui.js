@@ -50,9 +50,39 @@ function updateSummary() {
     .map(c => `<div class="summary-card"><div class="val" style="${c.cls||''}">${c.val}</div><div class="lbl">${c.lbl}</div></div>`).join('');
 }
 
+// Which results tab is currently active: 'summary' or 'inventory'
+let _activeResultsTab = 'summary';
+function switchResultsTab(name) {
+  _activeResultsTab = name;
+  updateTable();
+  // Trigger the inventory check when its tab becomes active
+  if (name === 'inventory' && typeof runInventoryCheck === 'function') {
+    runInventoryCheck();
+  }
+}
+
 function updateTable() {
   if (!simResult) return;
   const s = simResult;
+
+  // Tab nav — always visible at top of results area
+  const tabBar = `
+    <div class="results-tabs" style="display:flex;gap:2px;padding:4px 6px;background:var(--bg3);border-bottom:1px solid var(--border)">
+      <button class="results-tab ${_activeResultsTab === 'summary' ? 'active' : ''}"
+              style="padding:4px 10px;font-size:10px;border:none;border-bottom:2px solid ${_activeResultsTab === 'summary' ? 'var(--accent)' : 'transparent'};background:transparent;color:${_activeResultsTab === 'summary' ? 'var(--fg)' : 'var(--fg2)'};cursor:pointer"
+              onclick="switchResultsTab('summary')">Summary &amp; Capacity</button>
+      <button class="results-tab ${_activeResultsTab === 'inventory' ? 'active' : ''}"
+              style="padding:4px 10px;font-size:10px;border:none;border-bottom:2px solid ${_activeResultsTab === 'inventory' ? 'var(--accent)' : 'transparent'};background:transparent;color:${_activeResultsTab === 'inventory' ? 'var(--fg)' : 'var(--fg2)'};cursor:pointer"
+              onclick="switchResultsTab('inventory')">Inventory Check</button>
+    </div>`;
+
+  if (_activeResultsTab === 'inventory') {
+    document.getElementById('resultsArea').innerHTML = tabBar +
+      `<div id="invCheckPanel"><div style="padding:14px;color:var(--fg2);font-size:11px">Loading&hellip;</div></div>`;
+    if (typeof runInventoryCheck === 'function') runInventoryCheck();
+    return;
+  }
+
   let rows = '';
   const maxLen = Math.max(s.cTabs.length, s.aTabs.length);
   for (let i = 0; i < maxLen; i++) {
@@ -111,7 +141,7 @@ function updateTable() {
     tableHtml += `</tbody></table></div>`;
   }
 
-  document.getElementById('resultsArea').innerHTML = tableHtml;
+  document.getElementById('resultsArea').innerHTML = tabBar + tableHtml;
 }
 
 // ========== LAYER EDITOR ==========
