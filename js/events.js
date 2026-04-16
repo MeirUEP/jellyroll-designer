@@ -15,57 +15,8 @@ document.getElementById('btnExport').addEventListener('click', () => {
   a.click();
 });
 
-// ========== SAVE/LOAD ==========
-document.getElementById('btnSave').addEventListener('click', () => {
-  const data = { version: '1.2', params, layers, elecProps };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `jellyroll-config-${Date.now()}.json`;
-  a.click();
-});
-
-document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('fileLoad').click());
-document.getElementById('fileLoad').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (data.version && data.params && data.layers) {
-        params = data.params;
-        layers = data.layers;
-        // Backward compat: clean up old fields
-        layers.forEach(l => { delete l.startTurn; });
-        // Migrate old first_cath_tab (single value) to range-based params
-        if (params.first_cath_tab !== undefined && params.first_cath_tab_min_in === undefined) {
-          params.first_cath_tab_min_in = 4.5;
-          params.first_cath_tab_max_in = 5.0;
-          params.first_anod_tab_min_in = 6.0;
-          params.first_anod_tab_max_in = 6.5;
-          delete params.first_cath_tab;
-          delete params.cath_angle; delete params.anod_angle; delete params.skip_turns;
-          delete params.anode_end_tab_clearance; delete params.first_cath_arc;
-        }
-        delete params.separator_grab_distance; // now a machine constant
-        delete params.cath_start_turn; delete params.anod_start_turn; delete params.sep_start_turn;
-        if (data.elecProps) elecProps = data.elecProps;
-        for (const [k, v] of Object.entries(params)) {
-          const el = document.getElementById('p_' + k);
-          if (el) el.value = v;
-        }
-        for (const [k, v] of Object.entries(elecProps)) {
-          const el = document.getElementById('ep_' + k);
-          if (el) el.value = v;
-        }
-        buildLayerUI();
-        runSimulation();
-      }
-    } catch (err) { alert('Invalid config file'); }
-  };
-  reader.readAsText(file);
-});
+// Local-file Save/Load was removed — cloud Save Design / Open is the single
+// source of truth now (designs live alongside inventory in the DB).
 
 // ========== RESIZE ==========
 window.addEventListener('resize', () => {
