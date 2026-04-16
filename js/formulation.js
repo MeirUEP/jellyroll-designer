@@ -8,62 +8,51 @@ document.querySelectorAll('.left-tab').forEach(btn => {
   });
 });
 
-// ========== FORMULATION ENGINE ==========
-const cathComponents = [
-  { name: 'EMD (MnO2)', wt: 75, density: 4.5, cap: 250, isActive: true },
-  { name: 'Graphite (MX-25)', wt: 15.75, density: 2.25, cap: 0 },
-  { name: 'Carbon Black (BNB-90)', wt: 2.25, density: 1.8, cap: 0 },
-  { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
-  { name: 'Bi2O3', wt: 4, density: 8.9, cap: 0 },
-  { name: 'ZrO2', wt: 1, density: 5.68, cap: 0 },
-  { name: 'Other', wt: 0, density: 3, cap: 0 },
-];
-
-const anodComponents = [
-  { name: 'Zinc (Zn)', wt: 75, density: 7.14, cap: 820, isActive: true },
-  { name: 'ZnO', wt: 16, density: 5.61, cap: 660, isActive: true },
-  { name: 'Ca(OH)2', wt: 5, density: 2.24, cap: 0 },
-  { name: 'Bi2O3', wt: 2, density: 8.9, cap: 0 },
-  { name: 'Laponite', wt: 0.01, density: 2.53, cap: 0 },
-  { name: 'PTFE', wt: 2, density: 2.15, cap: 0 },
-  { name: 'In(OH)3', wt: 0.037, density: 4.39, cap: 0 },
-  { name: 'Other', wt: 0, density: 3, cap: 0 },
-];
+// ========== FORMULATION ENGINE (inventory-driven) ==========
+// Each component now carries `inventory_item_id` — the link back to the
+// inventory record that defines density/capacity/is_active_mat. Only wt%
+// is editable in the row; density and cap are displayed read-only from
+// the linked inventory item. Components with no inventory link are
+// legacy rows (loaded from old designs) and will show an orange banner.
+const cathComponents = [];
+const anodComponents = [];
 
 function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, electrode) {
   const body = document.getElementById(bodyId);
   body.innerHTML = '';
   components.forEach((c, i) => {
+    const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
+    const orphan = !inv;
+    // Prefer live inventory values over the snapshot on the component (keeps
+    // edits to the inventory record reflected immediately). Fall back to
+    // whatever's cached on the component for legacy/unmapped rows.
+    const densVal = inv ? (inv.density ?? 0) : (c.density || 0);
+    const capVal = inv ? (inv.capacity ?? 0) : (c.cap || 0);
+    const nameDisplay = inv ? inv.name : (c.name || '(unlinked)');
+    const stockHint = inv ? `${inv.quantity} ${inv.unit} in stock` : '';
     const tr = document.createElement('tr');
+    if (orphan) tr.style.background = 'rgba(245,158,11,0.12)';
     tr.innerHTML = `
-      <td><input type="text" value="${c.name}" data-ci="${i}" data-field="name" style="width:90px;font-size:9px;border:1px solid var(--border);border-radius:2px;background:var(--input-bg);color:var(--fg);padding:1px 2px"></td>
+      <td title="${orphan ? 'Not linked to inventory — pick a replacement' : stockHint}">
+        <span style="font-size:10px;${orphan ? 'color:#f59e0b' : ''}">${nameDisplay}</span>
+        ${orphan ? '<span style="font-size:8px;color:#f59e0b">⚠</span>' : ''}
+      </td>
       <td><input type="number" step="0.01" value="${c.wt}" data-ci="${i}" data-field="wt" style="width:50px"></td>
-      <td><input type="number" step="0.01" value="${c.density}" data-ci="${i}" data-field="density" style="width:50px"></td>
-      <td><input type="number" step="1" value="${c.cap}" data-ci="${i}" data-field="cap" style="width:50px"></td>
+      <td style="color:var(--fg2);font-size:10px">${densVal ? densVal.toFixed(2) : '—'}</td>
+      <td style="color:var(--fg2);font-size:10px">${capVal ? capVal.toFixed(0) : '—'}</td>
       <td style="white-space:nowrap">
-        <button class="btn-sm" data-save-comp="${i}" data-electrode="${electrode}" title="Save to library" style="padding:1px 3px;font-size:8px">&#128190;</button>
         <button class="btn-sm" data-del-comp="${i}" data-electrode="${electrode}" title="Remove" style="padding:1px 3px;font-size:8px;background:var(--red);color:#fff">&times;</button>
       </td>`;
     body.appendChild(tr);
   });
 
-  body.querySelectorAll('input').forEach(inp => {
+  // wt% input
+  body.querySelectorAll('input[data-field="wt"]').forEach(inp => {
     inp.addEventListener('change', e => {
       const ci = +e.target.dataset.ci;
-      const field = e.target.dataset.field;
-      if (field === 'name') components[ci][field] = e.target.value;
-      else components[ci][field] = +e.target.value;
+      components[ci].wt = +e.target.value;
       updateFormulation(components, totalId, solidDensId, compCapId, electrode);
       markDirty();
-    });
-  });
-
-  // Save component to library
-  body.querySelectorAll('[data-save-comp]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.saveComp;
-      const c = components[ci];
-      saveCompToLib(c);
     });
   });
 
@@ -79,6 +68,120 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
   });
 
   updateFormulation(components, totalId, solidDensId, compCapId, electrode);
+}
+
+// Add a component by picking from the inventory dropdown. Reads the
+// selected inventory item and pushes a new row with inventory_item_id set
+// and cached density/cap (the snapshot — refreshed from live inventory
+// every render).
+function addCompFromInventory(electrode) {
+  const selId = electrode === 'cathode' ? 'cathInvLib' : 'anodInvLib';
+  const sel = document.getElementById(selId);
+  const invId = sel.value;
+  if (!invId) { showToast('Pick a chemical from the dropdown first', true); return; }
+  const inv = invById(invId);
+  if (!inv) { showToast('Inventory item not found', true); return; }
+
+  const comps = electrode === 'cathode' ? cathComponents : anodComponents;
+  if (comps.some(c => c.inventory_item_id === invId)) {
+    showToast(`${inv.name} is already in the mix`, true);
+    return;
+  }
+  comps.push({
+    inventory_item_id: invId,
+    name: inv.name,                     // snapshot name for legacy compat
+    wt: 0,
+    density: inv.density || 0,
+    cap: inv.capacity || 0,
+    isActive: !!inv.is_active_mat,
+  });
+  const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
+    ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
+    : ['anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap'];
+  buildMixTable(comps, bodyId, totalId, solidDensId, compCapId, electrode);
+  sel.value = '';
+  markDirty();
+}
+
+// Populate the inventory-backed dropdowns (chemical adder + mesh picker)
+// from cloudInventory. Called on startup and whenever inventory changes.
+function refreshFormulationFromInventory() {
+  // Chemical adders
+  const chemItems = invByCategory('raw_chemical').sort((a, b) => a.name.localeCompare(b.name));
+  ['cathInvLib', 'anodInvLib'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">+ Add chemical from inventory...</option>` +
+      chemItems.map(i => {
+        const activeTag = i.is_active_mat ? ' • active' : '';
+        const densTag = i.density ? ` • ${i.density} g/cm³` : '';
+        const stockTag = (i.quantity != null) ? ` — ${i.quantity} ${i.unit}` : '';
+        return `<option value="${i.id}">${i.name}${densTag}${activeTag}${stockTag}</option>`;
+      }).join('');
+    sel.value = cur;
+  });
+
+  // Mesh pickers (collector category)
+  const meshItems = invByCategory('collector').sort((a, b) => a.name.localeCompare(b.name));
+  ['ep_cath_mesh_id', 'ep_anod_mesh_id'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">-- Select mesh from inventory --</option>` +
+      meshItems.map(i => {
+        const w = i.width_mm ? ` • ${i.width_mm}mm wide` : '';
+        const t = i.thickness_mm ? ` • ${i.thickness_mm}mm thick` : '';
+        const stock = (i.quantity != null) ? ` — ${i.quantity} ${i.unit}` : '';
+        return `<option value="${i.id}">${i.name}${w}${t}${stock}</option>`;
+      }).join('');
+    if (cur && meshItems.some(i => i.id === cur)) sel.value = cur;
+  });
+
+  // Rebuild the mix tables so density/cap snapshots refresh from live inventory
+  if (document.getElementById('cathMixBody')) {
+    buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
+    buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
+  }
+  // Re-sync the width readout on each electrode from its current mesh selection
+  syncElectrodeWidthFromMesh('cathode');
+  syncElectrodeWidthFromMesh('anode');
+}
+
+// When a mesh is selected, the electrode inherits its width. Also stamps
+// the mesh into elecProps for save/load round-tripping.
+function syncElectrodeWidthFromMesh(electrode) {
+  const isCath = electrode === 'cathode';
+  const sel = document.getElementById(isCath ? 'ep_cath_mesh_id' : 'ep_anod_mesh_id');
+  const widthInput = document.getElementById(isCath ? 'ep_cath_width' : 'ep_anod_width');
+  const stockEl = document.getElementById(isCath ? 'cathMeshStock' : 'anodMeshStock');
+  if (!sel || !widthInput) return;
+
+  const inv = sel.value ? invById(sel.value) : null;
+  if (inv) {
+    widthInput.value = inv.width_mm || '';
+    if (stockEl) {
+      stockEl.innerHTML = `<strong>${inv.name}</strong> — ${inv.quantity} ${inv.unit}` +
+        (inv.thickness_mm ? ` • ${inv.thickness_mm}mm thick` : '') +
+        (inv.color ? ` • <span style="display:inline-block;width:10px;height:10px;background:${inv.color};border:1px solid var(--border);vertical-align:middle"></span>` : '');
+    }
+    // Stamp into elecProps so save/load carries the link
+    if (isCath) {
+      elecProps.cath_mesh_inventory_id = inv.id;
+      elecProps.cath_width_mm = inv.width_mm || null;
+      elecProps.cath_cc_material = inv.name;       // keep name as legacy compat
+    } else {
+      elecProps.anod_mesh_inventory_id = inv.id;
+      elecProps.anod_width_mm = inv.width_mm || null;
+      elecProps.anod_cc_material = inv.name;
+    }
+    // Push the width onto the matching electrode layer so geometry stays in sync
+    const layer = layers.find(l => l.type === electrode);
+    if (layer && inv.width_mm) layer.w = inv.width_mm;
+  } else {
+    widthInput.value = '';
+    if (stockEl) stockEl.innerHTML = '<em style="color:var(--fg2)">No mesh selected</em>';
+  }
 }
 
 function updateFormulation(components, totalId, solidDensId, compCapId, electrode) {
@@ -124,8 +227,38 @@ function initFormulation() {
   ['design', 'cathode', 'anode', 'layers'].forEach(loadPresetList);
   refreshCompLibDropdowns();
   refreshLayerLibDropdown();
+
+  // Wire mesh select change handlers — picking a mesh auto-syncs the
+  // electrode's width readout + elecProps + the matching layer's .w
+  ['cathode', 'anode'].forEach(electrode => {
+    const selId = electrode === 'cathode' ? 'ep_cath_mesh_id' : 'ep_anod_mesh_id';
+    const sel = document.getElementById(selId);
+    if (sel && !sel.dataset.wired) {
+      sel.addEventListener('change', () => {
+        syncElectrodeWidthFromMesh(electrode);
+        if (typeof buildLayerUI === 'function') buildLayerUI();
+        if (typeof markDirty === 'function') markDirty();
+      });
+      sel.dataset.wired = '1';
+    }
+  });
+
   // Load cloud components if API is configured
   loadCloudCache();
+}
+
+// Validate wt% totals before simulation. Returns { ok, msg } — callers
+// (e.g. Run Simulation) should block if ok=false and toast the msg.
+function validateMixTotals() {
+  const issues = [];
+  [['cathode', cathComponents], ['anode', anodComponents]].forEach(([label, comps]) => {
+    if (!comps.length) return;    // empty mix is its own category of problem, not a wt% one
+    const total = comps.reduce((s, c) => s + (c.wt || 0), 0);
+    if (Math.abs(total - 100) > 0.5) {
+      issues.push(`${label} wt% = ${total.toFixed(2)} (must be 99.5 – 100.5)`);
+    }
+  });
+  return { ok: issues.length === 0, msg: issues.join(' • ') };
 }
 
 // ========== LIBRARIES (backed by cloud tables) ==========

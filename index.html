@@ -45,11 +45,10 @@
         </table>
         <div class="comp-total" id="cathMixTotal">Total: 0%</div>
         <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
-          <select id="cathCompLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
-            <option value="">+ Add from library...</option>
+          <select id="cathInvLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add chemical from inventory...</option>
           </select>
-          <button class="btn-sm" onclick="addCompFromLib('cathode')">Add</button>
-          <button class="btn-sm" onclick="addBlankComp('cathode')">+ New</button>
+          <button class="btn-sm" onclick="addCompFromInventory('cathode')">Add</button>
         </div>
       </div>
       <div class="panel">
@@ -63,9 +62,15 @@
         </div>
         <h3 style="margin-top:6px">Cathode Current Collector</h3>
         <div class="param-grid">
-          <div class="param-item"><label>Material</label><input type="text" id="ep_cath_cc_material" value="Nickel mesh" style="font-size:10px"></div>
+          <div class="param-item" style="grid-column:span 2"><label>Mesh (from inventory)</label>
+            <select id="ep_cath_mesh_id" style="font-size:10px">
+              <option value="">-- Select mesh from inventory --</option>
+            </select>
+          </div>
+          <div class="param-item"><label>Width (from mesh)</label><input type="number" id="ep_cath_width" readonly style="background:var(--bg3);color:var(--fg2);cursor:not-allowed" title="Inherited from selected mesh width"></div>
           <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_cath_mesh_dens" step="0.001" value="0.16"></div>
         </div>
+        <div id="cathMeshStock" style="font-size:9px;color:var(--fg2);margin-top:3px"></div>
       </div>
       <div class="panel">
         <h3>Anode Mix</h3>
@@ -83,11 +88,10 @@
         </table>
         <div class="comp-total" id="anodMixTotal">Total: 0%</div>
         <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
-          <select id="anodCompLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
-            <option value="">+ Add from library...</option>
+          <select id="anodInvLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add chemical from inventory...</option>
           </select>
-          <button class="btn-sm" onclick="addCompFromLib('anode')">Add</button>
-          <button class="btn-sm" onclick="addBlankComp('anode')">+ New</button>
+          <button class="btn-sm" onclick="addCompFromInventory('anode')">Add</button>
         </div>
       </div>
       <div class="panel">
@@ -101,9 +105,15 @@
         </div>
         <h3 style="margin-top:6px">Anode Current Collector</h3>
         <div class="param-grid">
-          <div class="param-item"><label>Material</label><input type="text" id="ep_anod_cc_material" value="Copper mesh" style="font-size:10px"></div>
+          <div class="param-item" style="grid-column:span 2"><label>Mesh (from inventory)</label>
+            <select id="ep_anod_mesh_id" style="font-size:10px">
+              <option value="">-- Select mesh from inventory --</option>
+            </select>
+          </div>
+          <div class="param-item"><label>Width (from mesh)</label><input type="number" id="ep_anod_width" readonly style="background:var(--bg3);color:var(--fg2);cursor:not-allowed" title="Inherited from selected mesh width"></div>
           <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_anod_mesh_dens" step="0.001" value="0.149"></div>
         </div>
+        <div id="anodMeshStock" style="font-size:9px;color:var(--fg2);margin-top:3px"></div>
       </div>
     </div>
 
@@ -367,18 +377,18 @@
   </div>
 </div>
 
-<script src="js/api.js?v=20260416c"></script>
-<script src="js/auth.js?v=20260416c"></script>
-<script src="js/formulation.js?v=20260416c"></script>
-<script src="js/presets.js?v=20260416c"></script>
-<script src="js/state.js?v=20260416c"></script>
-<script src="js/sim-engine.js?v=20260416c"></script>
-<script src="js/capacity.js?v=20260416c"></script>
-<script src="js/ui.js?v=20260416c"></script>
-<script src="js/views.js?v=20260416c"></script>
-<script src="js/three-view.js?v=20260416c"></script>
-<script src="js/events.js?v=20260416c"></script>
-<script src="js/inventory-check.js?v=20260416c"></script>
-<script src="js/inventory-ui.js?v=20260416c"></script>
+<script src="js/api.js?v=20260416d"></script>
+<script src="js/auth.js?v=20260416d"></script>
+<script src="js/formulation.js?v=20260416d"></script>
+<script src="js/presets.js?v=20260416d"></script>
+<script src="js/state.js?v=20260416d"></script>
+<script src="js/sim-engine.js?v=20260416d"></script>
+<script src="js/capacity.js?v=20260416d"></script>
+<script src="js/ui.js?v=20260416d"></script>
+<script src="js/views.js?v=20260416d"></script>
+<script src="js/three-view.js?v=20260416d"></script>
+<script src="js/events.js?v=20260416d"></script>
+<script src="js/inventory-check.js?v=20260416d"></script>
+<script src="js/inventory-ui.js?v=20260416d"></script>
 </body>
 </html>

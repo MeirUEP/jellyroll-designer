@@ -1,5 +1,16 @@
 // ========== SIMULATION ENGINE (Phase-Based Winder Model) ==========
 function runSimulation() {
+  // Gate 1: formulation wt% must sum to ~100 (±0.5) for both electrodes.
+  // Mix totals drive paste mass and active-material math — running sim
+  // with an unbalanced mix produces nonsense capacity numbers.
+  if (typeof validateMixTotals === 'function') {
+    const mixCheck = validateMixTotals();
+    if (!mixCheck.ok) {
+      showToast('Mix wt% invalid — ' + mixCheck.msg, true);
+      return;
+    }
+  }
+
   const r0 = params.mandrel_d / 2;
   const targetR = params.target_od / 2;
   const openEndedTypes = new Set(['anode', 'cathode', 'separator']);

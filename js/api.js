@@ -70,32 +70,57 @@ const api = {
 
 // ========== CLOUD COMPONENT CACHE ==========
 // Lookup maps populated on load when API is configured
-let cloudChemicals = [];   // [{id, name, density, capacity, ...}]
-let cloudMaterials = [];   // [{id, name, type, thickness, width, color, ...}]
+let cloudChemicals = [];   // [{id, name, density, capacity, ...}]  (LEGACY — read-only)
+let cloudMaterials = [];   // [{id, name, type, thickness, width, color, ...}]  (LEGACY — read-only)
 let cloudMixes = [];       // [{id, name, type, components, ...}]
 let cloudLayerStacks = []; // [{id, name, items, ...}]
+let cloudInventory = [];   // [{id, name, category, unit, quantity, density, capacity, thickness_mm, width_mm, color, is_active_mat, cost_per_unit, ...}]
 
 function chemByName(name) { return cloudChemicals.find(c => c.name === name); }
 function chemById(id) { return cloudChemicals.find(c => c.id === id); }
 function matByName(name) { return cloudMaterials.find(m => m.name === name); }
 function matById(id) { return cloudMaterials.find(m => m.id === id); }
 
+// Inventory-driven lookups (the new source of truth)
+function invById(id) { return cloudInventory.find(i => i.id === id); }
+function invByName(name) {
+  if (!name) return null;
+  const needle = name.trim().toLowerCase();
+  return cloudInventory.find(i => (i.name || '').trim().toLowerCase() === needle) || null;
+}
+function invByCategory(category) { return cloudInventory.filter(i => i.category === category); }
+async function refreshInventory() {
+  if (!isApiConfigured()) return;
+  try {
+    cloudInventory = (await api.listInventory()) || [];
+    // Mirror into the inventory-ui cache so the modal stays consistent
+    if (typeof invCache !== 'undefined') invCache.items = cloudInventory;
+    // Notify any listeners (formulation tab, layer editor, etc.)
+    if (typeof refreshFormulationFromInventory === 'function') refreshFormulationFromInventory();
+  } catch (e) { console.warn('Inventory load failed:', e); }
+}
+
 function isApiConfigured() { return !!getApiUrl() && !!getApiKey(); }
 
 async function loadCloudCache() {
   if (!isApiConfigured()) return;
   try {
-    [cloudChemicals, cloudMaterials, cloudMixes, cloudLayerStacks] = await Promise.all([
+    [cloudChemicals, cloudMaterials, cloudMixes, cloudLayerStacks, cloudInventory] = await Promise.all([
       api.listChemicals(),
       api.listMaterials(),
       api.listMixes(),
       api.listLayerStacks(),
+      api.listInventory(),
     ]);
+    // Mirror into inventory-ui's cache if it's loaded
+    if (typeof invCache !== 'undefined') invCache.items = cloudInventory;
     // Populate preset dropdowns from cloud data
     refreshCloudPresets();
-    // Repopulate library dropdowns with cloud chemicals/materials
+    // Repopulate library dropdowns with cloud chemicals/materials (legacy)
     refreshCompLibDropdowns();
     refreshLayerLibDropdown();
+    // Populate the new inventory-driven dropdowns in the formulation tab
+    if (typeof refreshFormulationFromInventory === 'function') refreshFormulationFromInventory();
   } catch(e) { console.warn('Cloud cache load failed:', e); }
 }
 
@@ -124,16 +149,21 @@ async function refreshCloudPresets() {
   ['cathode', 'anode', 'layers', 'design'].forEach(loadPresetList);
 }
 
-// Convert frontend mix components → API format
+// Convert frontend mix components → API format.
+// Prefer inventory_item_id (the new source of truth); fall back to
+// chemical_id via name lookup for legacy rows that haven't been remapped.
 function mixToApi(presetData, type) {
   const components = (presetData.components || []).map(c => {
-    let chem = chemByName(c.name);
+    const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
+    const chem = !inv ? chemByName(c.name) : null;
     return {
+      inventory_item_id: inv ? inv.id : null,
       chemical_id: chem ? chem.id : null,
+      name_snapshot: c.name || (inv ? inv.name : null),
       wt_pct: c.wt,
       is_active: !!c.isActive,
     };
-  }).filter(c => c.chemical_id); // skip unknown chemicals
+  }).filter(c => c.inventory_item_id || c.chemical_id); // skip fully-unknown rows
   return {
     name: '', // caller sets this
     type: type,
@@ -144,15 +174,20 @@ function mixToApi(presetData, type) {
   };
 }
 
-// Convert API mix → frontend preset format
+// Convert API mix → frontend preset format.
+// Resolve each component through inventory first, then fall back to the
+// legacy chemicals cache so existing designs still load.
 function mixFromApi(mix) {
   const components = (mix.components || []).map(c => {
-    const chem = chemById(c.chemical_id);
+    const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
+    const chem = !inv && c.chemical_id ? chemById(c.chemical_id) : null;
+    const src = inv || chem || null;
     return {
-      name: chem ? chem.name : 'Unknown',
+      inventory_item_id: inv ? inv.id : null,
+      name: src ? src.name : (c.name_snapshot || 'Unknown'),
       wt: c.wt_pct,
-      density: chem ? chem.density : 0,
-      cap: chem ? chem.capacity : 0,
+      density: src ? (src.density || 0) : 0,
+      cap: inv ? (inv.capacity || 0) : (chem ? (chem.capacity || 0) : 0),
       isActive: !!c.is_active,
     };
   });
