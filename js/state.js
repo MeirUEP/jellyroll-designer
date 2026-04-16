@@ -1,4 +1,8 @@
-const LAYER_TYPES = ['anode','cathode','separator','collector','tape','tab','other'];
+// Layer types are roles in the wound stack only. Mesh/collectors belong
+// to the cathode and anode designs (they live inside the electrode mix),
+// tabs and tape are cell-assembly components attached post-winding.
+// All three are tracked in inventory but not exposed as layers.
+const LAYER_TYPES = ['anode','cathode','separator','other'];
 let layers = [
   {name:'Anode',type:'anode',t:1.0,w:222,color:'#16a34a'},
   {name:'Kraft paper',type:'separator',t:0.15,w:228,color:'#b45309'},

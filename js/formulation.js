@@ -397,15 +397,19 @@ function refreshLayerLibDropdown() { /* deprecated — no-op */ }
 
 // ========== LAYER ADD FLOW (inventory + mix dropdowns) ==========
 // Two dropdowns drive every layer add:
-//   1. addLayerMix  — saved electrode mixes from cloudMixes (cathode / anode)
+//   1. addLayerMix  — saved electrode mixes from cloudMixes (cathode / anode).
+//                     The mesh lives inside the mix, not as a separate layer.
 //   2. addLayerInv  — inventory items filtered by "layerable" categories
-//                     (separator, collector, tab, tape, other)
+//                     (separator, other). Meshes (collector), tabs, and
+//                     tape are tracked in inventory but aren't wound layers:
+//                       • mesh belongs to the cathode/anode design
+//                       • tab and tape are cell-assembly components
 // A layer added this way carries either `mix_id` or `inventory_item_id` so
 // save/load round-trips the link; name/thickness/width/color are stamped
 // as a snapshot from the source, and re-hydrated on every refresh so edits
 // to inventory flow through without breaking the design.
 
-const LAYERABLE_INV_CATEGORIES = ['separator', 'collector', 'tab', 'tape', 'other'];
+const LAYERABLE_INV_CATEGORIES = ['separator', 'other'];
 
 function addLayerFromMix() {
   const sel = document.getElementById('addLayerMix');
@@ -441,15 +445,13 @@ function addLayerFromInventory() {
   layers.push({
     inventory_item_id: invId,
     name: inv.name,
-    type: inv.category,                     // 'separator' | 'collector' | 'tab' | 'tape' | 'other'
+    type: inv.category,                     // 'separator' | 'other'
     t: inv.thickness_mm || 0.1,
     w: inv.width_mm || 220,
     color: inv.color || '#888888',
-    // `len` is only defined for fixed-length layers (tape, tab, other);
-    // open-ended types (separator) are phase-driven.
-    ...(LAYER_TYPES.includes(inv.category) && !['separator','cathode','anode'].includes(inv.category)
-        ? { len: 0 }
-        : {}),
+    // 'other' layers have a fixed length (glue strip, primer, etc.);
+    // 'separator' is phase-driven (computed length).
+    ...(inv.category === 'separator' ? {} : { len: 0 }),
   });
   buildLayerUI();
   sel.value = '';
@@ -484,7 +486,7 @@ function refreshLayerAddDropdowns() {
   const invSel = document.getElementById('addLayerInv');
   if (invSel) {
     const cur = invSel.value;
-    let html = `<option value="">+ Add separator/collector/tab/tape from inventory...</option>`;
+    let html = `<option value="">+ Add separator / other layer from inventory...</option>`;
     LAYERABLE_INV_CATEGORIES.forEach(cat => {
       const items = invByCategory(cat).sort((a, b) => a.name.localeCompare(b.name));
       if (!items.length) return;
