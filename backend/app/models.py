@@ -146,6 +146,7 @@ class InventoryItem(Base):
     lot_number = Column(String(100), nullable=True)
     location = Column(String(100), nullable=True)
     reorder_point = Column(Float, nullable=True)
+    cost_per_unit = Column(Float, nullable=True)          # $ per 1 `unit` (used for BOM costing)
     # Spec columns — used for designer feasibility math. Each only populated
     # for the categories that need it.
     density = Column(Float, nullable=True)                # g/cm^3 — raw_chemical

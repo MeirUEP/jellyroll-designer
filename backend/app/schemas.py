@@ -279,6 +279,7 @@ class InventoryItemCreate(BaseModel):
     lot_number: str | None = None
     location: str | None = None
     reorder_point: float | None = None
+    cost_per_unit: float | None = None           # $ per 1 `unit` (for BOM costing)
     # Spec fields — only populated for categories that need them
     density: float | None = None                 # g/cm^3 — raw_chemical
     capacity: float | None = None                # mAh/g — raw_chemical (active materials)
@@ -301,6 +302,7 @@ class InventoryItemUpdate(BaseModel):
     lot_number: str | None = None
     location: str | None = None
     reorder_point: float | None = None
+    cost_per_unit: float | None = None
     density: float | None = None
     capacity: float | None = None
     is_active_mat: bool | None = None
