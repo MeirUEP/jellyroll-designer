@@ -281,6 +281,7 @@ class InventoryItemCreate(BaseModel):
     name: str = Field(..., max_length=255)
     category: str = Field(..., max_length=50)   # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
     unit: str = Field(..., max_length=30)        # kg, lbs, ft, m, L, pcs, rolls, LM
+    supplier: str | None = None                  # primary supplier name
     package_unit: str | None = None              # bag, supersack, roll, drum, tote, jar, bottle, box
     package_size: float | None = None            # qty per package
     quantity: float = 0
@@ -304,6 +305,7 @@ class InventoryItemUpdate(BaseModel):
     name: str | None = None
     category: str | None = None
     unit: str | None = None
+    supplier: str | None = None
     package_unit: str | None = None
     package_size: float | None = None
     quantity: float | None = None

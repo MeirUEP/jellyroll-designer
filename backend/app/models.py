@@ -140,6 +140,7 @@ class InventoryItem(Base):
     name = Column(String(255), nullable=False)
     category = Column(String(50), nullable=False)        # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
     unit = Column(String(30), nullable=False)             # kg, lbs, ft, m, L, pcs, rolls
+    supplier = Column(String(255), nullable=True)         # primary supplier name
     package_unit = Column(String(50), nullable=True)      # bag, supersack, roll, drum, tote, jar, bottle, box
     package_size = Column(Float, nullable=True)           # qty per package
     quantity = Column(Float, nullable=False, server_default="0")  # current stock

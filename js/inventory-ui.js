@@ -100,6 +100,10 @@ function renderAddItemForm() {
         </select>
       </div>
       <div class="inv-field">
+        <label>Supplier</label>
+        <input type="text" id="aiSupplier" placeholder="primary supplier">
+      </div>
+      <div class="inv-field">
         <label>Package unit</label>
         <select id="aiPackageUnit">
           ${INV_PACKAGE_UNITS.map(u => `<option value="${u}">${u || '(none)'}</option>`).join('')}
@@ -206,6 +210,7 @@ async function submitAddItem() {
     name: document.getElementById('aiName').value.trim(),
     category: cat,
     unit: document.getElementById('aiUnit').value,
+    supplier: document.getElementById('aiSupplier').value.trim() || null,
     package_unit: document.getElementById('aiPackageUnit').value || null,
     package_size: parseFloat(document.getElementById('aiPackageSize').value) || null,
     quantity: parseFloat(document.getElementById('aiQty').value) || 0,
@@ -243,7 +248,7 @@ async function submitAddItem() {
 // ========== 2. RECEIVE SHIPMENT ==========
 function renderReceiveForm() {
   const el = document.getElementById('invFormReceive');
-  const itemOpts = invCache.items.map(i => `<option value="${i.id}">${i.name} (current: ${i.quantity} ${i.unit})</option>`).join('');
+  const itemOpts = invCache.items.map(i => `<option value="${i.id}">${i.name}${i.supplier ? ' — ' + i.supplier : ''} (current: ${i.quantity} ${i.unit})</option>`).join('');
   el.innerHTML = `
     <h4>Receive Shipment</h4>
     <div class="inv-grid-2">
