@@ -352,3 +352,51 @@ class ProductionConsumeRequest(BaseModel):
     batch_id: str | None = None
     performed_by: str | None = None
     notes: str | None = None
+
+
+# ========== Product Recipes ==========
+class RecipeLineCreate(BaseModel):
+    product: str = Field(..., max_length=255)
+    component: str = Field(..., max_length=255)
+    qty: float
+    unit: str = Field(..., max_length=30)
+    notes: str | None = None
+
+
+class RecipeLineSchema(RecipeLineCreate):
+    id: UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class RecipeBulkCreate(BaseModel):
+    """Save one product's full recipe in one shot — replaces any existing lines for that product."""
+    product: str = Field(..., max_length=255)
+    lines: list[dict]  # [{component, qty, unit, notes}]
+
+
+# ========== Production Log (consumes inventory via recipe) ==========
+class ProductionLogRequest(BaseModel):
+    product: str = Field(..., max_length=255)  # must match a product name in product_recipes
+    qty_produced: float                         # how many of this product were made
+    batch_id: str | None = None
+    performed_by: str | None = None
+    production_date: str | None = None          # ISO date string
+    notes: str | None = None
+
+
+# ========== Receive Shipment ==========
+class ReceiveShipmentRequest(BaseModel):
+    inventory_item_id: UUID
+    qty: float
+    lot_number: str | None = None
+    performed_by: str | None = None
+    notes: str | None = None
+
+
+# ========== Physical Count ==========
+class PhysicalCountRequest(BaseModel):
+    inventory_item_id: UUID
+    counted_qty: float
+    performed_by: str | None = None
+    notes: str | None = None

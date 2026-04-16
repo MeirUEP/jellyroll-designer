@@ -189,3 +189,46 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
   .summary-card .val { font-size: 12px; }
   .info-bar { font-size: 9px; }
 }
+
+/* ========== INVENTORY MODAL ========== */
+#modalInventory h4 { margin: 6px 0 8px; font-size: 13px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.inv-help { font-size: 10px; color: var(--fg2); margin: 4px 0 10px; }
+.inv-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.inv-field { display: flex; flex-direction: column; gap: 2px; }
+.inv-field.inv-full { grid-column: 1 / -1; }
+.inv-field label { font-size: 10px; color: var(--fg2); }
+.inv-field input, .inv-field select, .inv-field textarea {
+  padding: 4px 6px; font-size: 11px; background: var(--input-bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.inv-field textarea { resize: vertical; font-family: inherit; }
+.inv-submit { width: 100%; margin-top: 12px; }
+
+/* Recipe rows */
+.recipe-header, .recipe-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.8fr 1.5fr 28px;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.recipe-header { font-size: 9px; color: var(--fg2); font-weight: bold; margin-top: 6px; }
+.recipe-row input, .recipe-row select {
+  padding: 3px 5px; font-size: 10px; background: var(--input-bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 3px; min-width: 0;
+}
+.btn-remove { background: var(--red, #dc2626) !important; color: #fff !important; padding: 2px 6px !important; font-size: 11px !important; }
+
+/* Production preview */
+.inv-preview { margin-top: 10px; font-size: 10px; }
+.inv-preview-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.inv-preview-table th, .inv-preview-table td {
+  padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border);
+}
+.inv-preview-table th { background: rgba(100,100,100,0.1); font-weight: bold; color: var(--fg2); }
+.inv-preview-table td em { color: #ef4444; font-size: 9px; }
+
+/* Make modal input text fields a bit taller */
+#modalInventory input[type="text"], #modalInventory input[type="number"], #modalInventory input[type="date"], #modalInventory select, #modalInventory textarea {
+  padding: 4px 6px; font-size: 11px;
+}

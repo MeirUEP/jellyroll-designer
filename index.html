@@ -204,6 +204,7 @@
         <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
         <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
         <button class="btn-sm" id="btnAddExperimental" style="background:#d97706;color:#fff;font-size:9px" title="Add experimental result with measured data">+ Experimental</button>
+        <button class="btn-sm" id="btnInventory" onclick="openInventoryModal()" style="background:#0891b2;color:#fff;font-size:9px" title="Inventory management">&#128230; Inventory</button>
         <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
       </div>
     </div>
@@ -341,6 +342,31 @@
   </div>
 </div>
 
+<!-- Inventory Management Modal -->
+<div class="modal-overlay hidden" id="modalInventory">
+  <div class="modal-box" style="min-width:680px;max-width:900px;max-height:90vh;overflow-y:auto">
+    <button class="close-btn" onclick="closeInventoryModal()">&times;</button>
+    <h3>&#128230; Inventory Management</h3>
+    <div style="margin-bottom:10px">
+      <label style="font-size:10px;color:var(--fg2)">Choose action</label>
+      <select id="invActionPicker" onchange="showInvAction(this.value)" style="width:100%">
+        <option value="">-- Select an action --</option>
+        <option value="add_item">1. Add new inventory item</option>
+        <option value="receive">2. Receive shipment</option>
+        <option value="count">3. Update physical count</option>
+        <option value="recipe">4. Enter product recipe</option>
+        <option value="production">5. Log production</option>
+      </select>
+    </div>
+    <div id="invFormAddItem" style="display:none"></div>
+    <div id="invFormReceive" style="display:none"></div>
+    <div id="invFormCount" style="display:none"></div>
+    <div id="invFormRecipe" style="display:none"></div>
+    <div id="invFormProduction" style="display:none"></div>
+    <div id="invStatus" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+  </div>
+</div>
+
 <script src="js/api.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/formulation.js"></script>
@@ -352,5 +378,6 @@
 <script src="js/views.js"></script>
 <script src="js/three-view.js"></script>
 <script src="js/events.js"></script>
+<script src="js/inventory-ui.js"></script>
 </body>
 </html>

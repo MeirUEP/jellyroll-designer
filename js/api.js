@@ -49,6 +49,23 @@ const api = {
   createCellParamPreset(data) { return this.req('POST', '/api/v1/cell-param-presets', data); },
   updateCellParamPreset(id, data) { return this.req('PUT', `/api/v1/cell-param-presets/${id}`, data); },
   deleteCellParamPreset(id) { return this.req('DELETE', `/api/v1/cell-param-presets/${id}`); },
+  // Inventory items
+  listInventory(category) { return this.req('GET', category ? `/api/v1/inventory?category=${encodeURIComponent(category)}` : '/api/v1/inventory'); },
+  createInventoryItem(data) { return this.req('POST', '/api/v1/inventory', data); },
+  updateInventoryItem(id, data) { return this.req('PUT', `/api/v1/inventory/${id}`, data); },
+  deleteInventoryItem(id) { return this.req('DELETE', `/api/v1/inventory/${id}`); },
+  receiveShipment(data) { return this.req('POST', '/api/v1/inventory/receive', data); },
+  physicalCount(data) { return this.req('POST', '/api/v1/inventory/physical-count', data); },
+  inventorySummary() { return this.req('GET', '/api/v1/inventory/summary'); },
+  lowStock() { return this.req('GET', '/api/v1/inventory/low-stock'); },
+  // Recipes
+  listRecipes(product) { return this.req('GET', product ? `/api/v1/recipes?product=${encodeURIComponent(product)}` : '/api/v1/recipes'); },
+  listRecipeProducts() { return this.req('GET', '/api/v1/recipes/products'); },
+  saveRecipeBulk(data) { return this.req('POST', '/api/v1/recipes/bulk', data); },
+  deleteRecipeLine(id) { return this.req('DELETE', `/api/v1/recipes/${id}`); },
+  deleteProductRecipe(product) { return this.req('DELETE', `/api/v1/recipes/product/${encodeURIComponent(product)}`); },
+  // Production log
+  logProduction(data) { return this.req('POST', '/api/v1/production/log', data); },
 };
 
 // ========== CLOUD COMPONENT CACHE ==========

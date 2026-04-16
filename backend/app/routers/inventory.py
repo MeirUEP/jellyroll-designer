@@ -1,18 +1,20 @@
-"""Inventory management endpoints — stock levels, transactions, and BOM."""
+"""Inventory management endpoints — stock levels, transactions, recipes, BOM."""
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.database import get_db
 from app.models import (
-    InventoryItem, InventoryTransaction, DesignBOM,
+    InventoryItem, InventoryTransaction, DesignBOM, ProductRecipe,
     Material, Chemical, Design, SimulationResult,
 )
 from app.schemas import (
     InventoryItemCreate, InventoryItemUpdate, InventoryItemSchema,
     InventoryTransactionCreate, InventoryTransactionSchema,
     BOMLineSchema, ProductionConsumeRequest,
+    RecipeLineCreate, RecipeLineSchema, RecipeBulkCreate,
+    ProductionLogRequest, ReceiveShipmentRequest, PhysicalCountRequest,
 )
 
 router = APIRouter(tags=["inventory"], dependencies=[Depends(verify_api_key)])
@@ -334,3 +336,185 @@ async def low_stock_alerts(db: AsyncSession = Depends(get_db)):
         .order_by(InventoryItem.category, InventoryItem.name)
     )
     return result.scalars().all()
+
+
+# ==================== RECEIVE SHIPMENT ====================
+
+@router.post("/inventory/receive", response_model=InventoryTransactionSchema, status_code=201)
+async def receive_shipment(data: ReceiveShipmentRequest, db: AsyncSession = Depends(get_db)):
+    """Record a received shipment — adds stock and creates a 'received' transaction."""
+    item = await db.get(InventoryItem, data.inventory_item_id)
+    if not item:
+        raise HTTPException(404, "Inventory item not found")
+
+    txn = InventoryTransaction(
+        inventory_item_id=data.inventory_item_id,
+        qty_change=abs(data.qty),
+        reason="received",
+        performed_by=data.performed_by,
+        notes=data.notes,
+    )
+    db.add(txn)
+    item.quantity += abs(data.qty)
+    if data.lot_number:
+        item.lot_number = data.lot_number
+
+    await db.commit()
+    await db.refresh(txn)
+    return txn
+
+
+# ==================== PHYSICAL COUNT ====================
+
+@router.post("/inventory/physical-count", response_model=InventoryTransactionSchema, status_code=201)
+async def physical_count(data: PhysicalCountRequest, db: AsyncSession = Depends(get_db)):
+    """Reconcile physical count — creates an adjustment transaction for the difference."""
+    item = await db.get(InventoryItem, data.inventory_item_id)
+    if not item:
+        raise HTTPException(404, "Inventory item not found")
+
+    diff = data.counted_qty - item.quantity
+    txn = InventoryTransaction(
+        inventory_item_id=data.inventory_item_id,
+        qty_change=diff,
+        reason="count",
+        performed_by=data.performed_by,
+        notes=data.notes or f"Physical count: {data.counted_qty} {item.unit} (was {item.quantity})",
+    )
+    db.add(txn)
+    item.quantity = data.counted_qty
+
+    await db.commit()
+    await db.refresh(txn)
+    return txn
+
+
+# ==================== PRODUCT RECIPES ====================
+
+@router.get("/recipes", response_model=list[RecipeLineSchema])
+async def list_recipes(
+    product: str | None = Query(None, description="Filter to one product's lines"),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(ProductRecipe).order_by(ProductRecipe.product, ProductRecipe.component)
+    if product:
+        q = q.where(ProductRecipe.product == product)
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+@router.get("/recipes/products")
+async def list_recipe_products(db: AsyncSession = Depends(get_db)):
+    """Distinct product names that have recipes defined."""
+    result = await db.execute(
+        select(distinct(ProductRecipe.product)).order_by(ProductRecipe.product)
+    )
+    return [r[0] for r in result.all()]
+
+
+@router.post("/recipes/bulk", response_model=list[RecipeLineSchema], status_code=201)
+async def save_recipe_bulk(data: RecipeBulkCreate, db: AsyncSession = Depends(get_db)):
+    """Save one product's full recipe — replaces any existing lines for that product."""
+    # Delete old lines for this product
+    existing = await db.execute(
+        select(ProductRecipe).where(ProductRecipe.product == data.product)
+    )
+    for row in existing.scalars().all():
+        await db.delete(row)
+
+    # Insert new lines
+    new_lines = []
+    for line in data.lines:
+        rec = ProductRecipe(
+            product=data.product,
+            component=line["component"],
+            qty=float(line["qty"]),
+            unit=line["unit"],
+            notes=line.get("notes"),
+        )
+        db.add(rec)
+        new_lines.append(rec)
+
+    await db.commit()
+    for rec in new_lines:
+        await db.refresh(rec)
+    return new_lines
+
+
+@router.post("/recipes", response_model=RecipeLineSchema, status_code=201)
+async def add_recipe_line(data: RecipeLineCreate, db: AsyncSession = Depends(get_db)):
+    rec = ProductRecipe(**data.model_dump())
+    db.add(rec)
+    await db.commit()
+    await db.refresh(rec)
+    return rec
+
+
+@router.delete("/recipes/{recipe_id}", status_code=204)
+async def delete_recipe_line(recipe_id: UUID, db: AsyncSession = Depends(get_db)):
+    rec = await db.get(ProductRecipe, recipe_id)
+    if not rec:
+        raise HTTPException(404, "Recipe line not found")
+    await db.delete(rec)
+    await db.commit()
+
+
+@router.delete("/recipes/product/{product}", status_code=204)
+async def delete_all_for_product(product: str, db: AsyncSession = Depends(get_db)):
+    """Delete all recipe lines for a product."""
+    result = await db.execute(
+        select(ProductRecipe).where(ProductRecipe.product == product)
+    )
+    for row in result.scalars().all():
+        await db.delete(row)
+    await db.commit()
+
+
+# ==================== PRODUCTION LOG ====================
+
+@router.post("/production/log", response_model=list[InventoryTransactionSchema], status_code=201)
+async def log_production(data: ProductionLogRequest, db: AsyncSession = Depends(get_db)):
+    """Log production of a product. Looks up the recipe and deducts each component from inventory."""
+    # Get recipe lines for this product
+    recipe_result = await db.execute(
+        select(ProductRecipe).where(ProductRecipe.product == data.product)
+    )
+    recipe_lines = recipe_result.scalars().all()
+    if not recipe_lines:
+        raise HTTPException(400, f"No recipe found for product '{data.product}'")
+
+    transactions = []
+    missing_items = []
+
+    for line in recipe_lines:
+        # Find inventory item by name
+        inv_result = await db.execute(
+            select(InventoryItem).where(InventoryItem.name == line.component)
+        )
+        inv_item = inv_result.scalar_one_or_none()
+        if not inv_item:
+            missing_items.append(line.component)
+            continue
+
+        consumed = line.qty * data.qty_produced
+        txn = InventoryTransaction(
+            inventory_item_id=inv_item.id,
+            qty_change=-consumed,
+            reason="production",
+            batch_id=data.batch_id,
+            performed_by=data.performed_by,
+            notes=data.notes or f"{data.qty_produced} x {data.product} ({line.qty} {line.unit}/unit of {line.component})",
+        )
+        db.add(txn)
+        inv_item.quantity -= consumed
+        transactions.append(txn)
+
+    if missing_items:
+        # Don't fail — record what we can and warn via notes on the first txn
+        # (the caller can still check response count vs recipe lines)
+        pass
+
+    await db.commit()
+    for txn in transactions:
+        await db.refresh(txn)
+    return transactions

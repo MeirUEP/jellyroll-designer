@@ -192,3 +192,18 @@ class DesignBOM(Base):
     design = relationship("Design")
     inventory_item = relationship("InventoryItem")
     material = relationship("Material")
+
+
+class ProductRecipe(Base):
+    """Flat recipe table: each row = one component line for a product.
+    Components reference inventory_items by name (not FK) so recipes can
+    be defined before every item exists and renamed items don't cascade."""
+    __tablename__ = "product_recipes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    product = Column(String(255), nullable=False)          # 'Rev 5 Anode Batch', 'Rev 5 Cell', etc.
+    component = Column(String(255), nullable=False)        # must match inventory_items.name
+    qty = Column(Float, nullable=False)                    # qty per 1 product unit
+    unit = Column(String(30), nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
