@@ -13,15 +13,17 @@ function computeCapacity() {
   const cathLenIn = cathLenMm / 25.4;
   const anodLenIn = anodLenMm / 25.4;
 
-  // Widths (mm -> inches for volume/mesh calc)
-  const cathWidthMm = cathode.w;
-  const anodWidthMm = anode.w;
+  // Width and thickness are FORMULATION properties (width from mesh,
+  // thickness from the mix recipe). Prefer elecProps as the source of
+  // truth; fall back to the layer's snapshotted values if elecProps
+  // isn't stamped yet (e.g. orphaned layer, no mesh selected).
+  const cathWidthMm = ep.cath_width_mm || cathode.w;
+  const anodWidthMm = ep.anod_width_mm || anode.w;
   const cathWidthIn = cathWidthMm / 25.4;
   const anodWidthIn = anodWidthMm / 25.4;
 
-  // Thicknesses (mm -> inches)
-  const cathThickMm = cathode.t;
-  const anodThickMm = anode.t;
+  const cathThickMm = ep.cath_thickness || cathode.t;
+  const anodThickMm = ep.anod_thickness || anode.t;
   const cathThickIn = cathThickMm / 25.4;
   const anodThickIn = anodThickMm / 25.4;
 
