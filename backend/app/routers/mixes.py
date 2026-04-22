@@ -81,6 +81,7 @@ async def create_mix(body: MixCreate, db: AsyncSession = Depends(get_db)):
         name=body.name,
         type=body.type,
         bulk_density=body.bulk_density,
+        thickness=body.thickness,
         mesh_density=body.mesh_density,
         cc_material=body.cc_material,
         components=[c.model_dump(mode="json") for c in body.components],
@@ -100,6 +101,7 @@ async def update_mix(mix_id: UUID, body: MixCreate, db: AsyncSession = Depends(g
     mix.name = body.name
     mix.type = body.type
     mix.bulk_density = body.bulk_density
+    mix.thickness = body.thickness
     mix.mesh_density = body.mesh_density
     mix.cc_material = body.cc_material
     mix.components = [c.model_dump(mode="json") for c in body.components]
