@@ -55,13 +55,16 @@ async function refreshInventoryCache() {
 
 function showInvAction(action) {
   document.getElementById('invActionPicker').value = action;
-  const forms = ['invFormAddItem', 'invFormReceive', 'invFormCount', 'invFormRecipe', 'invFormProduction'];
+  const forms = ['invFormAddItem', 'invFormUpdateItem', 'invFormReceive', 'invFormCount', 'invFormRecipe', 'invFormProduction'];
   forms.forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('invStatus').textContent = '';
 
   if (action === 'add_item') {
     document.getElementById('invFormAddItem').style.display = 'block';
     renderAddItemForm();
+  } else if (action === 'update_item') {
+    document.getElementById('invFormUpdateItem').style.display = 'block';
+    renderUpdateItemForm();
   } else if (action === 'receive') {
     document.getElementById('invFormReceive').style.display = 'block';
     renderReceiveForm();
@@ -245,7 +248,202 @@ async function submitAddItem() {
   }
 }
 
-// ========== 2. RECEIVE SHIPMENT ==========
+// ========== 2. UPDATE INVENTORY ITEM ==========
+function renderUpdateItemForm() {
+  const el = document.getElementById('invFormUpdateItem');
+  const itemOpts = invCache.items
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(i => `<option value="${i.id}">${i.name}${i.supplier ? ' — ' + i.supplier : ''} [${i.category}]</option>`)
+    .join('');
+  el.innerHTML = `
+    <h4>Update Inventory Item</h4>
+    <div class="inv-grid-2">
+      <div class="inv-field inv-full">
+        <label>Select item *</label>
+        <select id="uiItemSelect" onchange="loadUpdateItemFields()">
+          <option value="">-- Select item --</option>
+          ${itemOpts}
+        </select>
+      </div>
+    </div>
+    <div id="uiFieldsWrap" style="margin-top:10px"></div>
+  `;
+}
+
+function loadUpdateItemFields() {
+  const id = document.getElementById('uiItemSelect').value;
+  const wrap = document.getElementById('uiFieldsWrap');
+  if (!id) { wrap.innerHTML = ''; return; }
+  const item = invCache.items.find(i => i.id === id);
+  if (!item) { wrap.innerHTML = ''; return; }
+
+  const cat = item.category || 'other';
+
+  // Build spec fields based on category
+  let specHtml = '';
+  if (cat === 'raw_chemical') {
+    specHtml = `
+      <h4 style="margin-bottom:6px">Chemical specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Density (g/cm&sup3;)</label>
+          <input type="number" id="uiDensity" step="any" value="${item.density || ''}">
+        </div>
+        <div class="inv-field">
+          <label>Capacity (mAh/g)</label>
+          <input type="number" id="uiCapacity" step="any" value="${item.capacity || ''}">
+        </div>
+        <div class="inv-field inv-full">
+          <label><input type="checkbox" id="uiIsActive" ${item.is_active_mat ? 'checked' : ''}> Active material (participates in capacity)</label>
+        </div>
+      </div>`;
+  } else if (cat === 'separator' || cat === 'collector') {
+    specHtml = `
+      <h4 style="margin-bottom:6px">${cat === 'separator' ? 'Separator' : 'Collector'} specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Thickness (mm)</label>
+          <input type="number" id="uiThickness" step="any" value="${item.thickness_mm || ''}">
+        </div>
+        <div class="inv-field">
+          <label>Width (mm)</label>
+          <input type="number" id="uiWidth" step="any" value="${item.width_mm || ''}">
+        </div>
+        <div class="inv-field">
+          <label>Color (for diagrams)</label>
+          <input type="color" id="uiColor" value="${item.color || '#888888'}">
+        </div>
+      </div>`;
+  } else if (cat === 'tab') {
+    specHtml = `
+      <h4 style="margin-bottom:6px">Tab specs</h4>
+      <div class="inv-grid-2">
+        <div class="inv-field">
+          <label>Thickness (mm)</label>
+          <input type="number" id="uiThickness" step="any" value="${item.thickness_mm || ''}">
+        </div>
+        <div class="inv-field">
+          <label>Color (for diagrams)</label>
+          <input type="color" id="uiColor" value="${item.color || '#c0c0c0'}">
+        </div>
+      </div>`;
+  }
+
+  wrap.innerHTML = `
+    <div class="inv-grid-2">
+      <div class="inv-field">
+        <label>Item name *</label>
+        <input type="text" id="uiName" value="${item.name || ''}">
+      </div>
+      <div class="inv-field">
+        <label>Category *</label>
+        <select id="uiCategory">
+          ${INV_CATEGORIES.map(c => `<option value="${c}" ${c === cat ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="inv-field">
+        <label>Unit *</label>
+        <select id="uiUnit">
+          ${INV_UNITS.map(u => `<option value="${u}" ${u === item.unit ? 'selected' : ''}>${u}</option>`).join('')}
+        </select>
+      </div>
+      <div class="inv-field">
+        <label>Supplier</label>
+        <input type="text" id="uiSupplier" value="${item.supplier || ''}">
+      </div>
+      <div class="inv-field">
+        <label>Package unit</label>
+        <select id="uiPackageUnit">
+          ${INV_PACKAGE_UNITS.map(u => `<option value="${u}" ${u === (item.package_unit || '') ? 'selected' : ''}>${u || '(none)'}</option>`).join('')}
+        </select>
+      </div>
+      <div class="inv-field">
+        <label>Package size (qty per package)</label>
+        <input type="number" id="uiPackageSize" step="any" value="${item.package_size || ''}">
+      </div>
+      <div class="inv-field">
+        <label>Current quantity</label>
+        <input type="number" id="uiQty" step="any" value="${item.quantity || 0}">
+      </div>
+      <div class="inv-field">
+        <label>Location</label>
+        <select id="uiLocation">
+          ${INV_LOCATIONS.map(l => `<option value="${l}" ${l === item.location ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="inv-field">
+        <label>Reorder point</label>
+        <input type="number" id="uiReorder" step="any" value="${item.reorder_point || ''}">
+      </div>
+      <div class="inv-field">
+        <label>Cost per unit ($)</label>
+        <input type="number" id="uiCost" step="any" value="${item.cost_per_unit || ''}">
+      </div>
+      <div class="inv-field">
+        <label>Lot number</label>
+        <input type="text" id="uiLot" value="${item.lot_number || ''}">
+      </div>
+      <div class="inv-field inv-full">
+        <label>Notes</label>
+        <textarea id="uiNotes" rows="2">${item.notes || ''}</textarea>
+      </div>
+    </div>
+    <div id="uiSpecs" style="margin-top:10px">${specHtml}</div>
+    <button class="btn-primary inv-submit" onclick="submitUpdateItem()">Update Item</button>
+  `;
+}
+
+async function submitUpdateItem() {
+  const id = document.getElementById('uiItemSelect').value;
+  if (!id) { setInvStatus('Select an item first', true); return; }
+
+  const data = {
+    name: document.getElementById('uiName').value.trim(),
+    category: document.getElementById('uiCategory').value,
+    unit: document.getElementById('uiUnit').value,
+    supplier: document.getElementById('uiSupplier').value.trim() || null,
+    package_unit: document.getElementById('uiPackageUnit').value || null,
+    package_size: parseFloat(document.getElementById('uiPackageSize').value) || null,
+    quantity: parseFloat(document.getElementById('uiQty').value) || 0,
+    location: document.getElementById('uiLocation').value,
+    reorder_point: parseFloat(document.getElementById('uiReorder').value) || null,
+    cost_per_unit: parseFloat(document.getElementById('uiCost').value) || null,
+    lot_number: document.getElementById('uiLot').value.trim() || null,
+    notes: document.getElementById('uiNotes').value.trim() || null,
+  };
+  if (!data.name) { setInvStatus('Name is required', true); return; }
+
+  // Category-specific specs
+  const specDensity = document.getElementById('uiDensity');
+  const specCapacity = document.getElementById('uiCapacity');
+  const specIsActive = document.getElementById('uiIsActive');
+  const specThickness = document.getElementById('uiThickness');
+  const specWidth = document.getElementById('uiWidth');
+  const specColor = document.getElementById('uiColor');
+  if (specDensity) data.density = parseFloat(specDensity.value) || null;
+  if (specCapacity) data.capacity = parseFloat(specCapacity.value) || null;
+  if (specIsActive) data.is_active_mat = specIsActive.checked;
+  if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
+  if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;
+  if (specColor) data.color = specColor.value || null;
+
+  try {
+    const updated = await api.updateInventoryItem(id, data);
+    setInvStatus(`Updated "${updated.name}"`);
+    await refreshInventoryCache();
+    // Refresh the global inventory so formulation dropdowns reflect changes
+    await refreshInventory();
+    // Re-render to update the dropdown with fresh data but keep selection
+    renderUpdateItemForm();
+    // Re-select the item that was just updated
+    const sel = document.getElementById('uiItemSelect');
+    if (sel) { sel.value = id; loadUpdateItemFields(); }
+  } catch (e) {
+    setInvStatus('Failed: ' + e.message, true);
+  }
+}
+
+// ========== 3. RECEIVE SHIPMENT ==========
 function renderReceiveForm() {
   const el = document.getElementById('invFormReceive');
   const itemOpts = invCache.items.map(i => `<option value="${i.id}">${i.name}${i.supplier ? ' — ' + i.supplier : ''} (current: ${i.quantity} ${i.unit})</option>`).join('');
