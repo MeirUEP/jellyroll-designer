@@ -45,11 +45,12 @@ function computeCapacity() {
   const cathPasteMass = cathTotalMass - cathMeshMass;
   const anodPasteMass = anodTotalMass - anodMeshMass;
 
-  // Cathode capacity (Ah) = paste_mass × active_wt% × specific_capacity / 1000
-  const cathCapAh = cathPasteMass * ep.cath_active_wt * ep.cath_spec_cap / 1000;
-
-  // Anode capacity (Ah) = paste_mass × (Zn_wt% × Zn_cap + ZnO_wt% × ZnO_cap) / 1000
-  const anodCapAh = anodPasteMass * (ep.anod_zn_wt * ep.anod_zn_cap + ep.anod_zno_wt * ep.anod_zno_cap) / 1000;
+  // Capacity (Ah) = paste_mass (g) × composite_capacity (mAh/g) / 1000
+  // composite_capacity = Σ(wt% × cap) over all mix components — inactive
+  // components have cap=0 so they drop out naturally. No per-component
+  // "active" flag or electrode-specific name matching needed.
+  const cathCapAh = cathPasteMass * (ep.cath_composite_cap || 0) / 1000;
+  const anodCapAh = anodPasteMass * (ep.anod_composite_cap || 0) / 1000;
 
   // Cell capacity (cathode-limited, 1e⁻)
   const cellCapAh = Math.min(cathCapAh, anodCapAh);

@@ -247,28 +247,18 @@ function updateFormulation(components, totalId, solidDensId, compCapId, electrod
   const solidDens = densSum > 0 ? 1 / densSum : 0;
   document.getElementById(solidDensId).textContent = solidDens.toFixed(3);
 
-  // Composite specific capacity (weighted by every component, active or not —
-  // inactive ones typically have cap=0 so they drop out)
+  // Composite specific capacity — just sum(wt% × cap). Inactive components
+  // naturally have cap=0 so they drop out. No "active material" flag needed.
+  // This is the single source of truth for electrode capacity (mAh/g).
   let compCap = 0;
   components.forEach(c => { const k = capOf(c); if (k > 0) compCap += (c.wt / 100) * k; });
   document.getElementById(compCapId).textContent = compCap.toFixed(1);
 
-  // Update elecProps from formulation
+  // Stamp composite capacity onto elecProps for the capacity calculator.
   if (electrode === 'cathode') {
-    // Find active material wt% and specific capacity
-    const activeComps = components.filter(c => c.isActive);
-    elecProps.cath_active_wt = activeComps.reduce((s, c) => s + c.wt, 0) / 100;
-    elecProps.cath_spec_cap = activeComps.length > 0
-      ? activeComps.reduce((s, c) => s + c.wt * c.cap, 0) / activeComps.reduce((s, c) => s + c.wt, 0)
-      : 0;
+    elecProps.cath_composite_cap = compCap;
   } else {
-    // Anode: Zn and ZnO are both active with different capacities
-    const zn = components.find(c => c.name.startsWith('Zinc'));
-    const zno = components.find(c => c.name === 'ZnO');
-    elecProps.anod_zn_wt = zn ? zn.wt / 100 : 0;
-    elecProps.anod_zno_wt = zno ? zno.wt / 100 : 0;
-    elecProps.anod_zn_cap = zn ? zn.cap : 820;
-    elecProps.anod_zno_cap = zno ? zno.cap : 660;
+    elecProps.anod_composite_cap = compCap;
   }
 }
 

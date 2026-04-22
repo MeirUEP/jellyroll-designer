@@ -33,20 +33,20 @@ let capResult = null;
 let currentView = 'side';
 let debounceTimer = null;
 
-// Electrode properties (Rev 3 Can defaults from JellyRollModel_CORRECTED.xlsx)
+// Electrode properties — bulk density, thickness, mesh density are physical
+// design properties of the electrode. composite_cap (mAh/g of paste) is
+// computed from Σ(wt% × cap) over the mix components; it's stamped here by
+// updateFormulation() so capacity.js can read it. No "active material" flag
+// needed — inactive components have cap=0 and drop out naturally.
 let elecProps = {
-  cath_bulk_density: 2.41,    // g/cm³ (with mesh)
-  cath_thickness: 1.0,        // mm — cathode paste thickness (electrode design property)
-  cath_active_wt: 0.75,       // EMD wt%
-  cath_spec_cap: 250,         // mAh/g EMD
-  cath_mesh_dens: 0.16,       // g/in² Ni mesh
-  anod_bulk_density: 4.062,   // g/cm³ (with mesh)
-  anod_thickness: 1.0,        // mm — anode paste thickness (electrode design property)
-  anod_zn_wt: 0.75,           // Zn wt%
-  anod_zno_wt: 0.16,          // ZnO wt%
-  anod_zn_cap: 820,           // mAh/g Zn
-  anod_zno_cap: 660,          // mAh/g ZnO
-  anod_mesh_dens: 0.149,      // g/in² Cu mesh
+  cath_bulk_density: 2.41,       // g/cm³ (with mesh)
+  cath_thickness: 1.0,           // mm — cathode paste thickness
+  cath_mesh_dens: 0.16,          // g/in² Ni mesh
+  cath_composite_cap: 0,         // mAh/g — Σ(wt% × cap) of cathode mix
+  anod_bulk_density: 4.062,      // g/cm³ (with mesh)
+  anod_thickness: 1.0,           // mm — anode paste thickness
+  anod_mesh_dens: 0.149,         // g/in² Cu mesh
+  anod_composite_cap: 0,         // mAh/g — Σ(wt% × cap) of anode mix
 };
 
 // 3D state
