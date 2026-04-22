@@ -28,6 +28,7 @@ function getCathodePreset() {
   return {
     components: cathComponents.map(c => ({ ...c })),
     bulk_density: elecProps.cath_bulk_density,
+    thickness: elecProps.cath_thickness,
     mesh_dens: elecProps.cath_mesh_dens,
     cc_material: document.getElementById('ep_cath_cc_material').value,
   };
@@ -36,6 +37,7 @@ function getAnodePreset() {
   return {
     components: anodComponents.map(c => ({ ...c })),
     bulk_density: elecProps.anod_bulk_density,
+    thickness: elecProps.anod_thickness,
     mesh_dens: elecProps.anod_mesh_dens,
     cc_material: document.getElementById('ep_anod_cc_material').value,
   };
@@ -55,6 +57,7 @@ function applyCathodePreset(p) {
   cathComponents.length = 0;
   p.components.forEach(c => cathComponents.push({ ...c }));
   if (p.bulk_density !== undefined) { elecProps.cath_bulk_density = p.bulk_density; document.getElementById('ep_cath_bulk_density').value = p.bulk_density; }
+  if (p.thickness !== undefined && p.thickness !== null) { elecProps.cath_thickness = p.thickness; document.getElementById('ep_cath_thickness').value = p.thickness; }
   if (p.mesh_dens !== undefined) { elecProps.cath_mesh_dens = p.mesh_dens; document.getElementById('ep_cath_mesh_dens').value = p.mesh_dens; }
   if (p.cc_material) document.getElementById('ep_cath_cc_material').value = p.cc_material;
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
@@ -64,6 +67,7 @@ function applyAnodePreset(p) {
   anodComponents.length = 0;
   p.components.forEach(c => anodComponents.push({ ...c }));
   if (p.bulk_density !== undefined) { elecProps.anod_bulk_density = p.bulk_density; document.getElementById('ep_anod_bulk_density').value = p.bulk_density; }
+  if (p.thickness !== undefined && p.thickness !== null) { elecProps.anod_thickness = p.thickness; document.getElementById('ep_anod_thickness').value = p.thickness; }
   if (p.mesh_dens !== undefined) { elecProps.anod_mesh_dens = p.mesh_dens; document.getElementById('ep_anod_mesh_dens').value = p.mesh_dens; }
   if (p.cc_material) document.getElementById('ep_anod_cc_material').value = p.cc_material;
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');

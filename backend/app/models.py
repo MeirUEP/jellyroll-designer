@@ -39,6 +39,7 @@ class Mix(Base):
     name = Column(String(255), nullable=False, unique=True)
     type = Column(String(20), nullable=False)  # cathode, anode
     bulk_density = Column(Float, nullable=False)
+    thickness = Column(Float, nullable=True)           # electrode paste thickness (mm)
     mesh_density = Column(Float, nullable=False, server_default="0")
     cc_material = Column(String(100), nullable=True)  # e.g. "Nickel mesh", "Copper mesh"
     components = Column(JSONB, nullable=False)  # [{chemical_id, wt_pct, is_active}]

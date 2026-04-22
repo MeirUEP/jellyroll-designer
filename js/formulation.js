@@ -439,11 +439,16 @@ function addLayerFromMix() {
     ? (elecProps.cath_width_mm || 220)
     : (elecProps.anod_width_mm || 220);
   const color = mix.type === 'cathode' ? '#3b82f6' : '#16a34a';
+  // Thickness comes from the mix (electrode design property); fall back to
+  // the current elecProps thickness for this electrode type.
+  const thickness = mix.thickness
+    || (mix.type === 'cathode' ? elecProps.cath_thickness : elecProps.anod_thickness)
+    || 1.0;
   layers.push({
     mix_id: mixId,
     name: mix.name,
     type: mix.type,         // 'cathode' or 'anode'
-    t: 1.0,                 // paste thickness — a design input, user edits later
+    t: thickness,
     w: widthFromMesh,
     color,
   });

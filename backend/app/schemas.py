@@ -55,6 +55,7 @@ class MixCreate(BaseModel):
     name: str = Field(..., max_length=255)
     type: Literal["cathode", "anode"]
     bulk_density: float
+    thickness: float | None = None        # electrode paste thickness (mm)
     mesh_density: float = 0
     cc_material: str | None = None
     components: list[MixComponent]

@@ -170,6 +170,7 @@ function mixToApi(presetData, type) {
     name: '', // caller sets this
     type: type,
     bulk_density: presetData.bulk_density || 0,
+    thickness: presetData.thickness || null,
     mesh_density: presetData.mesh_dens || 0,
     cc_material: presetData.cc_material || null,
     components,
@@ -199,6 +200,7 @@ function mixFromApi(mix) {
   return {
     components,
     bulk_density: mix.bulk_density,
+    thickness: mix.thickness || null,
     mesh_dens: mix.mesh_density,
     cc_material: mix.cc_material,
   };

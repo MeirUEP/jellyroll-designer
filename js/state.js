@@ -3,17 +3,9 @@
 // tabs and tape are cell-assembly components attached post-winding.
 // All three are tracked in inventory but not exposed as layers.
 const LAYER_TYPES = ['anode','cathode','separator','other'];
-let layers = [
-  {name:'Anode',type:'anode',t:1.0,w:222,color:'#16a34a'},
-  {name:'Kraft paper',type:'separator',t:0.15,w:228,color:'#b45309'},
-  {name:'Cellophane A',type:'separator',t:0.05,w:226,color:'#38bdf8'},
-  {name:'Cellophane B',type:'separator',t:0.05,w:226,color:'#7dd3fc'},
-  {name:'Cathode',type:'cathode',t:2.0,w:188,color:'#3b82f6'},
-  {name:'Cellophane C',type:'separator',t:0.05,w:226,color:'#38bdf8'},
-  {name:'Cellophane D',type:'separator',t:0.05,w:226,color:'#7dd3fc'},
-  {name:'Kraft paper 2',type:'separator',t:0.15,w:228,color:'#d97706'},
-  {name:'PVA lam.',type:'separator',t:0.1,w:224,color:'#a855f7'},
-];
+// Start empty — layers are built from inventory (separators) and saved
+// mixes (electrodes) via the add-layer dropdowns. No hardcoded defaults.
+let layers = [];
 
 // Machine constants (not user-editable, not saved per design)
 const SEPARATOR_GRAB_DISTANCE = 129;  // mm — blade-to-mandrel distance, fixed machine geometry
@@ -44,10 +36,12 @@ let debounceTimer = null;
 // Electrode properties (Rev 3 Can defaults from JellyRollModel_CORRECTED.xlsx)
 let elecProps = {
   cath_bulk_density: 2.41,    // g/cm³ (with mesh)
+  cath_thickness: 1.0,        // mm — cathode paste thickness (electrode design property)
   cath_active_wt: 0.75,       // EMD wt%
   cath_spec_cap: 250,         // mAh/g EMD
   cath_mesh_dens: 0.16,       // g/in² Ni mesh
   anod_bulk_density: 4.062,   // g/cm³ (with mesh)
+  anod_thickness: 1.0,        // mm — anode paste thickness (electrode design property)
   anod_zn_wt: 0.75,           // Zn wt%
   anod_zno_wt: 0.16,          // ZnO wt%
   anod_zn_cap: 820,           // mAh/g Zn
