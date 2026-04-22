@@ -177,15 +177,25 @@ function syncElectrodeWidthFromMesh(electrode) {
   const isCath = electrode === 'cathode';
   const sel = document.getElementById(isCath ? 'ep_cath_mesh_id' : 'ep_anod_mesh_id');
   const widthInput = document.getElementById(isCath ? 'ep_cath_width' : 'ep_anod_width');
+  const meshDensInput = document.getElementById(isCath ? 'ep_cath_mesh_dens' : 'ep_anod_mesh_dens');
   const stockEl = document.getElementById(isCath ? 'cathMeshStock' : 'anodMeshStock');
   if (!sel || !widthInput) return;
 
   const inv = sel.value ? invById(sel.value) : null;
   if (inv) {
     widthInput.value = inv.width_mm || '';
+    // Mesh linear density — physical property, read from inventory
+    if (meshDensInput && inv.density != null) {
+      meshDensInput.value = inv.density;
+      meshDensInput.readOnly = true;
+      meshDensInput.style.background = 'var(--bg-secondary, #2a2a2a)';
+      meshDensInput.title = 'From inventory — edit in Inventory modal';
+      elecProps[isCath ? 'cath_mesh_dens' : 'anod_mesh_dens'] = inv.density;
+    }
     if (stockEl) {
       stockEl.innerHTML = `<strong>${inv.name}</strong> — ${inv.quantity} ${inv.unit}` +
         (inv.thickness_mm ? ` • ${inv.thickness_mm}mm thick` : '') +
+        (inv.density ? ` • ${inv.density} g/in²` : '') +
         (inv.color ? ` • <span style="display:inline-block;width:10px;height:10px;background:${inv.color};border:1px solid var(--border);vertical-align:middle"></span>` : '');
     }
     // Stamp into elecProps so save/load carries the link
@@ -203,6 +213,12 @@ function syncElectrodeWidthFromMesh(electrode) {
     if (layer && inv.width_mm) layer.w = inv.width_mm;
   } else {
     widthInput.value = '';
+    // Restore mesh density input to editable when no mesh selected
+    if (meshDensInput) {
+      meshDensInput.readOnly = false;
+      meshDensInput.style.background = '';
+      meshDensInput.title = '';
+    }
     if (stockEl) stockEl.innerHTML = '<em style="color:var(--fg2)">No mesh selected</em>';
   }
 }
