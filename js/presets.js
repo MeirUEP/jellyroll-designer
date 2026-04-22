@@ -53,13 +53,36 @@ function getDesignPreset() {
 }
 
 // --- Apply presets ---
+// Restore the mesh dropdown selection for an electrode. cc_material is
+// stored as the mesh name; we find the matching inventory item (category
+// = collector) and set the dropdown value. syncElectrodeWidthFromMesh()
+// then stamps width, linear density, and cc_material onto elecProps so
+// the loaded mix is fully reconstituted from inventory.
+function restoreMeshSelection(electrode, meshName) {
+  if (!meshName) return;
+  const selId = electrode === 'cathode' ? 'ep_cath_mesh_id' : 'ep_anod_mesh_id';
+  const sel = document.getElementById(selId);
+  if (!sel) return;
+  // Find the inventory item by name (case-insensitive) in the collector category
+  const inv = invByCategory('collector').find(i =>
+    (i.name || '').trim().toLowerCase() === meshName.trim().toLowerCase()
+  );
+  if (!inv) {
+    showToast(`Mesh "${meshName}" not found in inventory — add it or pick manually`, true);
+    return;
+  }
+  sel.value = inv.id;
+  // Fires syncElectrodeWidthFromMesh via the 'change' listener wired in initFormulation
+  sel.dispatchEvent(new Event('change'));
+}
+
 function applyCathodePreset(p) {
   cathComponents.length = 0;
   p.components.forEach(c => cathComponents.push({ ...c }));
   if (p.bulk_density !== undefined) { elecProps.cath_bulk_density = p.bulk_density; document.getElementById('ep_cath_bulk_density').value = p.bulk_density; }
   if (p.thickness !== undefined && p.thickness !== null) { elecProps.cath_thickness = p.thickness; document.getElementById('ep_cath_thickness').value = p.thickness; }
   if (p.mesh_dens !== undefined) { elecProps.cath_mesh_dens = p.mesh_dens; document.getElementById('ep_cath_mesh_dens').value = p.mesh_dens; }
-  if (p.cc_material) elecProps.cath_cc_material = p.cc_material;
+  if (p.cc_material) { elecProps.cath_cc_material = p.cc_material; restoreMeshSelection('cathode', p.cc_material); }
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
   markDirty();
 }
@@ -69,7 +92,7 @@ function applyAnodePreset(p) {
   if (p.bulk_density !== undefined) { elecProps.anod_bulk_density = p.bulk_density; document.getElementById('ep_anod_bulk_density').value = p.bulk_density; }
   if (p.thickness !== undefined && p.thickness !== null) { elecProps.anod_thickness = p.thickness; document.getElementById('ep_anod_thickness').value = p.thickness; }
   if (p.mesh_dens !== undefined) { elecProps.anod_mesh_dens = p.mesh_dens; document.getElementById('ep_anod_mesh_dens').value = p.mesh_dens; }
-  if (p.cc_material) elecProps.anod_cc_material = p.cc_material;
+  if (p.cc_material) { elecProps.anod_cc_material = p.cc_material; restoreMeshSelection('anode', p.cc_material); }
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
   markDirty();
 }
