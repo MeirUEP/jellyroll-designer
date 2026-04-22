@@ -76,6 +76,22 @@ function restoreMeshSelection(electrode, meshName) {
   sel.dispatchEvent(new Event('change'));
 }
 
+// Push the formulation's width/thickness onto every matching electrode
+// layer so the layer UI, geometry rendering, and PDF export stay in
+// sync with the loaded formulation. Called after applying a preset and
+// whenever the mesh or thickness changes.
+function syncElectrodeLayersFromFormulation(electrode) {
+  const w = electrode === 'cathode' ? elecProps.cath_width_mm : elecProps.anod_width_mm;
+  const t = electrode === 'cathode' ? elecProps.cath_thickness : elecProps.anod_thickness;
+  let changed = false;
+  layers.forEach(l => {
+    if (l.type !== electrode) return;
+    if (w && l.w !== w) { l.w = w; changed = true; }
+    if (t && l.t !== t) { l.t = t; changed = true; }
+  });
+  if (changed && typeof buildLayerUI === 'function') buildLayerUI();
+}
+
 function applyCathodePreset(p) {
   cathComponents.length = 0;
   p.components.forEach(c => cathComponents.push({ ...c }));
@@ -84,6 +100,7 @@ function applyCathodePreset(p) {
   if (p.mesh_dens !== undefined) { elecProps.cath_mesh_dens = p.mesh_dens; document.getElementById('ep_cath_mesh_dens').value = p.mesh_dens; }
   if (p.cc_material) { elecProps.cath_cc_material = p.cc_material; restoreMeshSelection('cathode', p.cc_material); }
   buildMixTable(cathComponents, 'cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap', 'cathode');
+  syncElectrodeLayersFromFormulation('cathode');
   markDirty();
 }
 function applyAnodePreset(p) {
@@ -94,6 +111,7 @@ function applyAnodePreset(p) {
   if (p.mesh_dens !== undefined) { elecProps.anod_mesh_dens = p.mesh_dens; document.getElementById('ep_anod_mesh_dens').value = p.mesh_dens; }
   if (p.cc_material) { elecProps.anod_cc_material = p.cc_material; restoreMeshSelection('anode', p.cc_material); }
   buildMixTable(anodComponents, 'anodMixBody', 'anodMixTotal', 'anodSolidDens', 'anodCompCap', 'anode');
+  syncElectrodeLayersFromFormulation('anode');
   markDirty();
 }
 function applyLayersPreset(p) {

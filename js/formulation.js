@@ -278,11 +278,40 @@ function initFormulation() {
     if (sel && !sel.dataset.wired) {
       sel.addEventListener('change', () => {
         syncElectrodeWidthFromMesh(electrode);
-        if (typeof buildLayerUI === 'function') buildLayerUI();
+        // Width changed → push onto matching layer(s) and re-render stack
+        if (typeof syncElectrodeLayersFromFormulation === 'function') {
+          syncElectrodeLayersFromFormulation(electrode);
+        } else if (typeof buildLayerUI === 'function') {
+          buildLayerUI();
+        }
         if (typeof markDirty === 'function') markDirty();
       });
       sel.dataset.wired = '1';
     }
+  });
+
+  // Wire thickness + bulk density inputs — manual edits need to stamp
+  // onto elecProps and then propagate to the matching electrode layer so
+  // capacity, geometry, and PDF exports stay consistent.
+  [
+    { id: 'ep_cath_thickness',    prop: 'cath_thickness',    electrode: 'cathode', syncLayer: true  },
+    { id: 'ep_anod_thickness',    prop: 'anod_thickness',    electrode: 'anode',   syncLayer: true  },
+    { id: 'ep_cath_bulk_density', prop: 'cath_bulk_density', electrode: 'cathode', syncLayer: false },
+    { id: 'ep_anod_bulk_density', prop: 'anod_bulk_density', electrode: 'anode',   syncLayer: false },
+    { id: 'ep_cath_mesh_dens',    prop: 'cath_mesh_dens',    electrode: 'cathode', syncLayer: false },
+    { id: 'ep_anod_mesh_dens',    prop: 'anod_mesh_dens',    electrode: 'anode',   syncLayer: false },
+  ].forEach(({ id, prop, electrode, syncLayer }) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.wired) return;
+    el.addEventListener('change', () => {
+      const v = parseFloat(el.value);
+      if (!isNaN(v)) elecProps[prop] = v;
+      if (syncLayer && typeof syncElectrodeLayersFromFormulation === 'function') {
+        syncElectrodeLayersFromFormulation(electrode);
+      }
+      if (typeof markDirty === 'function') markDirty();
+    });
+    el.dataset.wired = '1';
   });
 
   // Load cloud components if API is configured
