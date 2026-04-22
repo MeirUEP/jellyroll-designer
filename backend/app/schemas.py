@@ -78,6 +78,10 @@ class LayerStackItem(BaseModel):
     material_id: UUID
     position: int
     role: Literal["cathode", "anode", "separator", "tape", "collector", "other"]
+    # Optional new-model links — lets saved stacks point at inventory items
+    # (passive layers) and mixes (electrodes) so loaded layers aren't orphans.
+    inventory_item_id: UUID | None = None
+    mix_id: UUID | None = None
 
 
 class LayerStackCreate(BaseModel):

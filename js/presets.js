@@ -119,10 +119,9 @@ function applyLayersPreset(p) {
   if (!Array.isArray(src) || src.length === 0) return;
   layers.length = 0;
   src.forEach(l => { const ll = { ...l }; delete ll.startTurn; layers.push(ll); });
-  // Electrode layers may have been saved with stale width/thickness (e.g.
-  // before the mesh was updated). Re-sync from the current formulation
-  // so what you see reflects what you've currently loaded — not what was
-  // frozen when the layer stack was saved.
+  // Auto-link any legacy orphans by name back to inventory/mix, then
+  // re-sync electrode geometry from the currently loaded formulation.
+  if (typeof hydrateLayerSnapshots === 'function') hydrateLayerSnapshots();
   if (typeof syncElectrodeLayersFromFormulation === 'function') {
     syncElectrodeLayersFromFormulation('cathode');
     syncElectrodeLayersFromFormulation('anode');

@@ -206,14 +206,22 @@ function mixFromApi(mix) {
   };
 }
 
-// Convert frontend layers → API layer stack format
+// Convert frontend layers → API layer stack format.
+// The layer-stack items column is JSONB, so we stash inventory_item_id
+// (for passive layers) and mix_id (for electrodes) alongside the legacy
+// material_id. That lets layerStackFromApi re-link loaded layers to
+// inventory/mix — keeping them out of "orphan" mode — without requiring
+// a DB migration.
 async function layerStackToApi(layersArr) {
   const items = [];
   for (let i = 0; i < layersArr.length; i++) {
     const l = layersArr[i];
     if (l.type === 'mandrel') continue;
+
+    // Still create/lookup a legacy material for material_id so old
+    // code paths keep working. The inventory/mix IDs are the new
+    // authoritative links.
     let mat = matByName(l.name);
-    // Auto-create material if not in cloud
     if (!mat && isApiConfigured()) {
       try {
         const matType = ['cathode','anode'].includes(l.type) ? 'other' : (l.type || 'other');
@@ -221,25 +229,47 @@ async function layerStackToApi(layersArr) {
         cloudMaterials.push(mat);
       } catch(e) { console.warn('Could not create material:', l.name, e); continue; }
     }
-    if (mat) {
-      items.push({ material_id: mat.id, position: i, role: l.type || 'other' });
-    }
+    if (!mat) continue;
+
+    items.push({
+      material_id: mat.id,
+      inventory_item_id: l.inventory_item_id || null,
+      mix_id: l.mix_id || null,
+      position: i,
+      role: l.type || 'other',
+    });
   }
   return { name: '', items };
 }
 
-// Convert API layer stack → frontend layers format
+// Convert API layer stack → frontend layers format.
+// Prefer inventory/mix links when present (new-format stacks) so the
+// layers come back fully linked. Fall back to the legacy material_id
+// lookup for old saved stacks.
 function layerStackFromApi(stack) {
   return (stack.items || [])
     .sort((a, b) => a.position - b.position)
     .map(item => {
-      const mat = matById(item.material_id);
+      const inv = item.inventory_item_id ? invById(item.inventory_item_id) : null;
+      const mix = item.mix_id ? cloudMixes.find(m => m.id === item.mix_id) : null;
+      const mat = !inv && !mix ? matById(item.material_id) : null;
+      const src = inv || mix || mat;
       return {
-        name: mat ? mat.name : 'Unknown',
+        name: src ? src.name : 'Unknown',
         type: item.role || (mat ? mat.type : 'other'),
-        t: mat ? mat.thickness : 0.1,
-        w: mat ? mat.width : 200,
-        color: mat ? (mat.color || '#888') : '#888',
+        t: mix ? (mix.thickness || 1.0)
+           : inv ? (inv.thickness_mm || 0.1)
+           : mat ? mat.thickness
+           : 0.1,
+        w: inv ? (inv.width_mm || 200)
+           : mat ? mat.width
+           : 200,
+        color: inv ? (inv.color || '#888')
+             : mix ? (mix.type === 'cathode' ? '#3b82f6' : '#16a34a')
+             : mat ? (mat.color || '#888')
+             : '#888',
+        inventory_item_id: inv ? inv.id : null,
+        mix_id: mix ? mix.id : null,
       };
     });
 }

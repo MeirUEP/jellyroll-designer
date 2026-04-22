@@ -548,10 +548,27 @@ function refreshLayerAddDropdowns() {
 }
 
 // Re-hydrate each linked layer's snapshot (name/t/w/color) from its live
-// inventory or mix source. Orphans (no link at all) are left alone so the
-// user can see their legacy data and fix them by deleting + re-adding.
+// inventory or mix source. Legacy layers with no link but a recognizable
+// name are auto-linked back to inventory/mix, recovering orphans saved
+// before layer stacks carried inventory_item_id/mix_id.
 function hydrateLayerSnapshots() {
   layers.forEach(l => {
+    // Auto-link by name for legacy orphans (no IDs) so stacks saved
+    // before we started storing links still load fully hydrated.
+    if (!l.inventory_item_id && !l.mix_id && l.name) {
+      const isElectrode = l.type === 'cathode' || l.type === 'anode';
+      if (isElectrode) {
+        const mix = cloudMixes.find(m =>
+          (m.name || '').trim().toLowerCase() === l.name.trim().toLowerCase() &&
+          m.type === l.type
+        );
+        if (mix) l.mix_id = mix.id;
+      } else {
+        const inv = invByName(l.name);
+        if (inv) l.inventory_item_id = inv.id;
+      }
+    }
+
     if (l.inventory_item_id) {
       const inv = invById(l.inventory_item_id);
       if (inv) {
