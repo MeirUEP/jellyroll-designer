@@ -193,19 +193,22 @@ function runSimulation() {
   phaseInfo.cathToAnodTurns = cathToAnodTurns;
 
   // ===== Phase 3: Main wind (all layers) =====
-  // The machine winds a fixed number of main-wind turns (default 9).
-  // The resulting OD is determined by geometry, not the other way around.
-  // Also cap at targetR - estimated anode extension pitch.
+  // The machine winds main-wind turns until the electrode reaches the
+  // target OD (minus the estimated anode extension pitch). Main-turn
+  // count is reported in phaseInfo.mainTurns for the UI, but not used
+  // as a limit — OD is the sole stopping condition. A RUNAWAY_CAP is
+  // kept as a safety guard against infinite loops from pathological
+  // inputs (zero/negative pitch, etc.).
   if (anode) anode.off = arc;
   const mainWindStart = n;
-  const maxMainTurns = 9;  // machine hard limit
+  const RUNAWAY_CAP = 1000;  // safety guard; not a design limit
   const estAnodExtPitch = pitchAtR(nomAnodExtPitch, targetR);  // pitch at outer radius for extension
   const electrodeTargetR = targetR - estAnodExtPitch;
   let mainTurnsDone = 0;
   if (nomAllPitch > 0.01 && electrodeTargetR > r) {
-    // Full turns (limited by both target radius and max turn count)
-    // Pitch varies with radius at each turn
-    while (mainTurnsDone < maxMainTurns) {
+    // Full turns — pitch varies with radius at each turn. Stops when
+    // the next full turn would exceed the electrode target radius.
+    while (mainTurnsDone < RUNAWAY_CAP) {
       const turnPitch = pitchAtR(nomAllPitch, r);
       if (r + turnPitch > electrodeTargetR) break;
       const circ = 2 * Math.PI * (r + turnPitch / 2);
@@ -216,20 +219,18 @@ function runSimulation() {
       mainTurnsDone += 1;
       turns.push({ turn: n, r, arc, pitch: turnPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind' });
     }
-    // Fractional last turn only if we haven't hit the turn limit
-    if (mainTurnsDone < maxMainTurns) {
-      const remainingR = electrodeTargetR - r;
-      if (remainingR > 0.01) {
-        const turnPitch = pitchAtR(nomAllPitch, r);
-        const frac = remainingR / turnPitch;
-        const circ = 2 * Math.PI * (r + turnPitch / 2);
-        const arcInc = circ * frac;
-        const arcStart = arc;
-        arc += arcInc;
-        r += remainingR;
-        n += frac;
-        turns.push({ turn: n, r, arc, pitch: turnPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
-      }
+    // Fractional last turn to exactly hit the target radius
+    const remainingR = electrodeTargetR - r;
+    if (remainingR > 0.01) {
+      const turnPitch = pitchAtR(nomAllPitch, r);
+      const frac = remainingR / turnPitch;
+      const circ = 2 * Math.PI * (r + turnPitch / 2);
+      const arcInc = circ * frac;
+      const arcStart = arc;
+      arc += arcInc;
+      r += remainingR;
+      n += frac;
+      turns.push({ turn: n, r, arc, pitch: turnPitch, circ, arcStart, active: [...allLayers], phase: 'main_wind', frac });
     }
   }
   phaseInfo.mainTurns = n - mainWindStart;
