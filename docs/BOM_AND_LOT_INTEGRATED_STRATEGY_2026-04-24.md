@@ -48,7 +48,7 @@ From the third-pass review (2026-04-30, post Phase 1+2 execution):
 
 17. **Dashboard MVP is basic ops only.** Items table with sort/filter/search, quick-stat cards, low-stock alert, lots sub-rows, and the four core action modals (add item, receive, count, update). Everything else (transactions ledger, production log history, supplier views, charts, dynamic reorder, exports, roles) deferred to later phases.
 
-18. **Once the dashboard is ready, remove the Inventory Management button from the Designer page.** The designer reads inventory (component dropdowns in the Formulation tab, mesh picker, layer-stack add) but no longer hosts the management modals. Add/Update/Receive/Count/Recipe/Production all move to the standalone dashboard. Cleaner separation of concerns: the Designer is a workspace, the Dashboard is for ops.
+18. **Once the dashboard is ready, remove the Inventory button from the Designer page.** The designer reads inventory (component dropdowns in the Formulation tab, mesh picker, layer-stack add) but no longer hosts the management modals. Add/Update/Receive/Count/Recipe/Production all move to the standalone dashboard. Cleaner separation of concerns: the Designer is a workspace, the Dashboard is for ops.
 
     Cleanup deferred to **Phase 4b** (post-dashboard ship): delete the `Inventory Management` button + modal markup from `designer.html`, drop the `openInventoryModal()` entry-point but keep the form-rendering helpers in `inventory-ui.js` so the dashboard can reuse them.
 
@@ -470,7 +470,7 @@ Implementation:
 
 Per decision 18 — once the dashboard is the primary surface for inventory ops, strip the management UI out of the designer:
 
-- Remove the "Inventory Management" button from the designer's header.
+- Remove the cyan "Inventory" button from the designer's bottom action bar (currently sits between "+ Experimental" and the gear icon).
 - Remove the `<div id="modalInventory">` markup and its sub-forms from `designer.html`.
 - Drop the `openInventoryModal()` entry point in `js/inventory-ui.js`.
 - Keep the form-rendering helpers (`renderAddItemForm`, `renderReceiveForm`, `renderUpdateItemForm`, `renderCountForm`) — they're now reused by `inventory.html`.
