@@ -38,6 +38,16 @@ From the second-pass review (2026-04-24, late):
     These are kept separate (not merged) so dropdowns can filter on each axis independently. The existing single `category` column stays for backward-compat as a legacy view but is deprecated.
 15. **Multi-supplier on product recipes — minimal-invasive model.** Two inventory items can share the same `name` (different `supplier` values). Recipes still reference the component by name (no schema change). At production time, the operator's form lists all inventory items whose `name` matches the recipe line, with their supplier as the dropdown label; operator picks which one was used.
 
+From the third-pass review (2026-04-30, post Phase 1+2 execution):
+
+16. **Two-page architecture.** Single landing page with password gate, then the user picks one of two destinations:
+    - **Designer** (current app, renamed to `designer.html`) — workspace for building/simulating a cell. The inventory tab/modal inside this page stays as it is — design-scoped, showing quantities and costs relevant to the loaded design.
+    - **Inventory Dashboard** (`inventory.html`) — standalone full-page tool for general inventory operations: see all items, add/update items, receive shipments, run physical counts. No design context.
+
+    Auth shared via `sessionStorage.jr_auth`; once you enter the password on the landing page, both destinations are unlocked.
+
+17. **Dashboard MVP is basic ops only.** Items table with sort/filter/search, quick-stat cards, low-stock alert, lots sub-rows, and the four core action modals (add item, receive, count, update). Everything else (transactions ledger, production log history, supplier views, charts, dynamic reorder, exports, roles) deferred to later phases.
+
 ---
 
 ## 1. Unified data model
@@ -286,9 +296,33 @@ Notes:
 
 ---
 
-## 4. Implementation order (revised)
+## 4. Implementation order (revised — execution log inline)
 
-### Phase 1 — Database & Ingestion (~1 day)
+### ✅ Phase 1 — Database & Ingestion (DONE 2026-04-30)
+
+Executed via `backend/sql/009_bom_and_lots_phase1.sql`. All six verification gates passed:
+
+| Gate | Result |
+|---|---|
+| A. Schema | ✅ 6 new columns live (`cost_per_unit_gigascale`, `bom_category`, `type`, `process_step`, `functionality`, `lead_time_days`) |
+| B. Lots created | ✅ 37 legacy lots auto-migrated from items with qty > 0 |
+| C. Quantity reconciliation | ✅ Zero drift between items and SUM(lots.qty_remaining); trigger working |
+| D. BOM coverage | ✅ All 6 categories populated (paste 13, mesh 6, tabs 4, separator 3, housing 7, electrolyte 2) |
+| E. Identifiers | ✅ All non-finished-good items have `type` / `process_step` / `functionality` |
+| F. Packaging split | ✅ cans/lids/terminals/o_rings/labels/vent_caps under `cell_assembly`; busbars/fasteners/module_* under `module_assembly` |
+
+Notes from execution:
+- The legacy migration carried suppliers through correctly (e.g. EMD's "Vibrantz Technologies" preserved on its `unspecified` lot).
+- Items without a clean BOM-name match got new inventory rows inserted with the BOM name (Acetylene Black, Zirconia (ZrO2), Cylindrical Cell Lids, Cell Terminals, Cylindrical Cell Can (Rev 3), Devcon Epoxy, Cell Labels, etc.) — manual consolidation against existing variants (e.g. "Zirconium Oxide", "Cylindrical Cell Cans rev 3/4") deferred to user cleanup.
+- `EXECUTE PROCEDURE` (legacy spelling) used instead of `EXECUTE FUNCTION` because the Redash-bundled Postgres is older than PG 11.
+
+#### 1a. Schema changes (SQL in Redash)
+
+```sql
+-- Inventory cost projections + BOM category
+ALTER TABLE inventory_items
+  ADD COLUMN IF NOT EXISTS cost_per_unit_gigascale FLOAT,
+  ADD COLUMN IF NOT EXISTS bom_category VARCHAR(50);
 
 #### 1a. Schema changes (SQL in Redash)
 
@@ -368,46 +402,94 @@ VALUES
 -- The existing "Folded edge Nickel Mesh" stays as another variant.
 ```
 
-### Phase 2 — Backend updates (~1 day)
+### ✅ Phase 2 — Backend updates (DONE 2026-04-30)
 
-- **Models** (`models.py`): `InventoryLot`, add `inventory_lot_id` + `cost_at_transaction` fields to `InventoryTransaction`.
-- **Schemas** (`schemas.py`): `InventoryLotCreate`, `InventoryLotSchema`, extend `ReceiveShipmentRequest` with `lot_number` + `supplier` (no cost — cost stays on the catalog item, edited via the existing Update form).
-- **Routers**:
-  - `/api/v1/inventory/lots` — list/get/update/delete (read-only is fine for now; teams correct lot data via the receive flow).
-  - `/api/v1/inventory/{item_id}/lots` — list lots for an item.
-  - Update `POST /inventory/receive` to find-or-create the lot per §2.1.
-  - Update `POST /inventory/physical-count` to optionally specify lot, defaulting to "unspecified".
-  - Update `POST /production/log` to allocate FIFO across lots and emit one transaction per lot touched.
+Live as of `git rev 3134d98`. All four smoke tests passed against `http://143.198.122.92:8000`:
 
-### Phase 3 — Frontend, Inventory side (~half day)
+| Test | Result |
+|---|---|
+| 1. List EMD's lots (existing) | ✅ One `unspecified` lot with 9405.79 lbs, supplier "Vibrantz Technologies" preserved from migration |
+| 2. Receive 100 lbs into a new "TEST-LOT-001" | ✅ New lot auto-created via `_find_or_create_lot()`, txn record carries `inventory_lot_id` |
+| 3. Re-list EMD lots | ✅ Two lots returned, FIFO-sorted by `received_date` |
+| 4. Item-level qty reconciliation | ✅ `inventory_items.quantity = 9505.79` (was 9405.79 + 100) — DB trigger fired correctly |
 
-- **Receive shipment form**: add `lot_number` (optional), `supplier` (optional). No cost field on this form — cost is managed via the Update Inventory Item form when prices change.
-- **Update inventory item form**: show a read-only sub-table of lots with their `qty_remaining` + `received_date`.
-- **New "Lots" action in the inventory dropdown**: lets you adjust a specific lot directly (closing out, rebadging, etc.).
-- **Production log preview**: before committing, show "this will consume EMD lot B2-011426 (1.5 kg) and lot B2-022626 (0.3 kg)" — based on FIFO simulation.
+Files changed:
+- `backend/app/models.py` — added `InventoryLot`, all new InventoryItem columns, `inventory_lot_id` on transactions, deprecation comments on `category` / `lot_number` / `capacity`.
+- `backend/app/schemas.py` — `InventoryLotCreate/Update/Schema`, all the new InventoryItem fields, `ProductionLogRequest.selections` for multi-supplier picker, `ProductionPreview` response model.
+- `backend/app/routers/inventory.py` — new `_find_or_create_lot` helper; new endpoints `GET/PUT/DELETE /inventory/lots/{id}`, `GET /inventory/{id}/lots`, `POST /production/preview`, `GET /production/component-options`; rewrote receive/count/production paths to be lot-aware (FIFO walk, one txn per lot).
+- `js/api.js` — added `listLotsForItem`, `getLot`, `updateLot`, `deleteLot`, `previewProduction`, `componentOptions`.
 
-### Phase 4 — Frontend, BOM tab (~1.5 days)
+### Phase 3 — Designer-side inventory polish (~half day, NOT STARTED)
 
-- New tab between "Inventory" and any others in top nav.
-- Summary cards (cost/cell, Wh, $/kWh, mass, $/kg) — design A, optional design B.
-- Category pie (use Chart.js or plain SVG; the existing app has no chart lib so plain SVG is simplest).
-- Cost/kWh vs energy line chart (read points directly off the cell, plot 60–200 Wh as in your reference sheet).
-- Line-items table — read-only initially.
-- Overhead-component dropdowns (per design): bound to `cell_params.bom_overhead`. Save round-trips through cell params preset save flow.
-- Compare-to-design panel.
-- PV/Gigascale toggle in header, persisted in localStorage.
+Lightweight updates to the existing inventory modal inside the Designer page. The modal stays as-is — it's the design-scoped inventory tool and remains contextual to whatever cell you have loaded.
 
-### Phase 5 — Cell-params extension (~half day, can parallelize with Phase 4)
+- **Receive shipment form**: add `lot_number` (optional) and `supplier` (optional) inputs. POST sends them to `/inventory/receive`. Toast shows which lot was touched.
+- **Update inventory item form**: append a read-only sub-table of lots beneath the editable fields (lot #, supplier, received date, qty_remaining; sorted FIFO).
+- **Production log preview**: before commit, call `/production/preview` and show the operator which lots will be consumed for each recipe component. Multi-supplier dropdown per recipe line, pulled from `/production/component-options`.
+- **No new frontend modules needed** — all changes live in `js/inventory-ui.js`.
 
-- Add `nominal_voltage_v` field to the Cell Parameters tab (default 1.2).
-- Add the overhead block (11 dropdowns, each pointing to inventory; default suggestions based on the Gen2 BOM line items).
+### Phase 4 — Standalone Inventory Dashboard (~half day, NOT STARTED)
+
+New top-level destination per decision 16. Three new HTML files reorganize the app:
+
+```
+http://143.198.122.92:8000/
+  └── index.html         → landing page (password gate + 2 buttons)
+       ├── /designer.html    → current designer app (rename existing index.html)
+       └── /inventory.html   → new standalone dashboard
+```
+
+Shared auth via `sessionStorage.jr_auth='1'` set on landing, read on the others. Hitting `/designer.html` or `/inventory.html` without auth redirects to `/`.
+
+Dashboard MVP scope (decision 17 — basic ops only):
+
+- **Quick stats** card: total items, low-stock count, total lots
+- **Action buttons**: Add new item • Receive shipment • Physical count
+- **Items table** with sort + filter (by `type`, `process_step`, `bom_category`) + name search
+  - Columns: name, type, process step, qty, unit, cost, supplier, lot count, low-stock flag
+  - Click a row → opens Update Inventory Item modal
+  - Click the "lots" cell → expands an inline sub-row showing all lots for that item
+- **Low stock callout** at the bottom listing items where `quantity ≤ reorder_point`
+- **Header link**: "→ Cell Designer" cross-navigation
+- **Reuses all existing modals** from `js/inventory-ui.js` (Add Item, Receive, Update, Count) — just adds the dashboard wrapper around them.
+
+Out of scope for MVP: transactions ledger view, production log history, supplier-grouped views, charts, exports, dynamic-reorder-point math, role separation.
+
+Implementation:
+1. Rename `index.html` → `designer.html` (no functional change).
+2. Create new `index.html` as landing page (password + Designer/Inventory buttons).
+3. Create `inventory.html` with the dashboard scaffold.
+4. Create `js/inventory-dashboard.js` for the table/sort/filter logic (modals stay in `inventory-ui.js`).
+5. Update `js/auth.js` to handle the post-auth redirect (already-authed users land on the picker; clicking a button just navigates).
+
+### Phase 5 — Frontend BOM tab inside Designer (~1.5 days, NOT STARTED)
+
+Inside the Designer page, between the Formulation tab and the Layers tab. Computes per-cell cost from the loaded design.
+
+- New tab "BOM" in the designer's top nav.
+- Summary cards (cost/cell, Wh, $/kWh, mass, $/kg) — design A, optional design B for compare mode.
+- Category pie chart (plain SVG; no chart lib).
+- Cost/kWh vs energy line chart (60–200 Wh sweep; PV solid + Gigascale dashed).
+- Line-items table grouped by `bom_category`.
+- PV/Gigascale toggle in tab header, persisted in localStorage.
+- Compare-to-saved-design panel.
+
+### Phase 6 — Cell-params extension inside Designer (~half day, can parallelize with Phase 5)
+
+- Add `nominal_voltage_v` field to the Cell Parameters tab (default 1.2 V).
+- Add the `bom_overhead` block — 11 inventory dropdowns (terminals, electrolyte, O-rings, vent caps, tape, lids, can, labels, epoxy, devcon, kapton) each with a qty + unit field. Stored in `cell_params.bom_overhead` JSONB.
 - Update `applyDesignPreset` / `getDesignPreset` to round-trip these fields.
 
-### Phase 6 — Stretch (timing TBD)
+### Phase 7 — Stretch (timing TBD)
 
-- **Lot recall lookup UI** ("show me all production batches that used lot X").
-- "What-if" sliders (per-component price multiplier).
-- Supplier sensitivity (multi-supplier lookup per inventory item).
+- **Lot recall lookup UI** ("show me all production batches that used lot X")
+- **Transactions ledger** view in the dashboard
+- **Production log history** view in the dashboard
+- **Supplier-grouped views** (which items come from which supplier; supplier sensitivity analysis)
+- **What-if price sliders** in the BOM tab
+- **CSV export** for items/lots/transactions
+- **Dynamic reorder point** computation (consumption_rate × lead_time × safety_factor) on the dashboard
+- **User roles** (operator vs engineer vs admin)
 
 ---
 
@@ -429,57 +511,74 @@ VALUES
 
 ## 6. What ships, what doesn't, when
 
-| Capability | Phase 1 (DB) | Phase 2 (API) | Phase 3 (Inv UI) | Phase 4 (BOM tab) | Phase 5 (Cell params) | Stretch |
-|---|---|---|---|---|---|---|
-| Add 3 columns to `inventory_items` | ✅ | | | | | |
-| `inventory_lots` table + trigger | ✅ | | | | | |
-| Migrate existing items → 1 legacy lot each | ✅ | | | | | |
-| Insert 18 missing BOM inventory items | ✅ | | | | | |
-| Backfill costs + `bom_category` | ✅ | | | | | |
-| Create mesh variants | ✅ | | | | | |
-| Lot-aware receive_shipment API | | ✅ | | | | |
-| Lot-aware production_log API | | ✅ | | | | |
-| Lot list/manage endpoints | | ✅ | | | | |
-| Receive form: lot/supplier/cost fields | | | ✅ | | | |
-| Inventory item card: lot sub-table | | | ✅ | | | |
-| Production preview: lot allocation | | | ✅ | | | |
-| BOM tab — summary cards | | | | ✅ | | |
-| BOM tab — pie chart | | | | ✅ | | |
-| BOM tab — line items table | | | | ✅ | | |
-| BOM tab — $/kWh chart | | | | ✅ | | |
-| BOM tab — design comparison | | | | ✅ | | |
-| BOM tab — PV/Gigascale toggle | | | | ✅ | | |
-| Cell params: nominal voltage | | | | | ✅ | |
-| Cell params: overhead dropdowns | | | | | ✅ | |
-| Supplier sensitivity | | | | | | ⏳ |
-| What-if sliders | | | | | | ⏳ |
-| Lot recall lookup | | | | | | ⏳ |
+Status as of 2026-04-30:
 
-**Total estimated: 4–5 working days for Phase 1–5.** I'd recommend serializing 1→2→3 and then doing 4+5 in parallel (different surfaces, low conflict risk).
+| Capability | P1 DB | P2 API | P3 Designer Inv | P4 Dashboard | P5 BOM tab | P6 Cell params | Stretch |
+|---|---|---|---|---|---|---|---|
+| Add 6 columns to `inventory_items` | ✅ done | | | | | | |
+| `inventory_lots` table + trigger | ✅ done | | | | | | |
+| Migrate existing items → 1 legacy lot each | ✅ done | | | | | | |
+| Insert missing BOM inventory items (14) | ✅ done | | | | | | |
+| Insert mesh variants (6) | ✅ done | | | | | | |
+| Backfill costs + `bom_category` | ✅ done | | | | | | |
+| Migrate `category` → `type`/`process_step`/`functionality` | ✅ done | | | | | | |
+| Lot-aware `/inventory/receive` | | ✅ done | | | | | |
+| Lot-aware `/inventory/physical-count` | | ✅ done | | | | | |
+| Lot-aware `/production/log` (FIFO walk) | | ✅ done | | | | | |
+| `/inventory/{id}/lots` listing | | ✅ done | | | | | |
+| `/inventory/lots/{id}` GET/PUT/DELETE | | ✅ done | | | | | |
+| `/production/preview` (FIFO dry-run) | | ✅ done | | | | | |
+| `/production/component-options` (multi-supplier picker) | | ✅ done | | | | | |
+| Designer Receive form: lot/supplier fields | | | ⏳ | | | | |
+| Designer Update Item form: lot sub-table | | | ⏳ | | | | |
+| Designer Production form: per-line supplier picker + preview | | | ⏳ | | | | |
+| Landing page `/` (password + 2 buttons) | | | | ⏳ | | | |
+| Rename `index.html` → `designer.html` | | | | ⏳ | | | |
+| Standalone `inventory.html` dashboard | | | | ⏳ | | | |
+| Items table (sort + filter + search) | | | | ⏳ | | | |
+| Lots sub-row expand | | | | ⏳ | | | |
+| Quick-stat cards + low-stock callout | | | | ⏳ | | | |
+| BOM tab — summary cards | | | | | ⏳ | | |
+| BOM tab — pie chart | | | | | ⏳ | | |
+| BOM tab — line-items table | | | | | ⏳ | | |
+| BOM tab — $/kWh chart | | | | | ⏳ | | |
+| BOM tab — design comparison | | | | | ⏳ | | |
+| BOM tab — PV/Gigascale toggle | | | | | ⏳ | | |
+| Cell params — nominal voltage field | | | | | | ⏳ | |
+| Cell params — `bom_overhead` dropdowns | | | | | | ⏳ | |
+| Lot recall lookup UI | | | | | | | ⏳ |
+| Transactions ledger view | | | | | | | ⏳ |
+| Production log history view | | | | | | | ⏳ |
+| What-if price sliders | | | | | | | ⏳ |
+| Supplier sensitivity | | | | | | | ⏳ |
+| CSV export | | | | | | | ⏳ |
+| Dynamic reorder point | | | | | | | ⏳ |
+| User roles | | | | | | | ⏳ |
+
+**Estimated remaining: 3–4 working days for P3 + P4 + P5 + P6.**
+
+Recommended ordering:
+- **P3 + P4 in parallel** (small surface; both touch `inventory-ui.js` but different entry points)
+- Then **P5 + P6 in parallel** (BOM tab depends on cell-params overhead inputs; both inside Designer)
 
 ---
 
-## 7. Ready to start Phase 1
+## 7. Next session — start Phase 3 + Phase 4
 
-All 6 open questions are answered (§5). The simplest, internally-consistent path forward is:
+**Decisions still locked in (§5):** FIFO only, recall later, no `requires_lot` flag, pie 6 categories, lot # optional, suppliers independent.
 
-- **Schema:** §1.2 — extra columns on `inventory_items`, `inventory_lots` table (no expiration date, no per-lot cost), one `inventory_lot_id` column on `inventory_transactions`, sync trigger.
-- **Migration:** §4 Phase 1b — auto-create one "legacy" lot per existing item carrying its current quantity.
-- **Receive flow:** lot # optional, blank lots route to the auto-created "unspecified" lot.
-- **Consumption rule:** FIFO by `received_date`, no FEFO.
-- **Pie chart:** 6 top-level categories, no drill-in.
-- **Suppliers:** item-level and lot-level are independent.
-- **Recall, what-if sliders, supplier sensitivity:** Phase 6 stretch, not in initial ship.
+**Phase 3 work** (`js/inventory-ui.js` only):
+- Add `lot_number` and `supplier` text inputs to the Receive Shipment form. Submit sends them; success toast confirms which lot was touched.
+- Append a read-only lots table to the Update Inventory Item form. Pulls from `GET /inventory/{id}/lots`.
+- Add multi-supplier dropdown per recipe line in the Production form. Pulls from `GET /production/component-options?product=...`. Before commit, call `POST /production/preview` and show the FIFO allocation modal.
 
-When you give the go-ahead I'll generate the full Phase 1 SQL script (single file, paste into Redash):
+**Phase 4 work** (new files):
+- `index.html` (new landing page, password + 2 buttons)
+- `designer.html` (renamed from current `index.html`, no functional change)
+- `inventory.html` (new standalone dashboard)
+- `js/inventory-dashboard.js` (table/sort/filter logic, reuses modals from `inventory-ui.js`)
+- `js/auth.js` updates so all three pages share the same `sessionStorage.jr_auth` token and unauthed access bounces back to `/`.
 
-1. `ALTER TABLE inventory_items` — add `cost_per_unit_gigascale`, `bom_category`
-2. `CREATE TABLE inventory_lots` (per §1.2.B)
-3. `CREATE FUNCTION sync_inventory_quantity` + trigger
-4. `ALTER TABLE inventory_transactions` — add `inventory_lot_id`
-5. `INSERT INTO inventory_lots` — one "legacy" lot per existing item (qty migration)
-6. `INSERT INTO inventory_items` — 18 new components missing from inventory (BOM-driven)
-7. `INSERT INTO inventory_items` — 4 mesh variants
-8. `UPDATE inventory_items SET cost_per_unit, bom_category` — backfill costs and categories from the BOM Excel
+**No backend changes needed for P3 or P4 — all data is already exposed by Phase 2 endpoints.**
 
-Phase 2 backend changes follow as one PR.
+When ready to start, just say "go on Phase 3" or "go on Phase 4" or "do both in one push".
