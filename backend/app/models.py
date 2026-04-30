@@ -134,29 +134,41 @@ class CapacityResult(Base):
 
 class InventoryItem(Base):
     """Standalone inventory catalog item. Covers everything: chemicals, separators,
-    electrolyte, finished goods, packaging, electronics, etc."""
+    electrolyte, finished goods, packaging, electronics, etc.
+
+    As of Phase 1 (2026-04-24), `quantity` is denormalized — its source of truth
+    is SUM(inventory_lots.qty_remaining). The `sync_inventory_quantity` trigger
+    keeps it in sync automatically. Code paths should NOT manually mutate
+    `quantity`; instead update lots and let the trigger fire.
+    """
     __tablename__ = "inventory_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     name = Column(String(255), nullable=False)
-    category = Column(String(50), nullable=False)        # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
-    unit = Column(String(30), nullable=False)             # kg, lbs, ft, m, L, pcs, rolls
-    supplier = Column(String(255), nullable=True)         # primary supplier name
-    package_unit = Column(String(50), nullable=True)      # bag, supersack, roll, drum, tote, jar, bottle, box
-    package_size = Column(Float, nullable=True)           # qty per package
-    quantity = Column(Float, nullable=False, server_default="0")  # current stock
-    lot_number = Column(String(100), nullable=True)
+    category = Column(String(50), nullable=False)        # DEPRECATED: see type/process_step/functionality. Kept for legacy reads.
+    unit = Column(String(30), nullable=False)
+    supplier = Column(String(255), nullable=True)        # preferred supplier (catalog-level). Lot suppliers are tracked separately.
+    package_unit = Column(String(50), nullable=True)
+    package_size = Column(Float, nullable=True)
+    quantity = Column(Float, nullable=False, server_default="0")  # denormalized — SUM(lots.qty_remaining)
+    lot_number = Column(String(100), nullable=True)      # DEPRECATED: lot tracking moved to inventory_lots
     location = Column(String(100), nullable=True)
-    reorder_point = Column(Float, nullable=True)
-    cost_per_unit = Column(Float, nullable=True)          # $ per 1 `unit` (used for BOM costing)
-    # Spec columns — used for designer feasibility math. Each only populated
-    # for the categories that need it.
-    density = Column(Float, nullable=True)                # g/cm^3 — raw_chemical
-    capacity = Column(Float, nullable=True)               # mAh/g — raw_chemical (active materials)
-    is_active_mat = Column(Boolean, nullable=False, server_default="false")  # raw_chemical: participates in capacity
-    thickness_mm = Column(Float, nullable=True)           # separator, collector, tab
-    width_mm = Column(Float, nullable=True)               # separator, collector
-    color = Column(String(20), nullable=True)             # separator, collector — for rendering
+    reorder_point = Column(Float, nullable=True)         # static threshold for low-stock alert
+    lead_time_days = Column(Integer, nullable=True)      # supplier lead time (used for dynamic reorder math)
+    cost_per_unit = Column(Float, nullable=True)         # $ per 1 `unit`. Manually updated; drives all BOM math.
+    cost_per_unit_gigascale = Column(Float, nullable=True)  # projected gigascale unit cost (BOM tab toggle)
+    # Three-axis classification (Phase 1+):
+    bom_category = Column(String(50), nullable=True)     # paste / mesh / tabs / separator / housing / electrolyte
+    type = Column(String(50), nullable=True)             # raw_chemical, separator, mesh, tab, can, lid, ...
+    process_step = Column(String(50), nullable=True)     # paste, electrode, winding, cell_assembly, module_assembly
+    functionality = Column(String(50), nullable=True)    # active_material, conductor, binder, separator, ...
+    # Spec columns — physical properties used by the designer.
+    density = Column(Float, nullable=True)               # g/cm^3 — raw_chemical
+    capacity = Column(Float, nullable=True)              # DEPRECATED — capacity is a design property (see mixes.components.capacity_override)
+    is_active_mat = Column(Boolean, nullable=False, server_default="false")  # legacy flag, no longer used by capacity calc
+    thickness_mm = Column(Float, nullable=True)          # separator, collector, tab
+    width_mm = Column(Float, nullable=True)              # separator, collector
+    color = Column(String(20), nullable=True)            # separator, collector — for rendering
     material_id = Column(UUID(as_uuid=True), ForeignKey("materials.id", ondelete="SET NULL"), nullable=True)
     chemical_id = Column(UUID(as_uuid=True), ForeignKey("chemicals.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
@@ -166,23 +178,58 @@ class InventoryItem(Base):
     material = relationship("Material")
     chemical = relationship("Chemical")
     transactions = relationship("InventoryTransaction", back_populates="inventory_item", cascade="all, delete-orphan")
+    lots = relationship("InventoryLot", back_populates="inventory_item", cascade="all, delete-orphan", order_by="InventoryLot.received_date")
+
+
+class InventoryLot(Base):
+    """Lot-level inventory tracking (Option C). Each shipment / received batch
+    creates or appends to a lot. inventory_items.quantity is kept in sync as
+    SUM(qty_remaining) by the sync_inventory_quantity DB trigger.
+
+    Lot tracking is opt-in: receive flows that don't supply a lot_number land
+    in the auto-created 'unspecified' lot for the item. FIFO consumption
+    walks lots oldest-received-date first.
+    """
+    __tablename__ = "inventory_lots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    lot_number = Column(String(100), nullable=False)
+    supplier = Column(String(255), nullable=True)        # who actually shipped this lot (independent of catalog supplier)
+    received_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("CURRENT_DATE"))
+    qty_received = Column(Float, nullable=False)
+    qty_remaining = Column(Float, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
+
+    inventory_item = relationship("InventoryItem", back_populates="lots")
+    transactions = relationship("InventoryTransaction", back_populates="lot")
 
 
 class InventoryTransaction(Base):
-    """Append-only ledger of every inventory change."""
+    """Append-only ledger of every inventory change.
+
+    inventory_lot_id (added Phase 1) records which specific lot was touched.
+    Receive flows always set it. Production flows set it per-lot when FIFO
+    walks across multiple lots (one transaction per lot). Legacy/manual
+    transactions may have NULL lot_id.
+    """
     __tablename__ = "inventory_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
     inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    inventory_lot_id = Column(UUID(as_uuid=True), ForeignKey("inventory_lots.id", ondelete="SET NULL"), nullable=True)
     qty_change = Column(Float, nullable=False)           # positive = received, negative = consumed/scrapped
     reason = Column(String(50), nullable=False)          # received, production, scrap, adjustment, count, return
-    batch_id = Column(String(100), nullable=True)        # reference to FileMaker batch
+    batch_id = Column(String(100), nullable=True)
     design_id = Column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     performed_by = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
 
     inventory_item = relationship("InventoryItem", back_populates="transactions")
+    lot = relationship("InventoryLot", back_populates="transactions")
 
 
 class DesignBOM(Base):

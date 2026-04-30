@@ -58,6 +58,14 @@ const api = {
   physicalCount(data) { return this.req('POST', '/api/v1/inventory/physical-count', data); },
   inventorySummary() { return this.req('GET', '/api/v1/inventory/summary'); },
   lowStock() { return this.req('GET', '/api/v1/inventory/low-stock'); },
+  // Lots (Phase 1 — lot-level inventory tracking)
+  listLotsForItem(itemId) { return this.req('GET', `/api/v1/inventory/${itemId}/lots`); },
+  getLot(lotId) { return this.req('GET', `/api/v1/inventory/lots/${lotId}`); },
+  updateLot(lotId, data) { return this.req('PUT', `/api/v1/inventory/lots/${lotId}`, data); },
+  deleteLot(lotId) { return this.req('DELETE', `/api/v1/inventory/lots/${lotId}`); },
+  // Production preview + multi-supplier pickers
+  previewProduction(data) { return this.req('POST', '/api/v1/production/preview', data); },
+  componentOptions(product) { return this.req('GET', `/api/v1/production/component-options?product=${encodeURIComponent(product)}`); },
   // Recipes
   listRecipes(product) { return this.req('GET', product ? `/api/v1/recipes?product=${encodeURIComponent(product)}` : '/api/v1/recipes'); },
   listRecipeProducts() { return this.req('GET', '/api/v1/recipes/products'); },

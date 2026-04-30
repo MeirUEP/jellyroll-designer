@@ -1,20 +1,23 @@
-"""Inventory management endpoints — stock levels, transactions, recipes, BOM."""
+"""Inventory management endpoints — stock levels, lots, transactions, recipes, BOM."""
 from uuid import UUID
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.database import get_db
 from app.models import (
-    InventoryItem, InventoryTransaction, DesignBOM, ProductRecipe,
+    InventoryItem, InventoryLot, InventoryTransaction, DesignBOM, ProductRecipe,
     Material, Chemical, Design, SimulationResult,
 )
 from app.schemas import (
     InventoryItemCreate, InventoryItemUpdate, InventoryItemSchema,
+    InventoryLotCreate, InventoryLotUpdate, InventoryLotSchema,
     InventoryTransactionCreate, InventoryTransactionSchema,
     BOMLineSchema, ProductionConsumeRequest,
     RecipeLineCreate, RecipeLineSchema, RecipeBulkCreate,
-    ProductionLogRequest, ReceiveShipmentRequest, PhysicalCountRequest,
+    ProductionLogRequest, ProductionPreview, ProductionPreviewLine,
+    ReceiveShipmentRequest, PhysicalCountRequest,
 )
 
 router = APIRouter(tags=["inventory"], dependencies=[Depends(verify_api_key)])
@@ -104,6 +107,93 @@ async def delete_inventory_item(item_id: UUID, db: AsyncSession = Depends(get_db
     await db.commit()
 
 
+# ==================== INVENTORY LOTS (Phase 1) ====================
+
+async def _find_or_create_lot(
+    db: AsyncSession,
+    item_id: UUID,
+    lot_number: str | None,
+    supplier: str | None = None,
+    qty_to_add: float = 0,
+) -> InventoryLot:
+    """Idempotent helper. Returns the lot for (item, lot_number) — finds existing or creates new.
+    `lot_number=None` or empty string is normalized to 'unspecified'.
+    `qty_to_add` is appended to qty_received and qty_remaining if > 0.
+    Caller is responsible for committing.
+    """
+    normalized = (lot_number or "").strip() or "unspecified"
+    q = await db.execute(
+        select(InventoryLot)
+        .where(InventoryLot.inventory_item_id == item_id)
+        .where(InventoryLot.lot_number == normalized)
+    )
+    lot = q.scalar_one_or_none()
+    if lot:
+        if qty_to_add:
+            lot.qty_received += qty_to_add
+            lot.qty_remaining += qty_to_add
+        if supplier and not lot.supplier:
+            lot.supplier = supplier
+    else:
+        lot = InventoryLot(
+            inventory_item_id=item_id,
+            lot_number=normalized,
+            supplier=supplier,
+            qty_received=qty_to_add,
+            qty_remaining=qty_to_add,
+        )
+        db.add(lot)
+        await db.flush()  # ensure lot.id is available for transaction FK
+    return lot
+
+
+@router.get("/inventory/{item_id}/lots", response_model=list[InventoryLotSchema])
+async def list_lots_for_item(item_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Lots for one inventory item, sorted oldest-received first (FIFO order)."""
+    if not await db.get(InventoryItem, item_id):
+        raise HTTPException(404, "Inventory item not found")
+    result = await db.execute(
+        select(InventoryLot)
+        .where(InventoryLot.inventory_item_id == item_id)
+        .order_by(InventoryLot.received_date.asc(), InventoryLot.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/inventory/lots/{lot_id}", response_model=InventoryLotSchema)
+async def get_lot(lot_id: UUID, db: AsyncSession = Depends(get_db)):
+    lot = await db.get(InventoryLot, lot_id)
+    if not lot:
+        raise HTTPException(404, "Lot not found")
+    return lot
+
+
+@router.put("/inventory/lots/{lot_id}", response_model=InventoryLotSchema)
+async def update_lot(lot_id: UUID, data: InventoryLotUpdate, db: AsyncSession = Depends(get_db)):
+    """Adjust a specific lot. Modifying qty_remaining triggers the
+    sync_inventory_quantity DB trigger which recomputes inventory_items.quantity.
+    For audit trail, callers should also POST an /inventory/transactions entry
+    referencing this lot.
+    """
+    lot = await db.get(InventoryLot, lot_id)
+    if not lot:
+        raise HTTPException(404, "Lot not found")
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(lot, k, v)
+    await db.commit()
+    await db.refresh(lot)
+    return lot
+
+
+@router.delete("/inventory/lots/{lot_id}", status_code=204)
+async def delete_lot(lot_id: UUID, db: AsyncSession = Depends(get_db)):
+    lot = await db.get(InventoryLot, lot_id)
+    if not lot:
+        raise HTTPException(404, "Lot not found")
+    await db.delete(lot)
+    await db.commit()
+
+
 # ==================== INVENTORY TRANSACTIONS ====================
 
 @router.get("/inventory/{item_id}/transactions", response_model=list[InventoryTransactionSchema])
@@ -118,16 +208,23 @@ async def list_transactions(item_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/inventory/transactions", response_model=InventoryTransactionSchema, status_code=201)
 async def create_transaction(data: InventoryTransactionCreate, db: AsyncSession = Depends(get_db)):
+    """Generic transaction creation. As of Phase 1, prefer /receive, /physical-count,
+    or /production/log which manage lots automatically. This endpoint is kept for
+    audit/manual use; callers SHOULD pass inventory_lot_id to maintain lot integrity.
+    If lot_id is given, qty_remaining on that lot is adjusted by qty_change.
+    """
     item = await db.get(InventoryItem, data.inventory_item_id)
     if not item:
         raise HTTPException(404, "Inventory item not found")
 
+    if data.inventory_lot_id:
+        lot = await db.get(InventoryLot, data.inventory_lot_id)
+        if not lot or lot.inventory_item_id != data.inventory_item_id:
+            raise HTTPException(400, "Lot does not belong to this item")
+        lot.qty_remaining += data.qty_change
+
     txn = InventoryTransaction(**data.model_dump())
     db.add(txn)
-
-    # Update running quantity
-    item.quantity += data.qty_change
-
     await db.commit()
     await db.refresh(txn)
     return txn
@@ -143,22 +240,26 @@ async def record_physical_count(
     notes: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Record a physical count — creates an adjustment transaction to reconcile."""
+    """Record a physical count of an item's TOTAL stock — adjusts the 'unspecified'
+    lot to reconcile. For lot-specific counts, use PUT /inventory/lots/{lot_id} instead.
+    """
     item = await db.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(404, "Inventory item not found")
 
     diff = counted_qty - item.quantity
+    lot = await _find_or_create_lot(db, item_id, "unspecified", qty_to_add=0)
+    lot.qty_remaining += diff  # trigger updates item.quantity
+
     txn = InventoryTransaction(
         inventory_item_id=item_id,
+        inventory_lot_id=lot.id,
         qty_change=diff,
         reason="count",
         performed_by=performed_by,
         notes=notes or f"Physical count: {counted_qty} {item.unit} (was {item.quantity})",
     )
     db.add(txn)
-    item.quantity = counted_qty
-
     await db.commit()
     await db.refresh(txn)
     return txn
@@ -297,11 +398,14 @@ async def generate_bom(design_id: UUID, db: AsyncSession = Depends(get_db)):
     return await get_design_bom(design_id, db)
 
 
-# ==================== PRODUCTION CONSUMPTION ====================
+# ==================== PRODUCTION CONSUMPTION (BOM-driven) ====================
 
 @router.post("/inventory/consume", response_model=list[InventoryTransactionSchema])
 async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSession = Depends(get_db)):
-    """Consume inventory based on design BOM x cell count."""
+    """Consume inventory based on design BOM x cell count, using FIFO across lots.
+    Updated in Phase 1 to walk inventory_lots oldest-first instead of mutating
+    inventory_items.quantity directly. One transaction per (BOM line × lot).
+    """
     bom_result = await db.execute(
         select(DesignBOM).where(DesignBOM.design_id == data.design_id)
     )
@@ -309,7 +413,7 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
     if not bom_lines:
         raise HTTPException(400, "No BOM found for this design — generate BOM first")
 
-    transactions = []
+    transactions: list[InventoryTransaction] = []
     for bom in bom_lines:
         if not bom.inventory_item_id:
             continue  # skip BOM lines not linked to inventory
@@ -318,19 +422,40 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
         if not inv_item:
             continue
 
-        consumed = bom.qty_per_cell * data.cell_count
-        txn = InventoryTransaction(
-            inventory_item_id=inv_item.id,
-            qty_change=-consumed,
-            reason="production",
-            batch_id=data.batch_id,
-            design_id=data.design_id,
-            performed_by=data.performed_by,
-            notes=data.notes or f"{data.cell_count} cells x {bom.qty_per_cell} {bom.unit}/cell ({bom.layer_name})",
+        consumed_total = bom.qty_per_cell * data.cell_count
+
+        lots_q = await db.execute(
+            select(InventoryLot)
+            .where(InventoryLot.inventory_item_id == inv_item.id)
+            .where(InventoryLot.qty_remaining > 0)
+            .order_by(InventoryLot.received_date.asc(), InventoryLot.created_at.asc())
         )
-        db.add(txn)
-        inv_item.quantity -= consumed
-        transactions.append(txn)
+        lots = lots_q.scalars().all()
+
+        remaining = consumed_total
+        for lot in lots:
+            if remaining <= 0:
+                break
+            take = min(lot.qty_remaining, remaining)
+            lot.qty_remaining -= take
+            remaining -= take
+
+            txn = InventoryTransaction(
+                inventory_item_id=inv_item.id,
+                inventory_lot_id=lot.id,
+                qty_change=-take,
+                reason="production",
+                batch_id=data.batch_id,
+                design_id=data.design_id,
+                performed_by=data.performed_by,
+                notes=(
+                    data.notes
+                    or f"{data.cell_count} cells x {bom.qty_per_cell} {bom.unit}/cell "
+                       f"({bom.layer_name}, lot {lot.lot_number})"
+                ),
+            )
+            db.add(txn)
+            transactions.append(txn)
 
     await db.commit()
     for txn in transactions:
@@ -342,23 +467,33 @@ async def consume_for_production(data: ProductionConsumeRequest, db: AsyncSessio
 
 @router.post("/inventory/receive", response_model=InventoryTransactionSchema, status_code=201)
 async def receive_shipment(data: ReceiveShipmentRequest, db: AsyncSession = Depends(get_db)):
-    """Record a received shipment — adds stock and creates a 'received' transaction."""
+    """Record a received shipment.
+
+    Behavior:
+      - If lot_number is provided, finds or creates that lot and appends qty.
+      - If lot_number is empty, appends to the auto-managed "unspecified" lot
+        for this item. (Graceful degradation — partial lot tracking is OK.)
+      - inventory_items.quantity is updated by the sync_inventory_quantity
+        DB trigger, NOT manually here.
+    """
     item = await db.get(InventoryItem, data.inventory_item_id)
     if not item:
         raise HTTPException(404, "Inventory item not found")
 
+    qty = abs(data.qty)
+    lot = await _find_or_create_lot(
+        db, data.inventory_item_id, data.lot_number, supplier=data.supplier, qty_to_add=qty
+    )
+
     txn = InventoryTransaction(
         inventory_item_id=data.inventory_item_id,
-        qty_change=abs(data.qty),
+        inventory_lot_id=lot.id,
+        qty_change=qty,
         reason="received",
         performed_by=data.performed_by,
         notes=data.notes,
     )
     db.add(txn)
-    item.quantity += abs(data.qty)
-    if data.lot_number:
-        item.lot_number = data.lot_number
-
     await db.commit()
     await db.refresh(txn)
     return txn
@@ -368,22 +503,38 @@ async def receive_shipment(data: ReceiveShipmentRequest, db: AsyncSession = Depe
 
 @router.post("/inventory/physical-count", response_model=InventoryTransactionSchema, status_code=201)
 async def physical_count(data: PhysicalCountRequest, db: AsyncSession = Depends(get_db)):
-    """Reconcile physical count — creates an adjustment transaction for the difference."""
+    """Reconcile a physical count to a specific lot.
+
+    If `inventory_lot_id` is provided, that lot's qty_remaining is set to counted_qty.
+    If omitted, the count is reconciled against the item's "unspecified" lot — the
+    delta vs current total stock is applied to that lot. The DB trigger then
+    updates inventory_items.quantity to SUM of all lots.
+    """
     item = await db.get(InventoryItem, data.inventory_item_id)
     if not item:
         raise HTTPException(404, "Inventory item not found")
 
-    diff = data.counted_qty - item.quantity
+    if data.inventory_lot_id:
+        lot = await db.get(InventoryLot, data.inventory_lot_id)
+        if not lot or lot.inventory_item_id != data.inventory_item_id:
+            raise HTTPException(400, "Lot does not belong to this item")
+        diff = data.counted_qty - lot.qty_remaining
+        lot.qty_remaining = data.counted_qty
+    else:
+        # No lot specified — reconcile against the unspecified lot
+        diff = data.counted_qty - item.quantity
+        lot = await _find_or_create_lot(db, data.inventory_item_id, "unspecified", qty_to_add=0)
+        lot.qty_remaining += diff
+
     txn = InventoryTransaction(
         inventory_item_id=data.inventory_item_id,
+        inventory_lot_id=lot.id,
         qty_change=diff,
         reason="count",
         performed_by=data.performed_by,
         notes=data.notes or f"Physical count: {data.counted_qty} {item.unit} (was {item.quantity})",
     )
     db.add(txn)
-    item.quantity = data.counted_qty
-
     await db.commit()
     await db.refresh(txn)
     return txn
@@ -470,49 +621,215 @@ async def delete_all_for_product(product: str, db: AsyncSession = Depends(get_db
     await db.commit()
 
 
-# ==================== PRODUCTION LOG ====================
+# ==================== PRODUCTION (lot-aware FIFO consumption) ====================
 
-@router.post("/production/log", response_model=list[InventoryTransactionSchema], status_code=201)
-async def log_production(data: ProductionLogRequest, db: AsyncSession = Depends(get_db)):
-    """Log production of a product. Looks up the recipe and deducts each component from inventory."""
-    # Get recipe lines for this product
-    recipe_result = await db.execute(
+async def _resolve_inventory_for_component(
+    db: AsyncSession,
+    component_name: str,
+    selections: dict | None,
+) -> InventoryItem | None:
+    """Pick the inventory item to consume from for a recipe line.
+
+    Multi-supplier model:
+      - If `selections` (component → inventory_item_id) has this component,
+        use that specific item.
+      - Otherwise, fall back to the first item whose name matches.
+    """
+    if selections and component_name in selections:
+        item = await db.get(InventoryItem, selections[component_name])
+        if item:
+            return item
+    result = await db.execute(
+        select(InventoryItem)
+        .where(InventoryItem.name == component_name)
+        .order_by(InventoryItem.created_at.asc())
+    )
+    return result.scalars().first()
+
+
+async def _plan_fifo(
+    db: AsyncSession,
+    inv_item: InventoryItem,
+    qty_needed: float,
+) -> tuple[list[dict], float]:
+    """Return (allocations, shortfall). Walks lots oldest-first, no mutation."""
+    lots_q = await db.execute(
+        select(InventoryLot)
+        .where(InventoryLot.inventory_item_id == inv_item.id)
+        .where(InventoryLot.qty_remaining > 0)
+        .order_by(InventoryLot.received_date.asc(), InventoryLot.created_at.asc())
+    )
+    lots = lots_q.scalars().all()
+
+    allocations = []
+    remaining = qty_needed
+    for lot in lots:
+        if remaining <= 0:
+            break
+        take = min(lot.qty_remaining, remaining)
+        allocations.append({
+            "lot_id": str(lot.id),
+            "lot_number": lot.lot_number,
+            "supplier": lot.supplier,
+            "received_date": lot.received_date.isoformat() if lot.received_date else None,
+            "available": lot.qty_remaining,
+            "will_consume": take,
+        })
+        remaining -= take
+    shortfall = max(remaining, 0)
+    return allocations, shortfall
+
+
+@router.post("/production/preview", response_model=ProductionPreview)
+async def preview_production(data: ProductionLogRequest, db: AsyncSession = Depends(get_db)):
+    """Preview which lots would be consumed if this production batch were committed.
+    Read-only. Returns shortfalls if stock is insufficient.
+    """
+    recipe_q = await db.execute(
         select(ProductRecipe).where(ProductRecipe.product == data.product)
     )
-    recipe_lines = recipe_result.scalars().all()
+    recipe_lines = recipe_q.scalars().all()
     if not recipe_lines:
         raise HTTPException(400, f"No recipe found for product '{data.product}'")
 
-    transactions = []
-    missing_items = []
-
+    selections = {k: v for k, v in (data.selections or {}).items()}
+    plan_lines = []
     for line in recipe_lines:
-        # Find inventory item by name
-        inv_result = await db.execute(
-            select(InventoryItem).where(InventoryItem.name == line.component)
-        )
-        inv_item = inv_result.scalar_one_or_none()
+        inv_item = await _resolve_inventory_for_component(db, line.component, selections)
+        needed = line.qty * data.qty_produced
+
         if not inv_item:
-            missing_items.append(line.component)
+            plan_lines.append(ProductionPreviewLine(
+                component=line.component,
+                inventory_item_id=None,
+                inventory_item_name=None,
+                supplier=None,
+                needed=needed,
+                unit=line.unit,
+                shortfall=needed,  # 100% short if we can't even find the item
+                lot_allocations=[],
+            ))
             continue
 
-        consumed = line.qty * data.qty_produced
-        txn = InventoryTransaction(
+        allocations, shortfall = await _plan_fifo(db, inv_item, needed)
+        plan_lines.append(ProductionPreviewLine(
+            component=line.component,
             inventory_item_id=inv_item.id,
-            qty_change=-consumed,
-            reason="production",
-            batch_id=data.batch_id,
-            performed_by=data.performed_by,
-            notes=data.notes or f"{data.qty_produced} x {data.product} ({line.qty} {line.unit}/unit of {line.component})",
-        )
-        db.add(txn)
-        inv_item.quantity -= consumed
-        transactions.append(txn)
+            inventory_item_name=inv_item.name,
+            supplier=inv_item.supplier,
+            needed=needed,
+            unit=line.unit,
+            shortfall=shortfall,
+            lot_allocations=allocations,
+        ))
 
-    if missing_items:
-        # Don't fail — record what we can and warn via notes on the first txn
-        # (the caller can still check response count vs recipe lines)
-        pass
+    return ProductionPreview(product=data.product, qty_produced=data.qty_produced, lines=plan_lines)
+
+
+@router.get("/production/component-options")
+async def component_options(
+    product: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """For each recipe line, list inventory items whose name matches the component.
+    Used by the production form's per-line supplier dropdown.
+
+    Response: {component_name: [{id, name, supplier, quantity, unit}, ...]}
+    """
+    recipe_q = await db.execute(
+        select(ProductRecipe).where(ProductRecipe.product == product)
+    )
+    recipe_lines = recipe_q.scalars().all()
+    if not recipe_lines:
+        raise HTTPException(404, f"No recipe found for product '{product}'")
+
+    options: dict[str, list[dict]] = {}
+    for line in recipe_lines:
+        if line.component in options:
+            continue
+        items_q = await db.execute(
+            select(InventoryItem)
+            .where(InventoryItem.name == line.component)
+            .order_by(InventoryItem.supplier.asc().nulls_last(), InventoryItem.created_at.asc())
+        )
+        options[line.component] = [
+            {
+                "id": str(i.id),
+                "name": i.name,
+                "supplier": i.supplier,
+                "quantity": i.quantity,
+                "unit": i.unit,
+            }
+            for i in items_q.scalars().all()
+        ]
+    return options
+
+
+@router.post("/production/log", response_model=list[InventoryTransactionSchema], status_code=201)
+async def log_production(data: ProductionLogRequest, db: AsyncSession = Depends(get_db)):
+    """Log production of a product. Looks up the recipe and deducts each component
+    from inventory using FIFO across that item's lots. Emits one transaction row
+    per lot touched.
+
+    Multi-supplier: `data.selections` maps component_name → inventory_item_id so
+    operator can specify which supplier-variant was actually used. Components
+    not in `selections` fall back to first match by name.
+
+    Insufficient stock does NOT raise — partial consumption is recorded and the
+    response reflects what was actually deducted. Caller can compare response
+    line count to recipe line count to detect shortfalls.
+    """
+    recipe_q = await db.execute(
+        select(ProductRecipe).where(ProductRecipe.product == data.product)
+    )
+    recipe_lines = recipe_q.scalars().all()
+    if not recipe_lines:
+        raise HTTPException(400, f"No recipe found for product '{data.product}'")
+
+    selections = {k: v for k, v in (data.selections or {}).items()}
+    transactions: list[InventoryTransaction] = []
+
+    for line in recipe_lines:
+        inv_item = await _resolve_inventory_for_component(db, line.component, selections)
+        if not inv_item:
+            continue  # missing item — skip and let caller notice
+
+        consumed_total = line.qty * data.qty_produced
+
+        lots_q = await db.execute(
+            select(InventoryLot)
+            .where(InventoryLot.inventory_item_id == inv_item.id)
+            .where(InventoryLot.qty_remaining > 0)
+            .order_by(InventoryLot.received_date.asc(), InventoryLot.created_at.asc())
+        )
+        lots = lots_q.scalars().all()
+
+        remaining = consumed_total
+        for lot in lots:
+            if remaining <= 0:
+                break
+            take = min(lot.qty_remaining, remaining)
+            lot.qty_remaining -= take
+            remaining -= take
+
+            txn = InventoryTransaction(
+                inventory_item_id=inv_item.id,
+                inventory_lot_id=lot.id,
+                qty_change=-take,
+                reason="production",
+                batch_id=data.batch_id,
+                performed_by=data.performed_by,
+                notes=(
+                    data.notes
+                    or f"{data.qty_produced} x {data.product} (lot {lot.lot_number}, "
+                       f"{take} {line.unit} of {line.component})"
+                ),
+            )
+            db.add(txn)
+            transactions.append(txn)
+        # Note: if `remaining > 0` after walking all lots, this item is short.
+        # We don't raise — the caller can compare response txn count to recipe
+        # line count, or call /production/preview first to check.
 
     await db.commit()
     for txn in transactions:

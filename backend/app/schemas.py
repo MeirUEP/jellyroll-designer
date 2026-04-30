@@ -284,25 +284,30 @@ class CapResultCreate(BaseModel):
 # ========== Inventory ==========
 class InventoryItemCreate(BaseModel):
     name: str = Field(..., max_length=255)
-    category: str = Field(..., max_length=50)   # raw_chemical, separator, collector, tab, electrolyte, finished_good, packaging, electronics, other
-    unit: str = Field(..., max_length=30)        # kg, lbs, ft, m, L, pcs, rolls, LM
-    supplier: str | None = None                  # primary supplier name
-    package_unit: str | None = None              # bag, supersack, roll, drum, tote, jar, bottle, box
-    package_size: float | None = None            # qty per package
+    category: str = Field(..., max_length=50)         # DEPRECATED, see type/process_step/functionality
+    unit: str = Field(..., max_length=30)
+    supplier: str | None = None
+    package_unit: str | None = None
+    package_size: float | None = None
     quantity: float = 0
-    lot_number: str | None = None
+    lot_number: str | None = None                     # DEPRECATED, lots tracked in inventory_lots
     location: str | None = None
     reorder_point: float | None = None
-    cost_per_unit: float | None = None           # $ per 1 `unit` (for BOM costing)
-    # Spec fields — only populated for categories that need them
-    density: float | None = None                 # g/cm^3 — raw_chemical
-    capacity: float | None = None                # mAh/g — raw_chemical (active materials)
-    is_active_mat: bool = False                  # raw_chemical: participates in capacity
-    thickness_mm: float | None = None            # separator, collector, tab
-    width_mm: float | None = None                # separator, collector
-    color: str | None = None                     # separator, collector — for rendering
-    material_id: UUID | None = None              # optional link to design material (legacy)
-    chemical_id: UUID | None = None              # optional link to chemical (legacy)
+    lead_time_days: int | None = None
+    cost_per_unit: float | None = None
+    cost_per_unit_gigascale: float | None = None
+    bom_category: str | None = None                   # paste / mesh / tabs / separator / housing / electrolyte
+    type: str | None = None                           # raw_chemical, separator, mesh, tab, can, lid, ...
+    process_step: str | None = None                   # paste / electrode / winding / cell_assembly / module_assembly
+    functionality: str | None = None                  # active_material, conductor, binder, separator, ...
+    density: float | None = None
+    capacity: float | None = None                     # DEPRECATED — design owns capacity now
+    is_active_mat: bool = False                       # DEPRECATED — capacity comes from mix wt% × cap
+    thickness_mm: float | None = None
+    width_mm: float | None = None
+    color: str | None = None
+    material_id: UUID | None = None
+    chemical_id: UUID | None = None
     notes: str | None = None
 
 
@@ -317,7 +322,13 @@ class InventoryItemUpdate(BaseModel):
     lot_number: str | None = None
     location: str | None = None
     reorder_point: float | None = None
+    lead_time_days: int | None = None
     cost_per_unit: float | None = None
+    cost_per_unit_gigascale: float | None = None
+    bom_category: str | None = None
+    type: str | None = None
+    process_step: str | None = None
+    functionality: str | None = None
     density: float | None = None
     capacity: float | None = None
     is_active_mat: bool | None = None
@@ -336,11 +347,46 @@ class InventoryItemSchema(InventoryItemCreate):
     model_config = {"from_attributes": True}
 
 
+# ========== Inventory Lots (Phase 1) ==========
+class InventoryLotCreate(BaseModel):
+    inventory_item_id: UUID
+    lot_number: str = Field(..., max_length=100)
+    supplier: str | None = None
+    received_date: datetime | None = None
+    qty_received: float
+    qty_remaining: float | None = None  # defaults to qty_received if omitted
+    notes: str | None = None
+
+
+class InventoryLotUpdate(BaseModel):
+    lot_number: str | None = None
+    supplier: str | None = None
+    received_date: datetime | None = None
+    qty_received: float | None = None
+    qty_remaining: float | None = None
+    notes: str | None = None
+
+
+class InventoryLotSchema(BaseModel):
+    id: UUID
+    inventory_item_id: UUID
+    lot_number: str
+    supplier: str | None = None
+    received_date: datetime
+    qty_received: float
+    qty_remaining: float
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
 # ========== Inventory Transactions ==========
 class InventoryTransactionCreate(BaseModel):
     inventory_item_id: UUID
+    inventory_lot_id: UUID | None = None
     qty_change: float
-    reason: str = Field(..., max_length=50)  # received, production, scrap, adjustment, count, return
+    reason: str = Field(..., max_length=50)
     batch_id: str | None = None
     design_id: UUID | None = None
     performed_by: str | None = None
@@ -407,19 +453,41 @@ class RecipeBulkCreate(BaseModel):
 
 # ========== Production Log (consumes inventory via recipe) ==========
 class ProductionLogRequest(BaseModel):
-    product: str = Field(..., max_length=255)  # must match a product name in product_recipes
-    qty_produced: float                         # how many of this product were made
+    product: str = Field(..., max_length=255)
+    qty_produced: float
     batch_id: str | None = None
     performed_by: str | None = None
-    production_date: str | None = None          # ISO date string
+    production_date: str | None = None
     notes: str | None = None
+    # Multi-supplier picker: per recipe component name, which inventory item
+    # was actually used. If a component is missing here, the server falls back
+    # to the first inventory item with a matching name.
+    selections: dict[str, UUID] | None = None
+
+
+class ProductionPreviewLine(BaseModel):
+    component: str
+    inventory_item_id: UUID | None
+    inventory_item_name: str | None
+    supplier: str | None
+    needed: float
+    unit: str
+    shortfall: float
+    lot_allocations: list[dict]
+
+
+class ProductionPreview(BaseModel):
+    product: str
+    qty_produced: float
+    lines: list[ProductionPreviewLine]
 
 
 # ========== Receive Shipment ==========
 class ReceiveShipmentRequest(BaseModel):
     inventory_item_id: UUID
     qty: float
-    lot_number: str | None = None
+    lot_number: str | None = None       # blank → routes to "unspecified" lot for this item
+    supplier: str | None = None         # supplier on this specific lot (independent of catalog supplier)
     performed_by: str | None = None
     notes: str | None = None
 
@@ -428,5 +496,6 @@ class ReceiveShipmentRequest(BaseModel):
 class PhysicalCountRequest(BaseModel):
     inventory_item_id: UUID
     counted_qty: float
+    inventory_lot_id: UUID | None = None  # if omitted, adjust the "unspecified" lot
     performed_by: str | None = None
     notes: str | None = None
