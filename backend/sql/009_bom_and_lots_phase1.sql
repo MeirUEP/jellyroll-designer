@@ -90,7 +90,10 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_sync_inv_qty ON inventory_lots;
 CREATE TRIGGER trg_sync_inv_qty
 AFTER INSERT OR UPDATE OR DELETE ON inventory_lots
-FOR EACH ROW EXECUTE FUNCTION sync_inventory_quantity();
+FOR EACH ROW EXECUTE PROCEDURE sync_inventory_quantity();
+-- Note: EXECUTE PROCEDURE is the legacy spelling for trigger functions;
+-- works on all PG versions. EXECUTE FUNCTION (PG 11+) would be modern but
+-- our Redash-bundled Postgres is older.
 
 -- =========================================================================
 -- 4. Wire lots into transactions
