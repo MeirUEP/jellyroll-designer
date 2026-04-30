@@ -48,6 +48,10 @@ From the third-pass review (2026-04-30, post Phase 1+2 execution):
 
 17. **Dashboard MVP is basic ops only.** Items table with sort/filter/search, quick-stat cards, low-stock alert, lots sub-rows, and the four core action modals (add item, receive, count, update). Everything else (transactions ledger, production log history, supplier views, charts, dynamic reorder, exports, roles) deferred to later phases.
 
+18. **Once the dashboard is ready, remove the Inventory Management button from the Designer page.** The designer reads inventory (component dropdowns in the Formulation tab, mesh picker, layer-stack add) but no longer hosts the management modals. Add/Update/Receive/Count/Recipe/Production all move to the standalone dashboard. Cleaner separation of concerns: the Designer is a workspace, the Dashboard is for ops.
+
+    Cleanup deferred to **Phase 4b** (post-dashboard ship): delete the `Inventory Management` button + modal markup from `designer.html`, drop the `openInventoryModal()` entry-point but keep the form-rendering helpers in `inventory-ui.js` so the dashboard can reuse them.
+
 ---
 
 ## 1. Unified data model
@@ -462,6 +466,17 @@ Implementation:
 4. Create `js/inventory-dashboard.js` for the table/sort/filter logic (modals stay in `inventory-ui.js`).
 5. Update `js/auth.js` to handle the post-auth redirect (already-authed users land on the picker; clicking a button just navigates).
 
+### Phase 4b — Remove Inventory Management from Designer (~1 hour, after Phase 4 ships)
+
+Per decision 18 — once the dashboard is the primary surface for inventory ops, strip the management UI out of the designer:
+
+- Remove the "Inventory Management" button from the designer's header.
+- Remove the `<div id="modalInventory">` markup and its sub-forms from `designer.html`.
+- Drop the `openInventoryModal()` entry point in `js/inventory-ui.js`.
+- Keep the form-rendering helpers (`renderAddItemForm`, `renderReceiveForm`, `renderUpdateItemForm`, `renderCountForm`) — they're now reused by `inventory.html`.
+- The Formulation tab's read-only inventory dropdowns (mesh selector, chemical adders) stay — those are designer-internal reads.
+- Cross-link: add a small "Manage inventory" link in the designer header that opens `/inventory.html` in a new tab, in case a designer needs to receive a shipment without losing their loaded design.
+
 ### Phase 5 — Frontend BOM tab inside Designer (~1.5 days, NOT STARTED)
 
 Inside the Designer page, between the Formulation tab and the Layers tab. Computes per-cell cost from the loaded design.
@@ -538,6 +553,7 @@ Status as of 2026-04-30:
 | Items table (sort + filter + search) | | | | ⏳ | | | |
 | Lots sub-row expand | | | | ⏳ | | | |
 | Quick-stat cards + low-stock callout | | | | ⏳ | | | |
+| Remove Inv Management button from Designer (P4b) | | | | ⏳ | | | |
 | BOM tab — summary cards | | | | | ⏳ | | |
 | BOM tab — pie chart | | | | | ⏳ | | |
 | BOM tab — line-items table | | | | | ⏳ | | |
