@@ -10,7 +10,7 @@ document.querySelectorAll('.left-tab').forEach(btn => {
 
 // ========== FORMULATION ENGINE (inventory-driven) ==========
 // Each component now carries `inventory_item_id` — the link back to the
-// inventory record that defines density / is_active_mat. Capacity is a per-design property — only wt%
+// inventory record that defines density. Capacity is a per-design property — only wt%
 // is editable in the row; density and cap are displayed read-only from
 // the linked inventory item. Components with no inventory link are
 // legacy rows (loaded from old designs) and will show an orange banner.
@@ -109,7 +109,7 @@ function addCompFromInventory(electrode) {
     wt: 0,
     density: inv.density || 0,
     cap: 0,  // capacity is a design property — user enters per-mix
-    isActive: !!inv.is_active_mat,
+    isActive: false,  // active flag is no longer an inventory property; kept on the mix component for legacy schema compat
   });
   const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
     ? ['cathMixBody', 'cathMixTotal', 'cathSolidDens', 'cathCompCap']
@@ -130,7 +130,7 @@ function refreshFormulationFromInventory() {
     const cur = sel.value;
     sel.innerHTML = `<option value="">+ Add chemical from inventory...</option>` +
       chemItems.map(i => {
-        const activeTag = i.is_active_mat ? ' • active' : '';
+        const activeTag = '';  // active flag removed from inventory items
         const densTag = i.density ? ` • ${i.density} g/cm³` : '';
         const stockTag = (i.quantity != null) ? ` — ${i.quantity} ${i.unit}` : '';
         return `<option value="${i.id}">${i.name}${densTag}${activeTag}${stockTag}</option>`;

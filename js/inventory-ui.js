@@ -172,9 +172,6 @@ function renderAddItemSpecs() {
           <label>Density (g/cm&sup3;)</label>
           <input type="number" id="aiDensity" step="any" placeholder="e.g. 1.32">
         </div>
-        <div class="inv-field inv-full">
-          <label><input type="checkbox" id="aiIsActive"> Active material</label>
-        </div>
       </div>`;
   } else if (cat === 'separator' || cat === 'collector') {
     html = `
@@ -229,12 +226,10 @@ async function submitAddItem() {
   };
   // Category-specific specs
   const specDensity = document.getElementById('aiDensity');
-  const specIsActive = document.getElementById('aiIsActive');
   const specThickness = document.getElementById('aiThickness');
   const specWidth = document.getElementById('aiWidth');
   const specColor = document.getElementById('aiColor');
   if (specDensity) data.density = parseFloat(specDensity.value) || null;
-  if (specIsActive) data.is_active_mat = specIsActive.checked;
   if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
   if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;
   if (specColor) data.color = specColor.value || null;
@@ -290,9 +285,6 @@ function loadUpdateItemFields() {
         <div class="inv-field">
           <label>Density (g/cm&sup3;)</label>
           <input type="number" id="uiDensity" step="any" value="${item.density || ''}">
-        </div>
-        <div class="inv-field inv-full">
-          <label><input type="checkbox" id="uiIsActive" ${item.is_active_mat ? 'checked' : ''}> Active material</label>
         </div>
       </div>`;
   } else if (cat === 'separator' || cat === 'collector') {
@@ -455,12 +447,10 @@ async function submitUpdateItem() {
 
   // Category-specific specs
   const specDensity = document.getElementById('uiDensity');
-  const specIsActive = document.getElementById('uiIsActive');
   const specThickness = document.getElementById('uiThickness');
   const specWidth = document.getElementById('uiWidth');
   const specColor = document.getElementById('uiColor');
   if (specDensity) data.density = parseFloat(specDensity.value) || null;
-  if (specIsActive) data.is_active_mat = specIsActive.checked;
   if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
   if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;
   if (specColor) data.color = specColor.value || null;

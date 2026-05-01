@@ -95,7 +95,7 @@ let cloudChemicals = [];   // [{id, name, density, capacity, ...}]  (LEGACY — 
 let cloudMaterials = [];   // [{id, name, type, thickness, width, color, ...}]  (LEGACY — read-only)
 let cloudMixes = [];       // [{id, name, type, components, ...}]
 let cloudLayerStacks = []; // [{id, name, items, ...}]
-let cloudInventory = [];   // [{id, name, category, unit, quantity, density, thickness_mm, width_mm, color, is_active_mat, cost_per_unit, ...}]  (capacity removed — design property)
+let cloudInventory = [];   // [{id, name, category, unit, quantity, density, thickness_mm, width_mm, color, cost_per_unit, ...}]  (capacity + is_active_mat removed — both are design properties)
 
 function chemByName(name) { return cloudChemicals.find(c => c.name === name); }
 function chemById(id) { return cloudChemicals.find(c => c.id === id); }
