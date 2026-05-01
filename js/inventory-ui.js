@@ -134,6 +134,10 @@ function renderAddItemForm() {
         <input type="number" id="aiReorder" step="any" placeholder="alert below this">
       </div>
       <div class="inv-field">
+        <label>Lead time (days)</label>
+        <input type="number" id="aiLeadTime" step="1" placeholder="supplier lead time">
+      </div>
+      <div class="inv-field">
         <label>Cost per unit ($)</label>
         <input type="number" id="aiCost" step="any" placeholder="e.g. 12.50 per kg">
       </div>
@@ -222,6 +226,7 @@ async function submitAddItem() {
     quantity: parseFloat(document.getElementById('aiQty').value) || 0,
     location: document.getElementById('aiLocation').value,
     reorder_point: parseFloat(document.getElementById('aiReorder').value) || null,
+    lead_time_days: parseInt(document.getElementById('aiLeadTime').value, 10) || null,
     cost_per_unit: parseFloat(document.getElementById('aiCost').value) || null,
     lot_number: document.getElementById('aiLot').value.trim() || null,
     notes: document.getElementById('aiNotes').value.trim() || null,
@@ -379,6 +384,10 @@ function loadUpdateItemFields() {
         <input type="number" id="uiReorder" step="any" value="${item.reorder_point || ''}">
       </div>
       <div class="inv-field">
+        <label>Lead time (days)</label>
+        <input type="number" id="uiLeadTime" step="1" value="${item.lead_time_days || ''}" placeholder="supplier lead time">
+      </div>
+      <div class="inv-field">
         <label>Cost per unit ($)</label>
         <input type="number" id="uiCost" step="any" value="${item.cost_per_unit || ''}">
       </div>
@@ -447,6 +456,7 @@ async function submitUpdateItem() {
     quantity: parseFloat(document.getElementById('uiQty').value) || 0,
     location: document.getElementById('uiLocation').value,
     reorder_point: parseFloat(document.getElementById('uiReorder').value) || null,
+    lead_time_days: parseInt(document.getElementById('uiLeadTime').value, 10) || null,
     cost_per_unit: parseFloat(document.getElementById('uiCost').value) || null,
     lot_number: document.getElementById('uiLot').value.trim() || null,
     notes: document.getElementById('uiNotes').value.trim() || null,

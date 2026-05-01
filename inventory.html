@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inventory Dashboard — Jellyroll Designer</title>
-<link rel="stylesheet" href="css/style.css?v=20260501d">
+<link rel="stylesheet" href="css/style.css?v=20260501e">
 <script>if (sessionStorage.getItem('jr_auth') !== '1') window.location.href = '/';</script>
 <style>
   body { overflow: auto; height: 100vh; }
@@ -41,6 +41,46 @@
   .lots-table { width: 100%; border-collapse: collapse; font-size: 10px; margin: 4px 0; }
   .lots-table th { text-align: left; padding: 2px 6px; color: var(--fg2); border-bottom: 1px solid var(--border); font-weight: normal; }
   .lots-table td { padding: 2px 6px; }
+
+  /* Top-level dashboard tabs */
+  .dash-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .dash-tab { background: transparent; color: var(--fg2); border: none; padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .dash-tab:hover { color: var(--fg); }
+  .dash-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: bold; }
+  .dash-tab-content { display: none; }
+  .dash-tab-content.active { display: block; }
+
+  /* Reorder tab */
+  .reorder-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .reorder-table th { text-align: left; padding: 6px 8px; color: var(--fg2); font-size: 10px; border-bottom: 2px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }
+  .reorder-table th:hover { color: var(--fg); }
+  .reorder-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .reorder-table tr:hover { background: rgba(59,130,246,0.05); }
+  .reorder-table input.inline-edit { width: 60px; padding: 1px 4px; font-size: 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); }
+  .reorder-status { padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; white-space: nowrap; }
+  .reorder-status.stockout { background: #ef4444; color: #fff; }
+  .reorder-status.critical { background: #f97316; color: #fff; }
+  .reorder-status.soon { background: #eab308; color: #1f2937; }
+  .reorder-status.ok { background: #16a34a; color: #fff; }
+  .reorder-status.nodata { background: #6b7280; color: #fff; }
+
+  /* Activity tab */
+  .activity-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .activity-table th { text-align: left; padding: 6px 8px; color: var(--fg2); font-size: 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  .activity-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .activity-table tr:hover { background: rgba(59,130,246,0.05); }
+  .activity-reason { font-weight: bold; padding: 1px 5px; border-radius: 3px; font-size: 9px; white-space: nowrap; }
+  .activity-reason.received { background: #16a34a; color: #fff; }
+  .activity-reason.production { background: #3b82f6; color: #fff; }
+  .activity-reason.scrap { background: #ef4444; color: #fff; }
+  .activity-reason.count { background: #6b7280; color: #fff; }
+  .activity-reason.adjustment { background: #f59e0b; color: #fff; }
+  .activity-reason.return { background: #14b8a6; color: #fff; }
+  .activity-pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 11px; color: var(--fg2); }
+  .activity-pager button { padding: 4px 10px; }
+  .activity-pager button[disabled] { opacity: 0.4; cursor: not-allowed; }
+  .activity-filters { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; font-size: 11px; }
+  .activity-filters input, .activity-filters select { padding: 4px 6px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: var(--fg); }
 
   .low-stock-section { margin-top: 20px; }
   .low-stock-section h3 { font-size: 13px; color: var(--red); margin-bottom: 8px; }
@@ -95,36 +135,124 @@
     <button class="btn-sm" id="btnApiSettingsDash" style="font-size:10px">&#9881; API Settings</button>
   </div>
 
-  <div class="dash-filters">
-    <input type="text" id="filterSearch" placeholder="Search by name..." oninput="renderTable()">
-    <label>Type:</label>
-    <select id="filterType" onchange="renderTable()"><option value="">All</option></select>
-    <label>Process:</label>
-    <select id="filterProcess" onchange="renderTable()"><option value="">All</option></select>
-    <label>BOM:</label>
-    <select id="filterBom" onchange="renderTable()"><option value="">All</option></select>
+  <div class="dash-tabs">
+    <button class="dash-tab active" data-dtab="items" onclick="switchDashTab('items')">Items</button>
+    <button class="dash-tab" data-dtab="reorder" onclick="switchDashTab('reorder')">Reorder</button>
+    <button class="dash-tab" data-dtab="activity" onclick="switchDashTab('activity')">Activity</button>
   </div>
 
-  <table class="items-table" id="itemsTable">
-    <thead>
-      <tr>
-        <th data-sort="name">Name <span class="sort-arrow"></span></th>
-        <th data-sort="type">Type <span class="sort-arrow"></span></th>
-        <th data-sort="process_step">Process <span class="sort-arrow"></span></th>
-        <th data-sort="quantity" style="text-align:right">Qty <span class="sort-arrow"></span></th>
-        <th data-sort="unit">Unit <span class="sort-arrow"></span></th>
-        <th data-sort="cost_per_unit" style="text-align:right">$/Unit <span class="sort-arrow"></span></th>
-        <th data-sort="supplier">Supplier <span class="sort-arrow"></span></th>
-        <th data-sort="bom_category">BOM Cat <span class="sort-arrow"></span></th>
-        <th style="text-align:center">Lots</th>
-      </tr>
-    </thead>
-    <tbody id="itemsBody"></tbody>
-  </table>
+  <!-- ITEMS TAB -->
+  <div class="dash-tab-content active" id="dtab-items">
+    <div class="dash-filters">
+      <input type="text" id="filterSearch" placeholder="Search by name..." oninput="renderTable()">
+      <label>Type:</label>
+      <select id="filterType" onchange="renderTable()"><option value="">All</option></select>
+      <label>Process:</label>
+      <select id="filterProcess" onchange="renderTable()"><option value="">All</option></select>
+      <label>BOM:</label>
+      <select id="filterBom" onchange="renderTable()"><option value="">All</option></select>
+    </div>
 
-  <div class="low-stock-section" id="lowStockSection" style="display:none">
-    <h3>Low Stock Alerts</h3>
-    <div class="low-stock-list" id="lowStockList"></div>
+    <table class="items-table" id="itemsTable">
+      <thead>
+        <tr>
+          <th data-sort="name">Name <span class="sort-arrow"></span></th>
+          <th data-sort="type">Type <span class="sort-arrow"></span></th>
+          <th data-sort="process_step">Process <span class="sort-arrow"></span></th>
+          <th data-sort="quantity" style="text-align:right">Qty <span class="sort-arrow"></span></th>
+          <th data-sort="unit">Unit <span class="sort-arrow"></span></th>
+          <th data-sort="cost_per_unit" style="text-align:right">$/Unit <span class="sort-arrow"></span></th>
+          <th data-sort="supplier">Supplier <span class="sort-arrow"></span></th>
+          <th data-sort="bom_category">BOM Cat <span class="sort-arrow"></span></th>
+          <th style="text-align:center">Lots</th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+
+    <div class="low-stock-section" id="lowStockSection" style="display:none">
+      <h3>Low Stock Alerts</h3>
+      <div class="low-stock-list" id="lowStockList"></div>
+    </div>
+  </div>
+
+  <!-- REORDER TAB -->
+  <div class="dash-tab-content" id="dtab-reorder">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <label style="font-size:10px;color:var(--fg2)">Consumption window:</label>
+      <select id="reorderWindowDays" onchange="loadReorder()" style="padding:3px 5px;font-size:11px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg)">
+        <option value="30" selected>last 30 days</option>
+        <option value="60">last 60 days</option>
+        <option value="90">last 90 days</option>
+        <option value="180">last 180 days</option>
+      </select>
+      <label style="font-size:10px;color:var(--fg2);margin-left:12px"><input type="checkbox" id="reorderHideOk" onchange="renderReorder()"> Hide OK items</label>
+      <span style="margin-left:auto;font-size:10px;color:var(--fg2)">
+        <span class="reorder-status stockout">STOCKOUT</span>
+        <span class="reorder-status critical">CRITICAL</span>
+        <span class="reorder-status soon">SOON</span>
+        <span class="reorder-status ok">OK</span>
+        <span class="reorder-status nodata">NO DATA</span>
+      </span>
+    </div>
+    <table class="reorder-table" id="reorderTable">
+      <thead>
+        <tr>
+          <th data-sort-reorder="status">Status</th>
+          <th data-sort-reorder="name">Item</th>
+          <th data-sort-reorder="supplier">Supplier</th>
+          <th data-sort-reorder="quantity" style="text-align:right">On hand</th>
+          <th data-sort-reorder="daily_use" style="text-align:right">Daily use</th>
+          <th data-sort-reorder="days_remaining" style="text-align:right">Days left</th>
+          <th data-sort-reorder="lead_time_days" style="text-align:right">Lead time</th>
+          <th data-sort-reorder="reorder_point" style="text-align:right">Reorder pt</th>
+          <th>Suggested</th>
+        </tr>
+      </thead>
+      <tbody id="reorderBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ACTIVITY TAB -->
+  <div class="dash-tab-content" id="dtab-activity">
+    <div class="activity-filters">
+      <label>Reason:</label>
+      <select id="activityReason" onchange="loadActivity(0)">
+        <option value="">All</option>
+        <option value="received">Received</option>
+        <option value="production">Production</option>
+        <option value="scrap">Scrap</option>
+        <option value="count">Count</option>
+        <option value="adjustment">Adjustment</option>
+        <option value="return">Return</option>
+      </select>
+      <label>Item:</label>
+      <select id="activityItem" onchange="loadActivity(0)">
+        <option value="">All</option>
+      </select>
+      <label>Since:</label>
+      <input type="date" id="activitySince" onchange="loadActivity(0)">
+      <button class="btn-sm" onclick="document.getElementById('activityReason').value='';document.getElementById('activityItem').value='';document.getElementById('activitySince').value='';loadActivity(0)">Clear filters</button>
+    </div>
+    <table class="activity-table" id="activityTable">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Reason</th>
+          <th>Item</th>
+          <th>Lot</th>
+          <th style="text-align:right">Qty change</th>
+          <th>Batch / Notes</th>
+          <th>By</th>
+        </tr>
+      </thead>
+      <tbody id="activityBody"></tbody>
+    </table>
+    <div class="activity-pager">
+      <button class="btn-sm" id="activityPrev" onclick="loadActivity(activityOffset - activityLimit)">&larr; Prev</button>
+      <span id="activityRange">—</span>
+      <button class="btn-sm" id="activityNext" onclick="loadActivity(activityOffset + activityLimit)">Next &rarr;</button>
+    </div>
   </div>
 </div>
 
@@ -155,8 +283,8 @@
   </div>
 </div>
 
-<script src="js/api.js?v=20260501d"></script>
-<script src="js/inventory-ui.js?v=20260501d"></script>
-<script src="js/inventory-dashboard.js?v=20260501d"></script>
+<script src="js/api.js?v=20260501e"></script>
+<script src="js/inventory-ui.js?v=20260501e"></script>
+<script src="js/inventory-dashboard.js?v=20260501e"></script>
 </body>
 </html>

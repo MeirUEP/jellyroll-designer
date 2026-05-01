@@ -1,8 +1,8 @@
 """Inventory management endpoints — stock levels, lots, transactions, recipes, BOM."""
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.database import get_db
@@ -76,6 +76,120 @@ async def low_stock_alerts(db: AsyncSession = Depends(get_db)):
         .order_by(InventoryItem.category, InventoryItem.name)
     )
     return result.scalars().all()
+
+
+# Phase 8: Operational dashboard endpoints
+# These literal-path GETs MUST be declared before /inventory/{item_id}.
+
+@router.get("/inventory/transactions")
+async def list_all_transactions(
+    limit: int = Query(50, le=500, description="Max rows to return"),
+    offset: int = Query(0, ge=0, description="Skip this many rows for pagination"),
+    item_id: UUID | None = Query(None, description="Filter to one inventory item"),
+    reason: str | None = Query(None, description="received | production | scrap | count | adjustment | return"),
+    since: datetime | None = Query(None, description="ISO timestamp — return rows >= this"),
+    until: datetime | None = Query(None, description="ISO timestamp — return rows < this"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated, filterable transaction ledger across all items.
+    Joined with item name + lot number for the dashboard activity feed.
+    """
+    q = (
+        select(
+            InventoryTransaction,
+            InventoryItem.name.label("item_name"),
+            InventoryLot.lot_number.label("lot_number"),
+        )
+        .join(InventoryItem, InventoryTransaction.inventory_item_id == InventoryItem.id)
+        .outerjoin(InventoryLot, InventoryTransaction.inventory_lot_id == InventoryLot.id)
+        .order_by(InventoryTransaction.created_at.desc())
+    )
+    if item_id is not None:
+        q = q.where(InventoryTransaction.inventory_item_id == item_id)
+    if reason:
+        q = q.where(InventoryTransaction.reason == reason)
+    if since is not None:
+        q = q.where(InventoryTransaction.created_at >= since)
+    if until is not None:
+        q = q.where(InventoryTransaction.created_at < until)
+    q = q.limit(limit).offset(offset)
+
+    result = await db.execute(q)
+    rows = result.all()
+    return [
+        {
+            "id": str(t.id),
+            "inventory_item_id": str(t.inventory_item_id),
+            "inventory_item_name": item_name,
+            "inventory_lot_id": str(t.inventory_lot_id) if t.inventory_lot_id else None,
+            "lot_number": lot_number,
+            "qty_change": t.qty_change,
+            "reason": t.reason,
+            "batch_id": t.batch_id,
+            "design_id": str(t.design_id) if t.design_id else None,
+            "performed_by": t.performed_by,
+            "notes": t.notes,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t, item_name, lot_number in rows
+    ]
+
+
+@router.get("/inventory/consumption-stats")
+async def consumption_stats(
+    days: int = Query(30, ge=1, le=730, description="Trailing window in days"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-item average daily consumption over the last `days` days. Powers
+    the Reorder tab on the dashboard. Counts only outflow transactions
+    (`reason in ('production','scrap')` with `qty_change < 0`). Items
+    with no consumption in window are returned with `daily_use = 0`.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    txn_join = and_(
+        InventoryTransaction.inventory_item_id == InventoryItem.id,
+        InventoryTransaction.reason.in_(["production", "scrap"]),
+        InventoryTransaction.qty_change < 0,
+        InventoryTransaction.created_at >= cutoff,
+    )
+    q = (
+        select(
+            InventoryItem.id,
+            InventoryItem.name,
+            InventoryItem.unit,
+            InventoryItem.quantity,
+            InventoryItem.reorder_point,
+            InventoryItem.lead_time_days,
+            func.coalesce(func.sum(func.abs(InventoryTransaction.qty_change)), 0).label("qty_consumed"),
+            func.count(InventoryTransaction.id).label("txn_count"),
+            func.max(InventoryTransaction.created_at).label("last_consumed_at"),
+        )
+        .join(InventoryTransaction, txn_join, isouter=True)
+        .group_by(
+            InventoryItem.id, InventoryItem.name, InventoryItem.unit,
+            InventoryItem.quantity, InventoryItem.reorder_point, InventoryItem.lead_time_days,
+        )
+    )
+    result = await db.execute(q)
+    rows = result.all()
+    out = []
+    for r in rows:
+        qty_consumed = float(r.qty_consumed or 0)
+        daily = qty_consumed / days if days > 0 else 0.0
+        out.append({
+            "inventory_item_id": str(r.id),
+            "name": r.name,
+            "unit": r.unit,
+            "quantity": float(r.quantity or 0),
+            "reorder_point": float(r.reorder_point) if r.reorder_point is not None else None,
+            "lead_time_days": int(r.lead_time_days) if r.lead_time_days is not None else None,
+            "qty_consumed": qty_consumed,
+            "txn_count": int(r.txn_count or 0),
+            "last_consumed_at": r.last_consumed_at.isoformat() if r.last_consumed_at else None,
+            "days": days,
+            "daily_use": daily,
+        })
+    return out
 
 
 @router.get("/inventory/{item_id}", response_model=InventoryItemSchema)

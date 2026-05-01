@@ -66,6 +66,19 @@ const api = {
   // Production preview + multi-supplier pickers
   previewProduction(data) { return this.req('POST', '/api/v1/production/preview', data); },
   componentOptions(product) { return this.req('GET', `/api/v1/production/component-options?product=${encodeURIComponent(product)}`); },
+  // Phase 8 — operational dashboard
+  listAllTransactions(params = {}) {
+    const q = new URLSearchParams();
+    if (params.limit != null) q.set('limit', params.limit);
+    if (params.offset != null) q.set('offset', params.offset);
+    if (params.item_id) q.set('item_id', params.item_id);
+    if (params.reason) q.set('reason', params.reason);
+    if (params.since) q.set('since', params.since);
+    if (params.until) q.set('until', params.until);
+    const qs = q.toString();
+    return this.req('GET', '/api/v1/inventory/transactions' + (qs ? '?' + qs : ''));
+  },
+  consumptionStats(days = 30) { return this.req('GET', `/api/v1/inventory/consumption-stats?days=${days}`); },
   // Recipes
   listRecipes(product) { return this.req('GET', product ? `/api/v1/recipes?product=${encodeURIComponent(product)}` : '/api/v1/recipes'); },
   listRecipeProducts() { return this.req('GET', '/api/v1/recipes/products'); },
