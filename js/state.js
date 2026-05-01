@@ -26,6 +26,8 @@ let params = {
   anod_weld_from_tab: 1,        // start anode welding from tab N (skip inner tabs)
   tension_factor: 1,            // 1 = perfect winding, <1 = looser (air gap increases pitch)
   winding_gap_k: 0,             // radius-dependent gap: pitch *= (1 + k*r0/r). Models inner wrinkling.
+  nominal_voltage_v: 1.2,       // cell nominal voltage for energy and $/kWh calculations
+  bom_overhead: {},             // fixed-qty components: { key: { inv_id, qty, unit } }
 };
 
 let simResult = null;

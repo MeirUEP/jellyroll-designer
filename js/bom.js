@@ -1,3 +1,70 @@
+// ========== BOM OVERHEAD CONFIG (Cell Assembly dropdowns in Cell Params tab) ==========
+const BOM_OVERHEAD_ITEMS = [
+  { key: 'can',          label: 'Can',          defaultQty: 1,     unit: 'pcs' },
+  { key: 'lid',          label: 'Lid',          defaultQty: 1,     unit: 'pcs' },
+  { key: 'terminals',    label: 'Terminals',    defaultQty: 2,     unit: 'pcs' },
+  { key: 'o_rings',      label: 'O-rings',      defaultQty: 2,     unit: 'pcs' },
+  { key: 'electrolyte',  label: 'Electrolyte',  defaultQty: 0.7,   unit: 'kg' },
+  { key: 'tape',         label: 'Tape',         defaultQty: 116,   unit: 'in' },
+  { key: 'vent_cap',     label: 'Vent Cap',     defaultQty: 1,     unit: 'pcs' },
+  { key: 'label',        label: 'Label',        defaultQty: 1,     unit: 'pcs' },
+  { key: 'epoxy',        label: 'Epoxy',        defaultQty: 0.047, unit: 'L' },
+  { key: 'devcon',       label: 'Devcon',       defaultQty: 0.667, unit: 'ml' },
+  { key: 'kapton',       label: 'Kapton',       defaultQty: 0.15,  unit: 'm' },
+];
+
+function buildOverheadRows() {
+  const container = document.getElementById('overheadRows');
+  if (!container) return;
+
+  if (!params.bom_overhead) params.bom_overhead = {};
+  const overhead = params.bom_overhead;
+
+  const invOpts = (cloudInventory || [])
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .map(i => `<option value="${i.id}">${i.name}${i.supplier ? ' — ' + i.supplier : ''}</option>`)
+    .join('');
+
+  container.innerHTML = BOM_OVERHEAD_ITEMS.map(item => {
+    const cfg = overhead[item.key] || {};
+    const selectedId = cfg.inv_id || '';
+    const qty = cfg.qty != null ? cfg.qty : item.defaultQty;
+    const unit = cfg.unit || item.unit;
+    return `<div class="overhead-row">
+      <label>${item.label}</label>
+      <select data-oh-key="${item.key}" data-oh-field="inv_id" onchange="updateOverhead(this)">
+        <option value="">— None —</option>
+        ${invOpts}
+      </select>
+      <input type="number" step="any" value="${qty}" data-oh-key="${item.key}" data-oh-field="qty" onchange="updateOverhead(this)" title="Qty per cell">
+      <span style="font-size:8px;color:var(--fg2)">${unit}</span>
+    </div>`;
+  }).join('');
+
+  // Set selected values (after innerHTML is set)
+  container.querySelectorAll('select[data-oh-key]').forEach(sel => {
+    const key = sel.dataset.ohKey;
+    const cfg = overhead[key] || {};
+    if (cfg.inv_id) sel.value = cfg.inv_id;
+  });
+}
+
+function updateOverhead(el) {
+  const key = el.dataset.ohKey;
+  const field = el.dataset.ohField;
+  if (!params.bom_overhead) params.bom_overhead = {};
+  if (!params.bom_overhead[key]) {
+    const def = BOM_OVERHEAD_ITEMS.find(i => i.key === key);
+    params.bom_overhead[key] = { inv_id: null, qty: def ? def.defaultQty : 0, unit: def ? def.unit : 'pcs' };
+  }
+  if (field === 'inv_id') {
+    params.bom_overhead[key].inv_id = el.value || null;
+  } else if (field === 'qty') {
+    params.bom_overhead[key].qty = parseFloat(el.value) || 0;
+  }
+  markDirty();
+}
+
 // ========== BOM TAB (Bill of Materials) ==========
 // Renders into #bomPanel in the bottom results area.
 // Computes per-cell cost from loaded design + inventory costs.

@@ -139,6 +139,7 @@ function applyDesignPreset(p) {
     const el = document.getElementById('p_' + k);
     if (el) el.value = v;
   }
+  if (typeof buildOverheadRows === 'function') buildOverheadRows();
   markDirty();
 }
 

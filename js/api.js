@@ -129,6 +129,8 @@ async function loadCloudCache() {
     refreshLayerLibDropdown();
     // Populate the new inventory-driven dropdowns in the formulation tab
     if (typeof refreshFormulationFromInventory === 'function') refreshFormulationFromInventory();
+    // Populate BOM overhead dropdowns in Cell Params tab
+    if (typeof buildOverheadRows === 'function') buildOverheadRows();
   } catch(e) { console.warn('Cloud cache load failed:', e); }
 }
 

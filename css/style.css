@@ -82,6 +82,10 @@ button { cursor: pointer; border: none; border-radius: 4px; font-size: 11px; pad
 .bottom-section.collapsed .summary-cards,
 .bottom-section.collapsed .results-area { display: none; }
 .bottom-section.collapsed { max-height: 28px; }
+#cellAssemblyBody.collapsed { display: none; }
+.overhead-row { display: grid; grid-template-columns: 100px 1fr 60px 40px; gap: 4px; align-items: center; font-size: 10px; }
+.overhead-row label { color: var(--fg2); font-size: 9px; }
+.overhead-row select, .overhead-row input { padding: 2px 4px; font-size: 9px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); color: var(--fg); }
 .results-area { overflow-y: auto; }
 .bottom-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg2); border-top: 1px solid var(--border); cursor: pointer; font-size: 11px; color: var(--fg2); user-select: none; }
 .bottom-toggle:hover { color: var(--fg); }

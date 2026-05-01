@@ -160,6 +160,18 @@
         <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
         <div id="constraintWarnings" style="font-size:9px;margin-top:4px;padding:2px 4px;border-radius:3px"></div>
       </div>
+      <div class="panel">
+        <h3 style="cursor:pointer;user-select:none" onclick="document.getElementById('cellAssemblyBody').classList.toggle('collapsed');this.querySelector('span').textContent=document.getElementById('cellAssemblyBody').classList.contains('collapsed')?'&#9654;':'&#9660;'">
+          <span>&#9654;</span> Cell Assembly (BOM Overhead)
+        </h3>
+        <div id="cellAssemblyBody" class="collapsed" style="margin-top:6px">
+          <div class="param-grid" style="margin-bottom:8px">
+            <div class="param-item"><label>Nominal voltage (V)</label><input type="number" id="p_nominal_voltage_v" step="0.1" value="1.2" title="Cell nominal voltage for energy (Wh) and $/kWh calculations"></div>
+          </div>
+          <p style="font-size:9px;color:var(--fg2);margin-bottom:6px">Fixed-quantity components per cell. Select from inventory to include in BOM cost.</p>
+          <div id="overheadRows" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
       <div class="panel" id="panel3d" style="display:none">
         <h3>3D Display</h3>
         <div class="param-item"><label>Cutaway (&deg;)</label><input type="range" id="p_cut" min="10" max="360" value="270" style="width:100%"><span id="p_cut_val">270</span></div>
@@ -374,19 +386,19 @@
   </div>
 </div>
 
-<script src="js/api.js?v=20260501b"></script>
-<script src="js/auth.js?v=20260501b"></script>
-<script src="js/formulation.js?v=20260501b"></script>
-<script src="js/presets.js?v=20260501b"></script>
-<script src="js/state.js?v=20260501b"></script>
-<script src="js/sim-engine.js?v=20260501b"></script>
-<script src="js/capacity.js?v=20260501b"></script>
-<script src="js/ui.js?v=20260501b"></script>
-<script src="js/views.js?v=20260501b"></script>
-<script src="js/three-view.js?v=20260501b"></script>
-<script src="js/events.js?v=20260501b"></script>
-<script src="js/inventory-check.js?v=20260501b"></script>
-<script src="js/inventory-ui.js?v=20260501b"></script>
-<script src="js/bom.js?v=20260501b"></script>
+<script src="js/api.js?v=20260501c"></script>
+<script src="js/auth.js?v=20260501c"></script>
+<script src="js/formulation.js?v=20260501c"></script>
+<script src="js/presets.js?v=20260501c"></script>
+<script src="js/state.js?v=20260501c"></script>
+<script src="js/sim-engine.js?v=20260501c"></script>
+<script src="js/capacity.js?v=20260501c"></script>
+<script src="js/ui.js?v=20260501c"></script>
+<script src="js/views.js?v=20260501c"></script>
+<script src="js/three-view.js?v=20260501c"></script>
+<script src="js/events.js?v=20260501c"></script>
+<script src="js/inventory-check.js?v=20260501c"></script>
+<script src="js/inventory-ui.js?v=20260501c"></script>
+<script src="js/bom.js?v=20260501c"></script>
 </body>
 </html>
