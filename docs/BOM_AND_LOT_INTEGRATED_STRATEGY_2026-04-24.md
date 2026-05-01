@@ -423,48 +423,46 @@ Files changed:
 - `backend/app/routers/inventory.py` — new `_find_or_create_lot` helper; new endpoints `GET/PUT/DELETE /inventory/lots/{id}`, `GET /inventory/{id}/lots`, `POST /production/preview`, `GET /production/component-options`; rewrote receive/count/production paths to be lot-aware (FIFO walk, one txn per lot).
 - `js/api.js` — added `listLotsForItem`, `getLot`, `updateLot`, `deleteLot`, `previewProduction`, `componentOptions`.
 
-### Phase 3 — Designer-side inventory polish (~half day, NOT STARTED)
+### ✅ Phase 3 — Designer-side inventory polish (DONE 2026-05-01)
 
-Lightweight updates to the existing inventory modal inside the Designer page. The modal stays as-is — it's the design-scoped inventory tool and remains contextual to whatever cell you have loaded.
+Lightweight updates to the existing inventory modal inside the Designer page.
 
-- **Receive shipment form**: add `lot_number` (optional) and `supplier` (optional) inputs. POST sends them to `/inventory/receive`. Toast shows which lot was touched.
-- **Update inventory item form**: append a read-only sub-table of lots beneath the editable fields (lot #, supplier, received date, qty_remaining; sorted FIFO).
-- **Production log preview**: before commit, call `/production/preview` and show the operator which lots will be consumed for each recipe component. Multi-supplier dropdown per recipe line, pulled from `/production/component-options`.
-- **No new frontend modules needed** — all changes live in `js/inventory-ui.js`.
+- **Receive shipment form**: added `supplier` input field. POST sends lot_number + supplier to `/inventory/receive`. Toast confirms which lot was touched (e.g. "→ lot TEST-001").
+- **Update inventory item form**: appended a read-only lots sub-table beneath editable fields. Shows lot#, supplier, received date, qty received, qty remaining (FIFO sorted). Total remaining in header. Loaded via `GET /inventory/{id}/lots`.
+- **Production log preview**: replaced simple preview with multi-supplier dropdown per recipe component (from `GET /production/component-options`) + FIFO lot allocation preview (from `POST /production/preview`). Shows per-lot take amounts, remaining quantities, and shortage warnings. Supplier selections passed through to production log endpoint.
+- All changes in `js/inventory-ui.js` only. No backend changes.
 
-### Phase 4 — Standalone Inventory Dashboard (~half day, NOT STARTED)
+### ✅ Phase 4 — Standalone Inventory Dashboard (DONE 2026-05-01)
 
-New top-level destination per decision 16. Three new HTML files reorganize the app:
+New top-level destination per decision 16. Three files reorganize the app:
 
 ```
 http://143.198.122.92:8000/
   └── index.html         → landing page (password gate + 2 buttons)
-       ├── /designer.html    → current designer app (rename existing index.html)
-       └── /inventory.html   → new standalone dashboard
+       ├── /designer.html    → cell designer app (renamed from index.html)
+       └── /inventory.html   → standalone inventory dashboard
 ```
 
-Shared auth via `sessionStorage.jr_auth='1'` set on landing, read on the others. Hitting `/designer.html` or `/inventory.html` without auth redirects to `/`.
+Files created:
+- `index.html` — new landing page with password gate + two destination buttons (Cell Designer / Inventory Dashboard)
+- `designer.html` — renamed from old `index.html`, auth gate replaced with redirect to landing if not authenticated
+- `inventory.html` — standalone dashboard HTML
+- `js/inventory-dashboard.js` — table/sort/filter/search logic, lots sub-row expansion, stat cards, low-stock alerts (245 lines)
+- `js/auth.js` — updated for 3-page auth flow via `sessionStorage.jr_auth`
+- `backend/app/main.py` — added explicit routes for `/designer.html` and `/inventory.html`
 
-Dashboard MVP scope (decision 17 — basic ops only):
+Dashboard MVP features (per decision 17):
+- Quick-stat cards: total items, low-stock count, total lots, categories
+- Action buttons: Add New Item, Receive Shipment, Physical Count → reuse modals from `inventory-ui.js`
+- Sortable items table (click any column header to sort asc/desc)
+- Filter by type, process step, BOM category + name search
+- Click row → opens Update Item modal with item pre-selected
+- Click "lots" button → inline sub-row with FIFO-sorted lot details
+- Low-stock alert section at bottom
+- API settings gear button
+- Cross-nav link: "← Cell Designer"
 
-- **Quick stats** card: total items, low-stock count, total lots
-- **Action buttons**: Add new item • Receive shipment • Physical count
-- **Items table** with sort + filter (by `type`, `process_step`, `bom_category`) + name search
-  - Columns: name, type, process step, qty, unit, cost, supplier, lot count, low-stock flag
-  - Click a row → opens Update Inventory Item modal
-  - Click the "lots" cell → expands an inline sub-row showing all lots for that item
-- **Low stock callout** at the bottom listing items where `quantity ≤ reorder_point`
-- **Header link**: "→ Cell Designer" cross-navigation
-- **Reuses all existing modals** from `js/inventory-ui.js` (Add Item, Receive, Update, Count) — just adds the dashboard wrapper around them.
-
-Out of scope for MVP: transactions ledger view, production log history, supplier-grouped views, charts, exports, dynamic-reorder-point math, role separation.
-
-Implementation:
-1. Rename `index.html` → `designer.html` (no functional change).
-2. Create new `index.html` as landing page (password + Designer/Inventory buttons).
-3. Create `inventory.html` with the dashboard scaffold.
-4. Create `js/inventory-dashboard.js` for the table/sort/filter logic (modals stay in `inventory-ui.js`).
-5. Update `js/auth.js` to handle the post-auth redirect (already-authed users land on the picker; clicking a button just navigates).
+Out of scope for MVP: transactions ledger, production log history, supplier views, charts, exports, dynamic reorder, roles.
 
 ### Phase 4b — Remove Inventory Management from Designer (~1 hour, after Phase 4 ships)
 
@@ -544,15 +542,15 @@ Status as of 2026-04-30:
 | `/inventory/lots/{id}` GET/PUT/DELETE | | ✅ done | | | | | |
 | `/production/preview` (FIFO dry-run) | | ✅ done | | | | | |
 | `/production/component-options` (multi-supplier picker) | | ✅ done | | | | | |
-| Designer Receive form: lot/supplier fields | | | ⏳ | | | | |
-| Designer Update Item form: lot sub-table | | | ⏳ | | | | |
-| Designer Production form: per-line supplier picker + preview | | | ⏳ | | | | |
-| Landing page `/` (password + 2 buttons) | | | | ⏳ | | | |
-| Rename `index.html` → `designer.html` | | | | ⏳ | | | |
-| Standalone `inventory.html` dashboard | | | | ⏳ | | | |
-| Items table (sort + filter + search) | | | | ⏳ | | | |
-| Lots sub-row expand | | | | ⏳ | | | |
-| Quick-stat cards + low-stock callout | | | | ⏳ | | | |
+| Designer Receive form: lot/supplier fields | | | ✅ done | | | | |
+| Designer Update Item form: lot sub-table | | | ✅ done | | | | |
+| Designer Production form: per-line supplier picker + preview | | | ✅ done | | | | |
+| Landing page `/` (password + 2 buttons) | | | | ✅ done | | | |
+| Rename `index.html` → `designer.html` | | | | ✅ done | | | |
+| Standalone `inventory.html` dashboard | | | | ✅ done | | | |
+| Items table (sort + filter + search) | | | | ✅ done | | | |
+| Lots sub-row expand | | | | ✅ done | | | |
+| Quick-stat cards + low-stock callout | | | | ✅ done | | | |
 | Remove Inv Management button from Designer (P4b) | | | | ⏳ | | | |
 | BOM tab — summary cards | | | | | ⏳ | | |
 | BOM tab — pie chart | | | | | ⏳ | | |
@@ -571,30 +569,31 @@ Status as of 2026-04-30:
 | Dynamic reorder point | | | | | | | ⏳ |
 | User roles | | | | | | | ⏳ |
 
-**Estimated remaining: 3–4 working days for P3 + P4 + P5 + P6.**
+**Estimated remaining: 1.5–2 working days for P4b + P5 + P6.**
+
+Completed 2026-05-01: P3 + P4 done in same session.
 
 Recommended ordering:
-- **P3 + P4 in parallel** (small surface; both touch `inventory-ui.js` but different entry points)
+- **P4b** after confirming dashboard works on VM (quick cleanup, ~1 hour)
 - Then **P5 + P6 in parallel** (BOM tab depends on cell-params overhead inputs; both inside Designer)
 
 ---
 
-## 7. Next session — start Phase 3 + Phase 4
+## 7. Next session — Phase 4b + Phase 5 + Phase 6
+
+**Phase 3 + 4: DONE** (2026-05-01). See §4 for execution details.
 
 **Decisions still locked in (§5):** FIFO only, recall later, no `requires_lot` flag, pie 6 categories, lot # optional, suppliers independent.
 
-**Phase 3 work** (`js/inventory-ui.js` only):
-- Add `lot_number` and `supplier` text inputs to the Receive Shipment form. Submit sends them; success toast confirms which lot was touched.
-- Append a read-only lots table to the Update Inventory Item form. Pulls from `GET /inventory/{id}/lots`.
-- Add multi-supplier dropdown per recipe line in the Production form. Pulls from `GET /production/component-options?product=...`. Before commit, call `POST /production/preview` and show the FIFO allocation modal.
+**Phase 4b** — confirm dashboard works on VM, then remove Inventory button from designer (~1 hour).
 
-**Phase 4 work** (new files):
-- `index.html` (new landing page, password + 2 buttons)
-- `designer.html` (renamed from current `index.html`, no functional change)
-- `inventory.html` (new standalone dashboard)
-- `js/inventory-dashboard.js` (table/sort/filter logic, reuses modals from `inventory-ui.js`)
-- `js/auth.js` updates so all three pages share the same `sessionStorage.jr_auth` token and unauthed access bounces back to `/`.
+**Phase 5** — BOM tab inside Designer. New left-panel tab between Formulation and Layers. Per-cell cost calculation from loaded design + inventory costs. PV/Gigascale toggle. Category pie chart (SVG). Design comparison. See §3 for UI mockup.
 
-**No backend changes needed for P3 or P4 — all data is already exposed by Phase 2 endpoints.**
+**Phase 6** — Cell params extension: `nominal_voltage_v` field (default 1.2V), `bom_overhead` block with 11 inventory dropdowns for fixed-overhead components.
+
+**VM restart required:** backend needs restart to pick up new routes for `/designer.html` and `/inventory.html`:
+```
+systemctl restart jellyroll-api
+```
 
 When ready to start, just say "go on Phase 3" or "go on Phase 4" or "do both in one push".

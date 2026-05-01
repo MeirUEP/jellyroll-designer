@@ -637,6 +637,7 @@ function runSimulation() {
   updateSummary();
   updateTable();
   renderView();
+  if (typeof renderBOM === 'function') renderBOM();
 
   // Update computed length displays in layer cards (without rebuilding full UI)
   document.querySelectorAll('.layer-props input[data-f="len"][readonly]').forEach(el => {
