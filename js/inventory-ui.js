@@ -390,7 +390,44 @@ function loadUpdateItemFields() {
     </div>
     <div id="uiSpecs" style="margin-top:10px">${specHtml}</div>
     <button class="btn-primary inv-submit" onclick="submitUpdateItem()">Update Item</button>
+    <div id="uiLotsWrap" style="margin-top:12px"></div>
   `;
+  loadLotsForItem(id);
+}
+
+async function loadLotsForItem(itemId) {
+  const wrap = document.getElementById('uiLotsWrap');
+  if (!wrap || !itemId) return;
+  wrap.innerHTML = '<p style="color:var(--fg2);font-size:10px">Loading lots...</p>';
+  try {
+    const lots = await api.listLotsForItem(itemId);
+    if (!lots || lots.length === 0) {
+      wrap.innerHTML = '<p style="color:var(--fg2);font-size:10px">No lots recorded for this item.</p>';
+      return;
+    }
+    const rows = lots.map(lot => {
+      const rcvd = lot.received_date ? new Date(lot.received_date).toLocaleDateString() : '—';
+      return `<tr>
+        <td>${lot.lot_number}</td>
+        <td>${lot.supplier || '—'}</td>
+        <td>${rcvd}</td>
+        <td style="text-align:right">${lot.qty_received.toFixed(2)}</td>
+        <td style="text-align:right;font-weight:bold">${lot.qty_remaining.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+    const totalRemaining = lots.reduce((s, l) => s + l.qty_remaining, 0);
+    wrap.innerHTML = `
+      <h4 style="font-size:11px;margin-bottom:4px;border-top:1px solid var(--border,#333);padding-top:8px">
+        Lots (${lots.length}) — Total remaining: ${totalRemaining.toFixed(2)}
+      </h4>
+      <table class="inv-preview-table" style="font-size:10px">
+        <thead><tr><th>Lot #</th><th>Supplier</th><th>Received</th><th style="text-align:right">Qty Rcvd</th><th style="text-align:right">Remaining</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    wrap.innerHTML = `<p style="color:#ef4444;font-size:10px">Failed to load lots: ${e.message}</p>`;
+  }
 }
 
 async function submitUpdateItem() {
@@ -463,7 +500,11 @@ function renderReceiveForm() {
       </div>
       <div class="inv-field">
         <label>Lot number</label>
-        <input type="text" id="rsLot">
+        <input type="text" id="rsLot" placeholder="optional — blank = unspecified">
+      </div>
+      <div class="inv-field">
+        <label>Supplier</label>
+        <input type="text" id="rsSupplier" placeholder="who shipped this lot">
       </div>
       <div class="inv-field">
         <label>Received by</label>
@@ -488,13 +529,15 @@ async function submitReceive() {
     inventory_item_id: itemId,
     qty: qty,
     lot_number: document.getElementById('rsLot').value.trim() || null,
+    supplier: document.getElementById('rsSupplier').value.trim() || null,
     performed_by: document.getElementById('rsBy').value.trim() || null,
     notes: document.getElementById('rsNotes').value.trim() || null,
   };
   try {
-    await api.receiveShipment(data);
+    const txn = await api.receiveShipment(data);
     const item = invCache.items.find(i => i.id === itemId);
-    setInvStatus(`Received ${qty} ${item.unit} of ${item.name}`);
+    const lotNote = data.lot_number ? ` → lot "${data.lot_number}"` : ' → unspecified lot';
+    setInvStatus(`Received ${qty} ${item.unit} of ${item.name}${lotNote}`);
     await refreshInventoryCache();
     renderReceiveForm();
   } catch (e) {
@@ -718,6 +761,8 @@ function renderProductionForm() {
   `;
 }
 
+let productionSelections = {};
+
 async function previewProduction() {
   const product = document.getElementById('plProduct').value;
   const qty = parseFloat(document.getElementById('plQty').value);
@@ -726,27 +771,101 @@ async function previewProduction() {
   try {
     const lines = await api.listRecipes(product);
     if (!lines.length) { preview.innerHTML = '<em>No recipe found.</em>'; return; }
+
+    let options = {};
+    try { options = await api.componentOptions(product); } catch (e) { /* fall back to simple mode */ }
+
     const rows = lines.map(l => {
-      const inv = invCache.items.find(i => i.name === l.component);
       const willConsume = l.qty * qty;
+      const alternatives = options[l.component] || [];
+
+      let supplierHtml = '';
+      if (alternatives.length > 1) {
+        const selected = productionSelections[l.component] || (alternatives[0] ? alternatives[0].id : '');
+        const opts = alternatives.map(alt =>
+          `<option value="${alt.id}" ${alt.id === selected ? 'selected' : ''}>${alt.name}${alt.supplier ? ' — ' + alt.supplier : ''} (${alt.quantity.toFixed(1)} ${alt.unit})</option>`
+        ).join('');
+        supplierHtml = `<select class="pl-supplier-pick" data-component="${l.component}" onchange="productionSelections['${l.component}']=this.value;previewProductionFIFO()" style="font-size:9px;max-width:200px">${opts}</select>`;
+      } else {
+        const inv = invCache.items.find(i => i.name === l.component);
+        supplierHtml = inv ? `${inv.name}${inv.supplier ? ' — ' + inv.supplier : ''}` : l.component;
+      }
+
+      const inv = invCache.items.find(i => i.name === l.component);
       const currentQty = inv ? inv.quantity : null;
-      const afterQty = inv ? inv.quantity - willConsume : null;
+      const afterQty = currentQty !== null ? currentQty - willConsume : null;
       const isShort = afterQty !== null && afterQty < 0;
+
       return `<tr${isShort ? ' style="color:#ef4444"' : ''}>
-        <td>${l.component}${!inv ? ' <em>(not in inventory)</em>' : ''}</td>
+        <td>${supplierHtml}</td>
         <td>${willConsume.toFixed(3)} ${l.unit}</td>
         <td>${currentQty !== null ? currentQty.toFixed(2) : '—'}</td>
         <td>${afterQty !== null ? afterQty.toFixed(2) : '—'}</td>
       </tr>`;
     }).join('');
+
     preview.innerHTML = `
       <table class="inv-preview-table">
-        <thead><tr><th>Component</th><th>Will consume</th><th>Current</th><th>After</th></tr></thead>
+        <thead><tr><th>Component / Supplier</th><th>Will consume</th><th>Current</th><th>After</th></tr></thead>
         <tbody>${rows}</tbody>
+      </table>
+      <div id="plFifoPreview" style="margin-top:8px"></div>
+    `;
+    previewProductionFIFO();
+  } catch (e) {
+    preview.innerHTML = `<em>Preview error: ${e.message}</em>`;
+  }
+}
+
+async function previewProductionFIFO() {
+  const product = document.getElementById('plProduct').value;
+  const qty = parseFloat(document.getElementById('plQty').value);
+  const fifoWrap = document.getElementById('plFifoPreview');
+  if (!fifoWrap || !product || !qty) return;
+  try {
+    const result = await api.previewProduction({
+      product,
+      qty_produced: qty,
+      selections: Object.keys(productionSelections).length > 0 ? productionSelections : undefined,
+    });
+    if (!result || !result.lines || result.lines.length === 0) {
+      fifoWrap.innerHTML = '';
+      return;
+    }
+    // Each line has: component, needed, unit, shortfall, lot_allocations[]
+    // Each allocation has: lot_number, supplier, available, will_consume
+    const rows = [];
+    for (const line of result.lines) {
+      if (line.lot_allocations && line.lot_allocations.length > 0) {
+        for (const alloc of line.lot_allocations) {
+          const afterQty = alloc.available - alloc.will_consume;
+          rows.push(`<tr>
+            <td>${line.component}</td>
+            <td>${alloc.lot_number || 'unspecified'}${alloc.supplier ? ' — ' + alloc.supplier : ''}</td>
+            <td>${alloc.will_consume.toFixed(3)} ${line.unit}</td>
+            <td>${afterQty.toFixed(2)}</td>
+            <td></td>
+          </tr>`);
+        }
+      }
+      if (line.shortfall > 0) {
+        rows.push(`<tr style="color:#ef4444">
+          <td>${line.component}</td>
+          <td colspan="2">SHORTAGE</td>
+          <td></td>
+          <td style="font-weight:bold">${line.shortfall.toFixed(2)} ${line.unit} short</td>
+        </tr>`);
+      }
+    }
+    fifoWrap.innerHTML = `
+      <h4 style="font-size:10px;margin-bottom:4px;color:var(--fg2)">FIFO Lot Allocation Preview</h4>
+      <table class="inv-preview-table" style="font-size:9px">
+        <thead><tr><th>Component</th><th>Lot / Supplier</th><th>Take</th><th>Lot After</th><th></th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
       </table>
     `;
   } catch (e) {
-    preview.innerHTML = `<em>Preview error: ${e.message}</em>`;
+    fifoWrap.innerHTML = `<p style="font-size:9px;color:var(--fg2)">FIFO preview not available: ${e.message}</p>`;
   }
 }
 
@@ -763,6 +882,7 @@ async function submitProduction() {
     performed_by: document.getElementById('plBy').value.trim() || null,
     production_date: document.getElementById('plDate').value || null,
     notes: document.getElementById('plNotes').value.trim() || null,
+    selections: Object.keys(productionSelections).length > 0 ? productionSelections : undefined,
   };
   try {
     const txns = await api.logProduction(data);
