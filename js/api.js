@@ -95,7 +95,7 @@ let cloudChemicals = [];   // [{id, name, density, capacity, ...}]  (LEGACY — 
 let cloudMaterials = [];   // [{id, name, type, thickness, width, color, ...}]  (LEGACY — read-only)
 let cloudMixes = [];       // [{id, name, type, components, ...}]
 let cloudLayerStacks = []; // [{id, name, items, ...}]
-let cloudInventory = [];   // [{id, name, category, unit, quantity, density, capacity, thickness_mm, width_mm, color, is_active_mat, cost_per_unit, ...}]
+let cloudInventory = [];   // [{id, name, category, unit, quantity, density, thickness_mm, width_mm, color, is_active_mat, cost_per_unit, ...}]  (capacity removed — design property)
 
 function chemByName(name) { return cloudChemicals.find(c => c.name === name); }
 function chemById(id) { return cloudChemicals.find(c => c.id === id); }
@@ -209,8 +209,11 @@ function mixFromApi(mix) {
     const inv = c.inventory_item_id ? invById(c.inventory_item_id) : null;
     const chem = !inv && c.chemical_id ? chemById(c.chemical_id) : null;
     const src = inv || chem || null;
-    const invDefaultCap = inv ? (inv.capacity || 0) : (chem ? (chem.capacity || 0) : 0);
-    const cap = (c.capacity_override != null) ? c.capacity_override : invDefaultCap;
+    // capacity_override is the design's chosen value. If absent (legacy mixes
+    // saved before per-design capacity), fall back to the legacy chemicals
+    // table's default. Inventory items no longer carry capacity.
+    const legacyDefaultCap = chem ? (chem.capacity || 0) : 0;
+    const cap = (c.capacity_override != null) ? c.capacity_override : legacyDefaultCap;
     return {
       inventory_item_id: inv ? inv.id : null,
       name: src ? src.name : (c.name_snapshot || 'Unknown'),

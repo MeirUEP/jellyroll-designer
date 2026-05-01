@@ -157,7 +157,7 @@ function renderAddItemForm() {
 }
 
 // Show spec fields conditionally based on the selected category.
-// Chemicals get density/capacity/active-material flag.
+// Chemicals get density only (capacity is a design property — see mix override).
 // Separators/collectors/tabs get thickness + width + color.
 function renderAddItemSpecs() {
   const cat = document.getElementById('aiCategory').value;
@@ -172,12 +172,8 @@ function renderAddItemSpecs() {
           <label>Density (g/cm&sup3;)</label>
           <input type="number" id="aiDensity" step="any" placeholder="e.g. 1.32">
         </div>
-        <div class="inv-field">
-          <label>Capacity (mAh/g)</label>
-          <input type="number" id="aiCapacity" step="any" placeholder="active materials only">
-        </div>
         <div class="inv-field inv-full">
-          <label><input type="checkbox" id="aiIsActive"> Active material (participates in capacity)</label>
+          <label><input type="checkbox" id="aiIsActive"> Active material</label>
         </div>
       </div>`;
   } else if (cat === 'separator' || cat === 'collector') {
@@ -233,13 +229,11 @@ async function submitAddItem() {
   };
   // Category-specific specs
   const specDensity = document.getElementById('aiDensity');
-  const specCapacity = document.getElementById('aiCapacity');
   const specIsActive = document.getElementById('aiIsActive');
   const specThickness = document.getElementById('aiThickness');
   const specWidth = document.getElementById('aiWidth');
   const specColor = document.getElementById('aiColor');
   if (specDensity) data.density = parseFloat(specDensity.value) || null;
-  if (specCapacity) data.capacity = parseFloat(specCapacity.value) || null;
   if (specIsActive) data.is_active_mat = specIsActive.checked;
   if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
   if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;
@@ -297,12 +291,8 @@ function loadUpdateItemFields() {
           <label>Density (g/cm&sup3;)</label>
           <input type="number" id="uiDensity" step="any" value="${item.density || ''}">
         </div>
-        <div class="inv-field">
-          <label>Capacity (mAh/g)</label>
-          <input type="number" id="uiCapacity" step="any" value="${item.capacity || ''}">
-        </div>
         <div class="inv-field inv-full">
-          <label><input type="checkbox" id="uiIsActive" ${item.is_active_mat ? 'checked' : ''}> Active material (participates in capacity)</label>
+          <label><input type="checkbox" id="uiIsActive" ${item.is_active_mat ? 'checked' : ''}> Active material</label>
         </div>
       </div>`;
   } else if (cat === 'separator' || cat === 'collector') {
@@ -465,13 +455,11 @@ async function submitUpdateItem() {
 
   // Category-specific specs
   const specDensity = document.getElementById('uiDensity');
-  const specCapacity = document.getElementById('uiCapacity');
   const specIsActive = document.getElementById('uiIsActive');
   const specThickness = document.getElementById('uiThickness');
   const specWidth = document.getElementById('uiWidth');
   const specColor = document.getElementById('uiColor');
   if (specDensity) data.density = parseFloat(specDensity.value) || null;
-  if (specCapacity) data.capacity = parseFloat(specCapacity.value) || null;
   if (specIsActive) data.is_active_mat = specIsActive.checked;
   if (specThickness) data.thickness_mm = parseFloat(specThickness.value) || null;
   if (specWidth) data.width_mm = parseFloat(specWidth.value) || null;

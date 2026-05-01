@@ -301,7 +301,6 @@ class InventoryItemCreate(BaseModel):
     process_step: str | None = None                   # paste / electrode / winding / cell_assembly / module_assembly
     functionality: str | None = None                  # active_material, conductor, binder, separator, ...
     density: float | None = None
-    capacity: float | None = None                     # DEPRECATED — design owns capacity now
     is_active_mat: bool = False                       # DEPRECATED — capacity comes from mix wt% × cap
     thickness_mm: float | None = None
     width_mm: float | None = None
@@ -330,7 +329,6 @@ class InventoryItemUpdate(BaseModel):
     process_step: str | None = None
     functionality: str | None = None
     density: float | None = None
-    capacity: float | None = None
     is_active_mat: bool | None = None
     thickness_mm: float | None = None
     width_mm: float | None = None

@@ -164,7 +164,6 @@ class InventoryItem(Base):
     functionality = Column(String(50), nullable=True)    # active_material, conductor, binder, separator, ...
     # Spec columns — physical properties used by the designer.
     density = Column(Float, nullable=True)               # g/cm^3 — raw_chemical
-    capacity = Column(Float, nullable=True)              # DEPRECATED — capacity is a design property (see mixes.components.capacity_override)
     is_active_mat = Column(Boolean, nullable=False, server_default="false")  # legacy flag, no longer used by capacity calc
     thickness_mm = Column(Float, nullable=True)          # separator, collector, tab
     width_mm = Column(Float, nullable=True)              # separator, collector

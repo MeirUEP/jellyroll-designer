@@ -10,7 +10,7 @@ document.querySelectorAll('.left-tab').forEach(btn => {
 
 // ========== FORMULATION ENGINE (inventory-driven) ==========
 // Each component now carries `inventory_item_id` — the link back to the
-// inventory record that defines density/capacity/is_active_mat. Only wt%
+// inventory record that defines density / is_active_mat. Capacity is a per-design property — only wt%
 // is editable in the row; density and cap are displayed read-only from
 // the linked inventory item. Components with no inventory link are
 // legacy rows (loaded from old designs) and will show an orange banner.
@@ -30,11 +30,10 @@ function buildMixTable(components, bodyId, totalId, solidDensId, compCapId, elec
     // numbers). Owned by the component, seeded from inventory on add,
     // user-editable thereafter. We surface the inventory default in the
     // tooltip so users can see how far they've deviated.
-    const capVal = c.cap != null ? c.cap : (inv ? (inv.capacity || 0) : 0);
-    const invCapDefault = inv ? (inv.capacity || 0) : null;
-    const capTooltip = invCapDefault != null
-      ? `Inventory default: ${invCapDefault} mAh/g — override for this design`
-      : 'Specific capacity (mAh/g)';
+    // Capacity is a per-design property — owned by the mix component,
+    // not by inventory. Default is 0; user enters the value once per mix.
+    const capVal = c.cap != null ? c.cap : 0;
+    const capTooltip = 'Specific capacity (mAh/g) for this design';
     const nameDisplay = inv ? inv.name : (c.name || '(unlinked)');
     const stockHint = inv ? `${inv.quantity} ${inv.unit} in stock` : '';
     const tr = document.createElement('tr');
@@ -109,7 +108,7 @@ function addCompFromInventory(electrode) {
     name: inv.name,                     // snapshot name for legacy compat
     wt: 0,
     density: inv.density || 0,
-    cap: inv.capacity || 0,
+    cap: 0,  // capacity is a design property — user enters per-mix
     isActive: !!inv.is_active_mat,
   });
   const [bodyId, totalId, solidDensId, compCapId] = electrode === 'cathode'
