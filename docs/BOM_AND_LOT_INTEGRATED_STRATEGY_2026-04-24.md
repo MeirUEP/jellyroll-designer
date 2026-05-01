@@ -602,16 +602,14 @@ Status as of 2026-04-30:
 
 **Phase 4b** — confirm dashboard works on VM, then remove Inventory button from designer (~1 hour).
 
-**VM restart required:** backend needs restart to pick up new routes for `/designer.html` and `/inventory.html`:
+**VM restart NOT required.** The new HTML files (index/designer/inventory) are served as static content via the existing `StaticFiles` mount, which doesn't need a restart for new files. The explicit `/designer.html` and `/inventory.html` routes added to `main.py` are redundant — the static mount already handles them. Phase 2 backend changes (lot endpoints, /production/preview) were already live from yesterday's restart.
+
+If the VM does need a restart for any reason, the correct command is the bare uvicorn restart documented in SYSTEM.md (NOT `systemctl restart` — there is no systemd service):
 ```
-systemctl restart jellyroll-api
+kill $(pgrep -f 'uvicorn app.main:app') && cd ~/jellyroll-designer/backend && JR_DATABASE_URL='...' JR_API_KEY='...' JR_CORS_ORIGINS='...' nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
 ```
 
-**DB migration required:** add experimental result columns (run in Redash or psql):
-```sql
-ALTER TABLE designs ADD COLUMN IF NOT EXISTS is_experimental BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE designs ADD COLUMN IF NOT EXISTS experimental_data JSONB;
-```
+**DB migration NOT required.** The `is_experimental` and `experimental_data` columns on `designs` already exist (have for weeks). The earlier doc draft incorrectly suggested an ALTER TABLE was needed — disregard it.
 
 **Stretch items ready to tackle:**
 - $/kWh vs energy line chart in BOM tab
