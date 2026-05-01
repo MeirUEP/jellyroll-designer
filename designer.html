@@ -16,8 +16,8 @@
   <div class="left" id="leftPanel">
     <div class="left-tabs">
       <button class="left-tab active" data-ltab="formulation">Formulation</button>
-      <button class="left-tab" data-ltab="cellparams">Cell Params</button>
       <button class="left-tab" data-ltab="layers">Layers</button>
+      <button class="left-tab" data-ltab="cellparams">Cell Params</button>
     </div>
 
     <!-- TAB 1: Formulation -->
@@ -221,23 +221,26 @@
         <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
         <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
         <button class="btn-sm" id="btnAddExperimental" style="background:#d97706;color:#fff;font-size:9px" title="Add experimental result with measured data">+ Experimental</button>
-        <button class="btn-sm" id="btnInventory" onclick="openInventoryModal()" style="background:#0891b2;color:#fff;font-size:9px" title="Inventory management">&#128230; Inventory</button>
+        <a href="inventory.html" class="btn-sm" id="btnInventory" style="background:#0891b2;color:#fff;font-size:9px;text-decoration:none;display:inline-flex;align-items:center;padding:4px 8px;border-radius:3px" title="Open Inventory Dashboard">&#128230; Inventory</a>
         <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
       </div>
     </div>
   </div>
   <div class="right">
-    <div class="info-bar" id="infoBar"></div>
-    <div class="view-tabs">
-      <button class="view-tab active" data-view="side">Side</button>
-      <button class="view-tab" data-view="top">Top</button>
-      <button class="view-tab" data-view="unroll">Unroll</button>
-      <button class="view-tab" data-view="tabmap">Tab Map</button>
-      <button class="view-tab" data-view="3d">3D</button>
-    </div>
-    <div class="canvas-wrap" id="canvasWrap">
-      <canvas id="mainCanvas"></canvas>
-      <div id="threeContainer" style="display:none"></div>
+    <div class="top-section" id="topSection">
+      <div class="info-bar" id="infoBar"></div>
+      <div class="view-tabs">
+        <button class="view-tab active" data-view="side">Side</button>
+        <button class="view-tab" data-view="top">Top</button>
+        <button class="view-tab" data-view="unroll">Unroll</button>
+        <button class="view-tab" data-view="tabmap">Tab Map</button>
+        <button class="view-tab" data-view="3d">3D</button>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="mainCanvas"></canvas>
+        <div id="threeContainer" style="display:none"></div>
+      </div>
+      <div class="top-toggle" id="topToggle">&#9650; Collapse Visual Design</div>
     </div>
     <div class="bottom-section" id="bottomSection">
       <div class="bottom-toggle" id="bottomToggle">&#9660; Summary &amp; Tab Positions</div>
@@ -386,19 +389,19 @@
   </div>
 </div>
 
-<script src="js/api.js?v=20260501c"></script>
-<script src="js/auth.js?v=20260501c"></script>
-<script src="js/formulation.js?v=20260501c"></script>
-<script src="js/presets.js?v=20260501c"></script>
-<script src="js/state.js?v=20260501c"></script>
-<script src="js/sim-engine.js?v=20260501c"></script>
-<script src="js/capacity.js?v=20260501c"></script>
-<script src="js/ui.js?v=20260501c"></script>
-<script src="js/views.js?v=20260501c"></script>
-<script src="js/three-view.js?v=20260501c"></script>
-<script src="js/events.js?v=20260501c"></script>
-<script src="js/inventory-check.js?v=20260501c"></script>
-<script src="js/inventory-ui.js?v=20260501c"></script>
-<script src="js/bom.js?v=20260501c"></script>
+<script src="js/api.js?v=20260501d"></script>
+<script src="js/auth.js?v=20260501d"></script>
+<script src="js/formulation.js?v=20260501d"></script>
+<script src="js/presets.js?v=20260501d"></script>
+<script src="js/state.js?v=20260501d"></script>
+<script src="js/sim-engine.js?v=20260501d"></script>
+<script src="js/capacity.js?v=20260501d"></script>
+<script src="js/ui.js?v=20260501d"></script>
+<script src="js/views.js?v=20260501d"></script>
+<script src="js/three-view.js?v=20260501d"></script>
+<script src="js/events.js?v=20260501d"></script>
+<script src="js/inventory-check.js?v=20260501d"></script>
+<script src="js/inventory-ui.js?v=20260501d"></script>
+<script src="js/bom.js?v=20260501d"></script>
 </body>
 </html>

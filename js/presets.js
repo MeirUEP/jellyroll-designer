@@ -297,4 +297,19 @@ document.getElementById('bottomToggle').addEventListener('click', () => {
   setTimeout(() => renderView(), 50);
 });
 
+// Top section toggle (visual design area: info-bar + view-tabs + canvas)
+const topToggleEl = document.getElementById('topToggle');
+if (topToggleEl) {
+  topToggleEl.addEventListener('click', () => {
+    const ts = document.getElementById('topSection');
+    ts.classList.toggle('collapsed');
+    const collapsed = ts.classList.contains('collapsed');
+    const icon = collapsed ? '&#9660;' : '&#9650;';
+    const label = collapsed ? 'Expand Visual Design' : 'Collapse Visual Design';
+    topToggleEl.innerHTML = icon + ' ' + label;
+    // Re-render so the canvas resizes to the new viewport when expanded
+    setTimeout(() => { if (typeof renderView === 'function') renderView(); }, 50);
+  });
+}
+
 // ========== STATE ==========

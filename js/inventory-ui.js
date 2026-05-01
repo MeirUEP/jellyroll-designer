@@ -54,7 +54,10 @@ async function refreshInventoryCache() {
 }
 
 function showInvAction(action) {
-  document.getElementById('invActionPicker').value = action;
+  // The dashboard's modal in inventory.html doesn't include the action-picker
+  // dropdown (it has its own Action buttons), so guard this reference.
+  const picker = document.getElementById('invActionPicker');
+  if (picker) picker.value = action;
   const forms = ['invFormAddItem', 'invFormUpdateItem', 'invFormReceive', 'invFormCount', 'invFormRecipe', 'invFormProduction'];
   forms.forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('invStatus').textContent = '';
