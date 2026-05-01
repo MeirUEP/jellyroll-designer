@@ -509,16 +509,50 @@ New collapsible "Cell Assembly (BOM Overhead)" section at bottom of Cell Params 
 
 Files changed: `js/state.js`, `js/bom.js`, `js/api.js`, `js/presets.js`, `css/style.css`, `designer.html`
 
-### Phase 7 — Stretch (timing TBD)
+### ✅ Phase 4b (partial) — Designer cleanup (2026-05-01)
+
+Per decision 18, the cyan "Inventory" button in the designer's bottom action bar was supposed to be removed once the dashboard shipped. The minimum-risk path was taken: **the button stays but now navigates to `/inventory.html`** instead of opening the in-page modal (changed from `<button onclick="openInventoryModal()">` to `<a href="inventory.html">`). The `<div id="modalInventory">` markup remains in `designer.html` as dead code — kept for now to minimize blast radius. Full removal of the modal markup deferred.
+
+This also fulfills item 3 in the polish round (cross-navigation Designer → Dashboard).
+
+### ✅ Phase 8 — Operational dashboard (DONE 2026-05-01)
+
+Pivoted from valuation/cost-focused dashboard expansion (originally proposed) to operational visibility — the team's stated need: "easy to follow our inventory + easy to understand what we need to order and when".
+
+**Backend additions** (uvicorn restart required, done 2026-05-01):
+
+- `GET /api/v1/inventory/transactions` — paginated all-items ledger with item name + lot number joined in. Filters: `item_id`, `reason`, `since`, `until`, `limit/offset`.
+- `GET /api/v1/inventory/consumption-stats?days=30` — per-item average daily consumption over a trailing window. Counts only `reason in ('production','scrap')` outflows. Returns qty_consumed, txn_count, last_consumed_at, daily_use, plus the item's quantity / reorder_point / lead_time_days for one-call rendering.
+
+**API client additions** (`js/api.js`):
+- `listAllTransactions(params)` and `consumptionStats(days)`
+
+**Frontend** (`inventory.html` + `js/inventory-dashboard.js`):
+- Top-level tab structure: **Items / Reorder / Activity**
+- **Reorder tab** — the headline. Per row: status badge (STOCKOUT / CRITICAL / SOON / OK / NO DATA), item, supplier, on-hand, daily use, days remaining, lead time, reorder point, suggested timing.
+  - Status logic: stockout if qty≤0; critical if days_remaining < lead_time OR qty ≤ reorder_point; soon if days_remaining < 1.5 × lead_time OR qty ≤ 1.25 × reorder_point; nodata if no consumption in window; otherwise OK.
+  - Window selector: 30 / 60 / 90 / 180 days.
+  - "Hide OK items" filter.
+  - **Inline-edit** `reorder_point` and `lead_time_days` directly from the table (PUT `/inventory/{id}` on change).
+  - Sortable by every column; legend at top.
+- **Activity tab** — reverse-chrono ledger. Color-coded reason badges (received / production / scrap / count / adjustment / return). Filters: reason / item / since-date. Paginated 50/page with prev/next.
+
+**Add Item + Update Item forms** now expose `lead_time_days` (column already existed in DB from Phase 1, just hadn't been surfaced).
+
+Status as of 2026-05-01: all tabs render, inline edit persists, both endpoints return HTTP 200. Reorder tab shows "NO DATA" for every item today because there are no production transactions yet — once the team starts logging production, items with consumption automatically light up with real urgency colors.
+
+### Phase 9 — Stretch (timing TBD)
 
 - **Lot recall lookup UI** ("show me all production batches that used lot X")
-- **Transactions ledger** view in the dashboard
-- **Production log history** view in the dashboard
+- **Production log history** view (designs consumed, batches produced)
 - **Supplier-grouped views** (which items come from which supplier; supplier sensitivity analysis)
 - **What-if price sliders** in the BOM tab
 - **CSV export** for items/lots/transactions
-- **Dynamic reorder point** computation (consumption_rate × lead_time × safety_factor) on the dashboard
+- **Dynamic reorder point** auto-suggestion (consumption_rate × lead_time × safety_factor) — currently the user inputs both numbers; could suggest based on history.
 - **User roles** (operator vs engineer vs admin)
+- **Item drill-in / drawer** on dashboard (click → side panel with full item history without opening modal)
+- **Total Lots** stat card currently shows `—` (cosmetic; needs either a `lot_count` field on inventory item API response or a separate endpoint)
+- **Full removal** of the dead inventory modal markup from `designer.html`
 
 ---
 
@@ -576,14 +610,21 @@ Status as of 2026-04-30:
 | BOM tab — PV/Gigascale toggle | | | | | ✅ done | | |
 | Cell params — nominal voltage field | | | | | | ✅ done | |
 | Cell params — `bom_overhead` dropdowns | | | | | | ✅ done | |
+| Phase 8 — Reorder tab (consumption × lead time) | ✅ done | | | | | | |
+| Phase 8 — Activity tab (transaction ledger) | ✅ done | | | | | | |
+| Phase 8 — Backend `/inventory/transactions` | ✅ done | | | | | | |
+| Phase 8 — Backend `/inventory/consumption-stats` | ✅ done | | | | | | |
+| Phase 8 — Lead-time field in item forms | ✅ done | | | | | | |
 | Lot recall lookup UI | | | | | | | ⏳ |
-| Transactions ledger view | | | | | | | ⏳ |
 | Production log history view | | | | | | | ⏳ |
 | What-if price sliders | | | | | | | ⏳ |
 | Supplier sensitivity | | | | | | | ⏳ |
 | CSV export | | | | | | | ⏳ |
-| Dynamic reorder point | | | | | | | ⏳ |
+| Dynamic reorder-point auto-suggestion | | | | | | | ⏳ |
 | User roles | | | | | | | ⏳ |
+| Item drill-in / drawer on dashboard | | | | | | | ⏳ |
+| Total Lots stat card (cosmetic) | | | | | | | ⏳ |
+| Full removal of dead inventory modal in designer | | | | | | | ⏳ |
 
 **Completed 2026-05-01: P3 + P4 + P5 + P6 done in same session.**
 

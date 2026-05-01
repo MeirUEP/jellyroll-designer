@@ -86,6 +86,7 @@ See `docs/BOM_AND_LOT_INTEGRATED_STRATEGY_2026-04-24.md` for full phase tracking
 - Phase 2 (Backend API): Done
 - Phase 3 (Designer inventory forms): Done
 - Phase 4 (Inventory dashboard): Done
-- Phase 4b (Remove inv from designer): Pending — after dashboard confirmed working
+- Phase 4b (Remove inv-modal entry from designer): Partial — cyan button now navigates to /inventory.html instead of opening the modal; modal markup still present in designer.html as dead code (cleanup deferred).
 - Phase 5 (BOM tab): Done
 - Phase 6 (Cell params extension): Done
+- Phase 8 (Reorder + Activity tabs on dashboard): Done — operational visibility (transaction ledger) and reorder planning (FIFO consumption rate × lead time) live as of 2026-05-01.
