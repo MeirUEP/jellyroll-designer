@@ -50,14 +50,16 @@ function updateSummary() {
     .map(c => `<div class="summary-card"><div class="val" style="${c.cls||''}">${c.val}</div><div class="lbl">${c.lbl}</div></div>`).join('');
 }
 
-// Which results tab is currently active: 'summary' or 'inventory'
+// Which results tab is currently active: 'summary', 'inventory', or 'bom'
 let _activeResultsTab = 'summary';
 function switchResultsTab(name) {
   _activeResultsTab = name;
   updateTable();
-  // Trigger the inventory check when its tab becomes active
   if (name === 'inventory' && typeof runInventoryCheck === 'function') {
     runInventoryCheck();
+  }
+  if (name === 'bom' && typeof renderBOM === 'function') {
+    renderBOM();
   }
 }
 
@@ -74,7 +76,17 @@ function updateTable() {
       <button class="results-tab ${_activeResultsTab === 'inventory' ? 'active' : ''}"
               style="padding:4px 10px;font-size:10px;border:none;border-bottom:2px solid ${_activeResultsTab === 'inventory' ? 'var(--accent)' : 'transparent'};background:transparent;color:${_activeResultsTab === 'inventory' ? 'var(--fg)' : 'var(--fg2)'};cursor:pointer"
               onclick="switchResultsTab('inventory')">Inventory Check</button>
+      <button class="results-tab ${_activeResultsTab === 'bom' ? 'active' : ''}"
+              style="padding:4px 10px;font-size:10px;border:none;border-bottom:2px solid ${_activeResultsTab === 'bom' ? 'var(--accent)' : 'transparent'};background:transparent;color:${_activeResultsTab === 'bom' ? 'var(--fg)' : 'var(--fg2)'};cursor:pointer"
+              onclick="switchResultsTab('bom')">BOM</button>
     </div>`;
+
+  if (_activeResultsTab === 'bom') {
+    document.getElementById('resultsArea').innerHTML = tabBar +
+      `<div id="bomPanel"><div style="padding:14px;color:var(--fg2);font-size:11px">Loading BOM&hellip;</div></div>`;
+    if (typeof renderBOM === 'function') renderBOM();
+    return;
+  }
 
   if (_activeResultsTab === 'inventory') {
     document.getElementById('resultsArea').innerHTML = tabBar +

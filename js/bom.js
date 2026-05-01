@@ -1,6 +1,6 @@
 // ========== BOM TAB (Bill of Materials) ==========
+// Renders into #bomPanel in the bottom results area.
 // Computes per-cell cost from loaded design + inventory costs.
-// All calculations are client-side using cloudInventory cache.
 
 const BOM_COLORS = {
   paste: '#3b82f6',
@@ -14,20 +14,15 @@ const BOM_COLORS = {
 const BOM_ORDER = ['paste', 'mesh', 'tabs', 'separator', 'electrolyte', 'housing'];
 
 function renderBOM() {
+  const panel = document.getElementById('bomPanel');
+  if (!panel) return;
+
   if (!simResult || !capResult) {
-    document.getElementById('bomCostPerCell').textContent = '—';
-    document.getElementById('bomDollarPerKwh').textContent = '—';
-    document.getElementById('bomEnergyWh').textContent = '—';
-    document.getElementById('bomMassKg').textContent = '—';
-    document.getElementById('bomDollarPerKg').textContent = '—';
-    document.getElementById('bomLineBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--fg2);padding:12px">Run simulation first</td></tr>';
-    document.getElementById('bomLineFoot').innerHTML = '';
-    document.getElementById('bomPieChart').innerHTML = '';
-    document.getElementById('bomPieLegend').innerHTML = '';
+    panel.innerHTML = '<div style="padding:14px;color:var(--fg2);font-size:11px">Run simulation first to see BOM cost breakdown.</div>';
     return;
   }
 
-  const regime = document.getElementById('bomRegime').value;
+  const regime = _bomRegime;
   const lines = computeBOMLines(regime);
   const totalCost = lines.reduce((s, l) => s + l.costPerCell, 0);
 
@@ -37,16 +32,8 @@ function renderBOM() {
   const dollarPerKwh = energyWh > 0 ? (totalCost / energyWh * 1000) : 0;
   const dollarPerKg = massKg > 0 ? (totalCost / massKg) : 0;
 
-  // Summary cards
-  document.getElementById('bomCostPerCell').textContent = totalCost > 0 ? '$' + totalCost.toFixed(2) : '—';
-  document.getElementById('bomDollarPerKwh').textContent = dollarPerKwh > 0 ? '$' + dollarPerKwh.toFixed(0) : '—';
-  document.getElementById('bomEnergyWh').textContent = energyWh > 0 ? energyWh.toFixed(1) : '—';
-  document.getElementById('bomMassKg').textContent = massKg > 0 ? massKg.toFixed(2) : '—';
-  document.getElementById('bomDollarPerKg').textContent = dollarPerKg > 0 ? '$' + dollarPerKg.toFixed(2) : '—';
-
-  // Line items table
-  const tbody = document.getElementById('bomLineBody');
-  tbody.innerHTML = lines.map(l => {
+  // Build line items rows
+  const lineRows = lines.map(l => {
     const costStr = l.costPerUnit != null ? '$' + l.costPerUnit.toFixed(4) : '—';
     const cellCostStr = l.costPerCell > 0 ? '$' + l.costPerCell.toFixed(4) : '—';
     const missing = l.costPerUnit == null;
@@ -60,18 +47,65 @@ function renderBOM() {
     </tr>`;
   }).join('');
 
-  document.getElementById('bomLineFoot').innerHTML = `
-    <tr style="border-top:2px solid var(--border);font-weight:bold">
-      <td colspan="5" style="text-align:right;padding:4px">Total</td>
-      <td style="text-align:right;padding:4px">$${totalCost.toFixed(2)}</td>
-    </tr>`;
+  // Build pie chart SVG
+  const pieHtml = buildBOMPieSVG(lines);
 
-  // Pie chart
-  renderBOMPie(lines);
+  panel.innerHTML = `
+    <div style="padding:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:12px">Bill of Materials</strong>
+        <select id="bomRegimeSelect" style="font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg)" onchange="_bomRegime=this.value;localStorage.setItem('jr_bom_regime',this.value);renderBOM()">
+          <option value="present" ${regime === 'present' ? 'selected' : ''}>Present Volume</option>
+          <option value="gigascale" ${regime === 'gigascale' ? 'selected' : ''}>Gigascale</option>
+        </select>
+      </div>
 
-  // Populate compare dropdown
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
+        <div><div style="font-size:18px;font-weight:bold">${totalCost > 0 ? '$' + totalCost.toFixed(2) : '—'}</div><div style="font-size:9px;color:var(--fg2)">$/cell</div></div>
+        <div><div style="font-size:18px;font-weight:bold">${dollarPerKwh > 0 ? '$' + dollarPerKwh.toFixed(0) : '—'}</div><div style="font-size:9px;color:var(--fg2)">$/kWh</div></div>
+        <div><div style="font-size:18px;font-weight:bold">${energyWh > 0 ? energyWh.toFixed(1) : '—'}</div><div style="font-size:9px;color:var(--fg2)">Wh</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
+        <div><div style="font-size:14px;font-weight:bold">${massKg > 0 ? massKg.toFixed(2) : '—'}</div><div style="font-size:9px;color:var(--fg2)">mass (kg)</div></div>
+        <div><div style="font-size:14px;font-weight:bold">${dollarPerKg > 0 ? '$' + dollarPerKg.toFixed(2) : '—'}</div><div style="font-size:9px;color:var(--fg2)">$/kg</div></div>
+      </div>
+
+      ${pieHtml}
+
+      <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:8px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:3px 4px;color:var(--fg2)">Category</th>
+            <th style="text-align:left;padding:3px 4px;color:var(--fg2)">Component</th>
+            <th style="text-align:right;padding:3px 4px;color:var(--fg2)">Qty</th>
+            <th style="text-align:left;padding:3px 4px;color:var(--fg2)">Unit</th>
+            <th style="text-align:right;padding:3px 4px;color:var(--fg2)">$/Unit</th>
+            <th style="text-align:right;padding:3px 4px;color:var(--fg2)">$/Cell</th>
+          </tr>
+        </thead>
+        <tbody>${lineRows}</tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border);font-weight:bold">
+            <td colspan="5" style="text-align:right;padding:4px">Total</td>
+            <td style="text-align:right;padding:4px">$${totalCost.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+        <strong style="font-size:10px">Compare to Saved Design</strong>
+        <select id="bomCompareDesign" style="width:100%;padding:3px;font-size:10px;margin-top:4px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg)" onchange="loadBOMComparison()">
+          <option value="">— None —</option>
+        </select>
+        <div id="bomCompareResult" style="margin-top:6px;font-size:10px"></div>
+      </div>
+    </div>
+  `;
+
   populateBOMCompareDropdown();
 }
+
+let _bomRegime = localStorage.getItem('jr_bom_regime') || 'present';
 
 function computeBOMLines(regime) {
   const lines = [];
@@ -85,41 +119,35 @@ function computeBOMLines(regime) {
   function addLine(category, name, qty, unit, inv) {
     const costPerUnit = getCost(inv);
     lines.push({
-      category,
-      name,
-      qty,
-      unit,
-      costPerUnit,
+      category, name, qty, unit, costPerUnit,
       costPerCell: costPerUnit != null ? qty * costPerUnit : 0,
-      inventoryItem: inv,
     });
   }
 
-  // --- PASTE: cathode + anode mix components ---
   const cathode = layers.find(l => l.type === 'cathode');
   const anode = layers.find(l => l.type === 'anode');
 
+  // Paste: cathode mix components
   if (cathode && capResult) {
     const pasteMassG = capResult.cathPasteMass || 0;
     (typeof cathComponents !== 'undefined' ? cathComponents : []).forEach(comp => {
-      const wtFrac = (comp.wt || 0) / 100;
-      const qtyKg = pasteMassG * wtFrac / 1000;
+      const qtyKg = pasteMassG * (comp.wt || 0) / 100 / 1000;
       const inv = comp.inventory_item_id ? invById(comp.inventory_item_id) : invByName(comp.name);
       addLine('paste', comp.name, qtyKg, 'kg', inv);
     });
   }
 
+  // Paste: anode mix components
   if (anode && capResult) {
     const pasteMassG = capResult.anodPasteMass || 0;
     (typeof anodComponents !== 'undefined' ? anodComponents : []).forEach(comp => {
-      const wtFrac = (comp.wt || 0) / 100;
-      const qtyKg = pasteMassG * wtFrac / 1000;
+      const qtyKg = pasteMassG * (comp.wt || 0) / 100 / 1000;
       const inv = comp.inventory_item_id ? invById(comp.inventory_item_id) : invByName(comp.name);
       addLine('paste', comp.name, qtyKg, 'kg', inv);
     });
   }
 
-  // --- MESH: current collectors ---
+  // Mesh: current collectors
   if (cathode && capResult) {
     const meshLenM = (capResult.cathLenMm || simResult.cathodeLen || 0) / 1000;
     const meshInv = invByName(elecProps.cath_cc_material) || null;
@@ -131,7 +159,7 @@ function computeBOMLines(regime) {
     if (meshLenM > 0) addLine('mesh', elecProps.anod_cc_material || 'Anode mesh', meshLenM, 'm', meshInv);
   }
 
-  // --- SEPARATOR: each separator layer ---
+  // Separators
   layers.filter(l => l.type === 'separator').forEach(l => {
     const lenM = (l.computedLen || l.len || 0) / 1000;
     if (lenM <= 0) return;
@@ -139,7 +167,7 @@ function computeBOMLines(regime) {
     addLine('separator', l.name, lenM, 'm', inv);
   });
 
-  // --- TABS: from simulation result ---
+  // Tabs
   if (simResult) {
     if (simResult.cTabs.length > 0) {
       const tabInv = invByName('Nickel Tab Strip') || invByName('Cathode tabs') || null;
@@ -151,7 +179,7 @@ function computeBOMLines(regime) {
     }
   }
 
-  // --- OVERHEAD: from cell_params.bom_overhead (Phase 6) ---
+  // Overhead (Phase 6)
   const overhead = params.bom_overhead || {};
   Object.entries(overhead).forEach(([key, cfg]) => {
     if (!cfg || !cfg.inv_id) return;
@@ -160,7 +188,6 @@ function computeBOMLines(regime) {
     addLine(cat, inv ? inv.name : key, cfg.qty || 0, cfg.unit || 'pcs', inv);
   });
 
-  // Sort by category order then name
   lines.sort((a, b) => {
     const ai = BOM_ORDER.indexOf(a.category);
     const bi = BOM_ORDER.indexOf(b.category);
@@ -171,118 +198,79 @@ function computeBOMLines(regime) {
   return lines;
 }
 
-// ========== PIE CHART (SVG) ==========
-function renderBOMPie(lines) {
-  const chartEl = document.getElementById('bomPieChart');
-  const legendEl = document.getElementById('bomPieLegend');
-
-  // Aggregate by category
+function buildBOMPieSVG(lines) {
   const catTotals = {};
-  lines.forEach(l => {
-    catTotals[l.category] = (catTotals[l.category] || 0) + l.costPerCell;
-  });
-
+  lines.forEach(l => { catTotals[l.category] = (catTotals[l.category] || 0) + l.costPerCell; });
   const total = Object.values(catTotals).reduce((s, v) => s + v, 0);
-  if (total <= 0) {
-    chartEl.innerHTML = '<p style="color:var(--fg2);font-size:10px">No cost data</p>';
-    legendEl.innerHTML = '';
-    return;
-  }
+  if (total <= 0) return '';
 
-  const entries = BOM_ORDER
-    .filter(cat => catTotals[cat] > 0)
+  const entries = BOM_ORDER.filter(cat => catTotals[cat] > 0)
     .map(cat => ({ cat, val: catTotals[cat], pct: catTotals[cat] / total * 100 }));
 
-  // SVG pie
-  const size = 140, cx = size / 2, cy = size / 2, r = 55;
+  const size = 120, cx = size / 2, cy = size / 2, r = 50;
   let angle = -Math.PI / 2;
   let paths = '';
 
   entries.forEach(e => {
     const sweep = (e.val / total) * Math.PI * 2;
-    const x1 = cx + r * Math.cos(angle);
-    const y1 = cy + r * Math.sin(angle);
-    const x2 = cx + r * Math.cos(angle + sweep);
-    const y2 = cy + r * Math.sin(angle + sweep);
-    const large = sweep > Math.PI ? 1 : 0;
-    paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} Z" fill="${BOM_COLORS[e.cat] || '#888'}"/>`;
+    const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+    const x2 = cx + r * Math.cos(angle + sweep), y2 = cy + r * Math.sin(angle + sweep);
+    paths += `<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${BOM_COLORS[e.cat] || '#888'}"/>`;
     angle += sweep;
   });
 
-  chartEl.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
-
-  legendEl.innerHTML = entries.map(e =>
-    `<span style="display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${BOM_COLORS[e.cat]}"></span>${e.cat} ${e.pct.toFixed(0)}%</span>`
+  const legend = entries.map(e =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${BOM_COLORS[e.cat]}"></span>${e.cat} ${e.pct.toFixed(0)}%</span>`
   ).join('');
+
+  return `<div style="text-align:center;margin-bottom:6px">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>
+    <div style="font-size:9px;margin-top:4px">${legend}</div>
+  </div>`;
 }
 
-// ========== DESIGN COMPARISON ==========
 async function populateBOMCompareDropdown() {
   const sel = document.getElementById('bomCompareDesign');
   if (!sel || !isApiConfigured()) return;
-  const current = sel.value;
   try {
     const data = await api.listDesigns(0, 50);
+    const current = sel.value;
     sel.innerHTML = '<option value="">— None —</option>';
     (data.items || []).forEach(d => {
       if (d.id === currentDesignId) return;
       sel.innerHTML += `<option value="${d.id}" ${d.id === current ? 'selected' : ''}>${d.name}</option>`;
     });
-  } catch (e) { /* silently skip if API unavailable */ }
+  } catch (e) { /* skip */ }
 }
 
 async function loadBOMComparison() {
   const designId = document.getElementById('bomCompareDesign').value;
   const resultEl = document.getElementById('bomCompareResult');
+  if (!resultEl) return;
   if (!designId) { resultEl.innerHTML = ''; return; }
 
   try {
     resultEl.innerHTML = '<em style="color:var(--fg2)">Loading...</em>';
     const design = await api.getDesign(designId);
-    if (!design || !design.sim_result || !design.cap_result) {
-      resultEl.innerHTML = '<em style="color:var(--fg2)">No simulation data for this design</em>';
+    if (!design || !design.cap_result) {
+      resultEl.innerHTML = '<em style="color:var(--fg2)">No capacity data for this design</em>';
       return;
     }
 
-    const regime = document.getElementById('bomRegime').value;
-    const myLines = computeBOMLines(regime);
-    const myCost = myLines.reduce((s, l) => s + l.costPerCell, 0);
-
-    // Estimate other design's cost from its sim/cap results (simplified)
-    const otherCap = design.cap_result.full_result || {};
     const nomV = (design.cell_params || design.params || {}).nominal_voltage_v || 1.2;
     const otherEnergy = (design.cap_result.cell_cap_ah || 0) * nomV;
-
-    const myEnergy = capResult.cellCapAh * (params.nominal_voltage_v || 1.2);
+    const myNomV = params.nominal_voltage_v || 1.2;
+    const myEnergy = capResult.cellCapAh * myNomV;
+    const myLines = computeBOMLines(_bomRegime);
+    const myCost = myLines.reduce((s, l) => s + l.costPerCell, 0);
     const myKwh = myEnergy > 0 ? myCost / myEnergy * 1000 : 0;
 
     resultEl.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px">
-        <div>
-          <strong>Current design</strong><br>
-          Cost: $${myCost.toFixed(2)}/cell<br>
-          Energy: ${myEnergy.toFixed(1)} Wh<br>
-          $/kWh: $${myKwh.toFixed(0)}
-        </div>
-        <div>
-          <strong>${design.name}</strong><br>
-          Energy: ${otherEnergy.toFixed(1)} Wh<br>
-          Cap: ${(design.cap_result.cell_cap_ah || 0).toFixed(1)} Ah<br>
-          N:P: ${(design.cap_result.np_ratio || 0).toFixed(3)}
-        </div>
-      </div>
-    `;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10px">
+        <div><strong>Current</strong><br>$${myCost.toFixed(2)}/cell &bull; ${myEnergy.toFixed(1)} Wh &bull; $${myKwh.toFixed(0)}/kWh</div>
+        <div><strong>${design.name}</strong><br>${otherEnergy.toFixed(1)} Wh &bull; ${(design.cap_result.cell_cap_ah || 0).toFixed(1)} Ah &bull; N:P ${(design.cap_result.np_ratio || 0).toFixed(3)}</div>
+      </div>`;
   } catch (e) {
     resultEl.innerHTML = `<em style="color:var(--red)">Error: ${e.message}</em>`;
   }
 }
-
-// Persist regime choice
-const savedRegime = localStorage.getItem('jr_bom_regime');
-if (savedRegime) {
-  const sel = document.getElementById('bomRegime');
-  if (sel) sel.value = savedRegime;
-}
-document.getElementById('bomRegime')?.addEventListener('change', () => {
-  localStorage.setItem('jr_bom_regime', document.getElementById('bomRegime').value);
-});
