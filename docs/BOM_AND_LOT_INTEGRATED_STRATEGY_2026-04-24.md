@@ -475,23 +475,39 @@ Per decision 18 — once the dashboard is the primary surface for inventory ops,
 - The Formulation tab's read-only inventory dropdowns (mesh selector, chemical adders) stay — those are designer-internal reads.
 - Cross-link: add a small "Manage inventory" link in the designer header that opens `/inventory.html` in a new tab, in case a designer needs to receive a shipment without losing their loaded design.
 
-### Phase 5 — Frontend BOM tab inside Designer (~1.5 days, NOT STARTED)
+### ✅ Phase 5 — Frontend BOM tab inside Designer (DONE 2026-05-01)
 
-Inside the Designer page, between the Formulation tab and the Layers tab. Computes per-cell cost from the loaded design.
+BOM is a tab in the bottom results area (3rd tab after Summary & Capacity and Inventory Check). Computes per-cell cost from the loaded design.
 
-- New tab "BOM" in the designer's top nav.
-- Summary cards (cost/cell, Wh, $/kWh, mass, $/kg) — design A, optional design B for compare mode.
-- Category pie chart (plain SVG; no chart lib).
-- Cost/kWh vs energy line chart (60–200 Wh sweep; PV solid + Gigascale dashed).
-- Line-items table grouped by `bom_category`.
-- PV/Gigascale toggle in tab header, persisted in localStorage.
-- Compare-to-saved-design panel.
+Implemented in `js/bom.js` (renders dynamically into `#bomPanel`):
+- Summary cards: $/cell, $/kWh, Wh, mass (kg), $/kg
+- Category breakdown pie chart (plain SVG, 6 categories: paste, mesh, tabs, separator, electrolyte, housing)
+- Line-items table: category, component, qty, unit, $/unit, $/cell — with total row
+- PV/Gigascale toggle in tab header, persisted in localStorage
+- Compare-to-saved-design panel (loads other design's capacity results)
+- Costs computed from: cathode/anode mix components × paste mass, mesh length, separator computed lengths, tab counts, bom_overhead overhead components
+- Items without inventory cost data shown faded with "(no cost)" label
 
-### Phase 6 — Cell-params extension inside Designer (~half day, can parallelize with Phase 5)
+Not yet implemented (deferred):
+- Cost/kWh vs energy line chart (60–200 Wh sweep)
+- Full side-by-side design comparison with delta highlighting
 
-- Add `nominal_voltage_v` field to the Cell Parameters tab (default 1.2 V).
-- Add the `bom_overhead` block — 11 inventory dropdowns (terminals, electrolyte, O-rings, vent caps, tape, lids, can, labels, epoxy, devcon, kapton) each with a qty + unit field. Stored in `cell_params.bom_overhead` JSONB.
-- Update `applyDesignPreset` / `getDesignPreset` to round-trip these fields.
+### ✅ Phase 6 — Cell-params extension inside Designer (DONE 2026-05-01)
+
+New collapsible "Cell Assembly (BOM Overhead)" section at bottom of Cell Params tab:
+
+- `nominal_voltage_v` field (default 1.2 V) — used by BOM tab for energy (Wh) and $/kWh calculations
+- 11 inventory dropdowns for fixed-quantity overhead components:
+  can (1 pcs), lid (1 pcs), terminals (2 pcs), O-rings (2 pcs),
+  electrolyte (0.7 kg), tape (116 in), vent cap (1 pcs), label (1 pcs),
+  epoxy (0.047 L), devcon (0.667 ml), kapton (0.15 m)
+- Each row: inventory item selector + qty input + unit label
+- Collapsed by default (click header ► arrow to expand)
+- Selections saved to `params.bom_overhead` JSONB
+- Dropdowns auto-populated from `cloudInventory` when cache loads
+- Round-tripped through `getDesignPreset()` / `applyDesignPreset()`
+
+Files changed: `js/state.js`, `js/bom.js`, `js/api.js`, `js/presets.js`, `css/style.css`, `designer.html`
 
 ### Phase 7 — Stretch (timing TBD)
 
@@ -552,14 +568,14 @@ Status as of 2026-04-30:
 | Lots sub-row expand | | | | ✅ done | | | |
 | Quick-stat cards + low-stock callout | | | | ✅ done | | | |
 | Remove Inv Management button from Designer (P4b) | | | | ⏳ | | | |
-| BOM tab — summary cards | | | | | ⏳ | | |
-| BOM tab — pie chart | | | | | ⏳ | | |
-| BOM tab — line-items table | | | | | ⏳ | | |
+| BOM tab — summary cards | | | | | ✅ done | | |
+| BOM tab — pie chart | | | | | ✅ done | | |
+| BOM tab — line-items table | | | | | ✅ done | | |
 | BOM tab — $/kWh chart | | | | | ⏳ | | |
-| BOM tab — design comparison | | | | | ⏳ | | |
-| BOM tab — PV/Gigascale toggle | | | | | ⏳ | | |
-| Cell params — nominal voltage field | | | | | | ⏳ | |
-| Cell params — `bom_overhead` dropdowns | | | | | | ⏳ | |
+| BOM tab — design comparison | | | | | ✅ done | | |
+| BOM tab — PV/Gigascale toggle | | | | | ✅ done | | |
+| Cell params — nominal voltage field | | | | | | ✅ done | |
+| Cell params — `bom_overhead` dropdowns | | | | | | ✅ done | |
 | Lot recall lookup UI | | | | | | | ⏳ |
 | Transactions ledger view | | | | | | | ⏳ |
 | Production log history view | | | | | | | ⏳ |
@@ -569,31 +585,41 @@ Status as of 2026-04-30:
 | Dynamic reorder point | | | | | | | ⏳ |
 | User roles | | | | | | | ⏳ |
 
-**Estimated remaining: 1.5–2 working days for P4b + P5 + P6.**
+**Completed 2026-05-01: P3 + P4 + P5 + P6 done in same session.**
 
-Completed 2026-05-01: P3 + P4 done in same session.
+**Remaining: P4b only (~1 hour) + stretch items.**
 
-Recommended ordering:
-- **P4b** after confirming dashboard works on VM (quick cleanup, ~1 hour)
-- Then **P5 + P6 in parallel** (BOM tab depends on cell-params overhead inputs; both inside Designer)
+- **P4b** — remove Inventory button from designer after confirming dashboard works on VM
+- **Deferred:** $/kWh vs energy line chart in BOM tab, full side-by-side comparison with delta highlighting
 
 ---
 
-## 7. Next session — Phase 4b + Phase 5 + Phase 6
+## 7. Next session — Phase 4b + Stretch
 
-**Phase 3 + 4: DONE** (2026-05-01). See §4 for execution details.
+**Phases 1–6: ALL DONE** (2026-05-01). See §4 for execution details.
 
 **Decisions still locked in (§5):** FIFO only, recall later, no `requires_lot` flag, pie 6 categories, lot # optional, suppliers independent.
 
 **Phase 4b** — confirm dashboard works on VM, then remove Inventory button from designer (~1 hour).
 
-**Phase 5** — BOM tab inside Designer. New left-panel tab between Formulation and Layers. Per-cell cost calculation from loaded design + inventory costs. PV/Gigascale toggle. Category pie chart (SVG). Design comparison. See §3 for UI mockup.
-
-**Phase 6** — Cell params extension: `nominal_voltage_v` field (default 1.2V), `bom_overhead` block with 11 inventory dropdowns for fixed-overhead components.
-
 **VM restart required:** backend needs restart to pick up new routes for `/designer.html` and `/inventory.html`:
 ```
 systemctl restart jellyroll-api
 ```
+
+**DB migration required:** add experimental result columns (run in Redash or psql):
+```sql
+ALTER TABLE designs ADD COLUMN IF NOT EXISTS is_experimental BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE designs ADD COLUMN IF NOT EXISTS experimental_data JSONB;
+```
+
+**Stretch items ready to tackle:**
+- $/kWh vs energy line chart in BOM tab
+- Full side-by-side design comparison with delta highlighting
+- Lot recall lookup UI
+- Transactions ledger view in dashboard
+- What-if price sliders in BOM tab
+- CSV export for items/lots/transactions
+- Experimental results ML calibration pipeline
 
 When ready to start, just say "go on Phase 3" or "go on Phase 4" or "do both in one push".

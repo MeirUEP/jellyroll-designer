@@ -86,5 +86,5 @@ See `docs/BOM_AND_LOT_INTEGRATED_STRATEGY_2026-04-24.md` for full phase tracking
 - Phase 3 (Designer inventory forms): Done
 - Phase 4 (Inventory dashboard): Done
 - Phase 4b (Remove inv from designer): Pending — after dashboard confirmed working
-- Phase 5 (BOM tab): In progress
-- Phase 6 (Cell params extension): Pending
+- Phase 5 (BOM tab): Done
+- Phase 6 (Cell params extension): Done
