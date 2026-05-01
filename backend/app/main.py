@@ -58,6 +58,22 @@ async def serve_index():
     return {"detail": "index.html not found"}
 
 
-# Serve any other static files (e.g. icons, images) from the repo root
+@app.get("/designer.html")
+async def serve_designer():
+    f = FRONTEND_DIR / "designer.html"
+    if f.exists():
+        return FileResponse(f)
+    return {"detail": "designer.html not found"}
+
+
+@app.get("/inventory.html")
+async def serve_inventory():
+    f = FRONTEND_DIR / "inventory.html"
+    if f.exists():
+        return FileResponse(f)
+    return {"detail": "inventory.html not found"}
+
+
+# Serve any other static files (e.g. icons, images, js/) from the repo root
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static")

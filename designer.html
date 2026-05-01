@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jellyroll Battery Cell Designer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+<script>if (sessionStorage.getItem('jr_auth') !== '1') window.location.href = '/';</script>
+</head>
+<body>
+<div class="app" id="appMain">
+  <div class="mobile-panel-toggle" id="mobileToggle" onclick="toggleMobilePanel()">
+    &#9660; Controls
+  </div>
+  <div class="left" id="leftPanel">
+    <div class="left-tabs">
+      <button class="left-tab active" data-ltab="formulation">Formulation</button>
+      <button class="left-tab" data-ltab="cellparams">Cell Params</button>
+      <button class="left-tab" data-ltab="layers">Layers</button>
+    </div>
+
+    <!-- TAB 1: Formulation -->
+    <div class="left-tab-content active" id="ltab-formulation">
+      <div class="panel">
+        <h3>Cathode Mix</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="cathPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Cathode preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="cathode" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="cathode" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="cathode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+        <table class="comp-table" id="cathMixTable">
+          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th><th></th></tr></thead>
+          <tbody id="cathMixBody"></tbody>
+        </table>
+        <div class="comp-total" id="cathMixTotal">Total: 0%</div>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <select id="cathInvLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add chemical from inventory...</option>
+          </select>
+          <button class="btn-sm" onclick="addCompFromInventory('cathode')">Add</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Cathode Electrode</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_cath_bulk_density" step="0.01" value="2.41"></div>
+          <div class="param-item"><label>Thickness (mm)</label><input type="number" id="ep_cath_thickness" step="0.01" value="1.0"></div>
+        </div>
+        <div style="font-size:9px;color:var(--fg2);margin-top:4px">
+          Solid density: <strong id="cathSolidDens">—</strong> g/cm&sup3; &bull;
+          Composite cap: <strong id="cathCompCap">—</strong> mAh/g
+        </div>
+        <h3 style="margin-top:6px">Cathode Current Collector</h3>
+        <div class="param-grid">
+          <div class="param-item" style="grid-column:span 2"><label>Mesh (from inventory)</label>
+            <select id="ep_cath_mesh_id" style="font-size:10px">
+              <option value="">-- Select mesh from inventory --</option>
+            </select>
+          </div>
+          <div class="param-item"><label>Width (from mesh)</label><input type="number" id="ep_cath_width" readonly style="background:var(--bg3);color:var(--fg2);cursor:not-allowed" title="Inherited from selected mesh width"></div>
+          <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_cath_mesh_dens" step="0.001" value="0.16"></div>
+        </div>
+        <div id="cathMeshStock" style="font-size:9px;color:var(--fg2);margin-top:3px"></div>
+      </div>
+      <div class="panel">
+        <h3>Anode Mix</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="anodPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Anode preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="anode" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="anode" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="anode" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+        <table class="comp-table" id="anodMixTable">
+          <thead><tr><th>Component</th><th>wt%</th><th>&rho; (g/cm&sup3;)</th><th>Cap (mAh/g)</th><th></th></tr></thead>
+          <tbody id="anodMixBody"></tbody>
+        </table>
+        <div class="comp-total" id="anodMixTotal">Total: 0%</div>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <select id="anodInvLib" style="flex:1;padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px">
+            <option value="">+ Add chemical from inventory...</option>
+          </select>
+          <button class="btn-sm" onclick="addCompFromInventory('anode')">Add</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Anode Electrode</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Bulk density (g/cm&sup3;)</label><input type="number" id="ep_anod_bulk_density" step="0.01" value="4.062"></div>
+          <div class="param-item"><label>Thickness (mm)</label><input type="number" id="ep_anod_thickness" step="0.01" value="1.0"></div>
+        </div>
+        <div style="font-size:9px;color:var(--fg2);margin-top:4px">
+          Solid density: <strong id="anodSolidDens">—</strong> g/cm&sup3; &bull;
+          Composite cap: <strong id="anodCompCap">—</strong> mAh/g
+        </div>
+        <h3 style="margin-top:6px">Anode Current Collector</h3>
+        <div class="param-grid">
+          <div class="param-item" style="grid-column:span 2"><label>Mesh (from inventory)</label>
+            <select id="ep_anod_mesh_id" style="font-size:10px">
+              <option value="">-- Select mesh from inventory --</option>
+            </select>
+          </div>
+          <div class="param-item"><label>Width (from mesh)</label><input type="number" id="ep_anod_width" readonly style="background:var(--bg3);color:var(--fg2);cursor:not-allowed" title="Inherited from selected mesh width"></div>
+          <div class="param-item"><label>Linear density (g/in&sup2;)</label><input type="number" id="ep_anod_mesh_dens" step="0.001" value="0.149"></div>
+        </div>
+        <div id="anodMeshStock" style="font-size:9px;color:var(--fg2);margin-top:3px"></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Cell Parameters -->
+    <div class="left-tab-content" id="ltab-cellparams">
+      <div class="panel">
+        <h3>Cell Parameters Preset</h3>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="designPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Load/save cell parameters --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="design" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="design" title="Save (cell parameters only — for full design use ☁ Save Design)" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="design" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Cell Geometry</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Target OD (mm)</label><input type="number" id="p_target_od" step="0.1" value="94"></div>
+          <div class="param-item"><label>Mandrel dia (mm)</label><input type="number" id="p_mandrel_d" step="0.01" value="10.75"></div>
+          <div class="param-item"><label>Cell height (mm)</label><input type="number" id="p_cell_h" step="0.1" value="222"></div>
+          <div class="param-item"><label>Tension factor</label><input type="number" id="p_tension_factor" step="0.01" min="0.5" max="1" value="1" title="1 = perfect winding (no air gaps). Lower = looser winding with air gaps increasing effective pitch."></div>
+          <div class="param-item"><label>Inner gap factor (k)</label><input type="number" id="p_winding_gap_k" step="0.1" min="0" max="20" value="0" title="Separator wrinkling at inner radii: sep_pitch × (1 + k × exp(-(r-r0)/(2r0))). Only inflates separator thickness, electrode thickness stays constant. Higher k = more air gap at tight bending radii. 0 = no effect."></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Winding Sequence</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Insulation pre-turns</label><input type="number" id="p_pre_turns" step="0.1" min="0" value="1.5" title="Separator-only turns before cathode inserts"></div>
+          <div class="param-item"><label>Cath→anode delay (turns)</label><input type="number" id="p_min_cath_to_anod" step="0.1" min="0.1" value="0.5" title="Turns of cathode+separator winding before anode enters. Anode enters from opposite side (180°)."></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Tab Placement</h3>
+        <div class="param-grid">
+          <div class="param-item"><label>Tab width (mm)</label><input type="number" id="p_tab_w" step="0.1" value="10"></div>
+          <div class="param-item"><label>Tab height (mm)</label><input type="number" id="p_tab_h" step="0.1" value="15"></div>
+          <div class="param-item"><label>1st cath tab min (in)</label><input type="number" id="p_first_cath_tab_min_in" step="0.1" value="4.5" title="Min distance along cathode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st cath tab max (in)</label><input type="number" id="p_first_cath_tab_max_in" step="0.1" value="5.0" title="Max distance along cathode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st anod tab min (in)</label><input type="number" id="p_first_anod_tab_min_in" step="0.1" value="6.0" title="Min distance along anode strip to first tab (inches)"></div>
+          <div class="param-item"><label>1st anod tab max (in)</label><input type="number" id="p_first_anod_tab_max_in" step="0.1" value="6.5" title="Max distance along anode strip to first tab (inches)"></div>
+          <div class="param-item"><label>Tab zone (&plusmn; deg)</label><input type="number" id="p_tab_zone_half_deg" step="1" min="1" max="45" value="10" title="Each tab occupies this angular zone around drill angle for safety clearance"></div>
+          <div class="param-item"><label>Min clearance (deg)</label><input type="number" id="p_min_clearance_deg" step="1" min="5" max="90" value="30" title="Minimum angular separation between electrode start/end events and tab zones"></div>
+          <div class="param-item"><label>Length tolerance (mm)</label><input type="number" id="p_length_tolerance" step="1" min="1" max="20" value="5" title="Cut length tolerance for electrodes (±mm)"></div>
+          <div class="param-item"><label>Cathode weld from tab #</label><input type="number" id="p_cath_weld_from_tab" step="1" min="1" value="1" title="Skip inner cathode tabs — start welding from this tab number"></div>
+          <div class="param-item"><label>Anode weld from tab #</label><input type="number" id="p_anod_weld_from_tab" step="1" min="1" value="1" title="Skip inner anode tabs — start welding from this tab number"></div>
+        </div>
+        <div id="drillAngleInfo" style="font-size:9px;color:var(--fg2);margin-top:4px;padding:2px 4px;background:rgba(100,100,100,0.1);border-radius:3px"></div>
+        <div id="constraintWarnings" style="font-size:9px;margin-top:4px;padding:2px 4px;border-radius:3px"></div>
+      </div>
+      <div class="panel" id="panel3d" style="display:none">
+        <h3>3D Display</h3>
+        <div class="param-item"><label>Cutaway (&deg;)</label><input type="range" id="p_cut" min="10" max="360" value="270" style="width:100%"><span id="p_cut_val">270</span></div>
+        <div class="param-item"><label>Layer scale</label><input type="range" id="p_rscale" min="1" max="20" value="3" style="width:100%"><span id="p_rscale_val">3</span></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button class="btn-sm" id="btnSpin">Auto-spin</button>
+          <button class="btn-sm" id="btnResetCam">Reset view</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Layers -->
+    <div class="left-tab-content" id="ltab-layers">
+      <div class="panel" style="flex:1">
+        <h3>Layer Stack</h3>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <select id="layerPreset" style="flex:1;padding:3px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--fg);font-size:10px">
+            <option value="">-- Layer preset --</option>
+          </select>
+          <button class="btn-sm preset-load" data-preset-type="layers" title="Load">Load</button>
+          <button class="btn-sm preset-save" data-preset-type="layers" title="Save" style="background:#16a34a;color:#fff">Save</button>
+          <button class="btn-sm preset-del" data-preset-type="layers" title="Delete" style="background:var(--red);color:#fff">&times;</button>
+        </div>
+        <div id="layerList"></div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">
+          <select id="addLayerMix" style="padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px" onchange="addLayerFromMix()" title="Add a cathode or anode layer from a saved mix">
+            <option value="">+ Add electrode from saved mixes...</option>
+          </select>
+          <select id="addLayerInv" style="padding:2px;border:1px solid var(--border);border-radius:3px;background:var(--input-bg);color:var(--fg);font-size:9px" onchange="addLayerFromInventory()" title="Add a separator (or other wound layer) from inventory. Mesh is part of the cathode/anode design; tabs and tape are cell assembly.">
+            <option value="">+ Add separator / other layer from inventory...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom bar (always visible) -->
+    <div class="left-bottom">
+      <div class="run-bar">
+        <button class="btn-primary" id="btnRun" style="flex:1">Run Simulation</button>
+        <span class="ts" id="runTs"></span>
+      </div>
+      <div class="file-actions">
+        <button class="btn-sm" id="btnExport">CSV</button>
+        <button class="btn-sm" id="btnPDF" style="background:#7c3aed;color:#fff">PDF</button>
+        <button class="btn-cloud" id="btnCloudSave">&#9729; Save Design</button>
+        <button class="btn-cloud" id="btnCloudOpen">&#9729; Open</button>
+        <button class="btn-sm" id="btnAddExperimental" style="background:#d97706;color:#fff;font-size:9px" title="Add experimental result with measured data">+ Experimental</button>
+        <button class="btn-sm" id="btnInventory" onclick="openInventoryModal()" style="background:#0891b2;color:#fff;font-size:9px" title="Inventory management">&#128230; Inventory</button>
+        <button class="btn-sm" id="btnApiSettings" style="font-size:9px">&#9881;</button>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="info-bar" id="infoBar"></div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="side">Side</button>
+      <button class="view-tab" data-view="top">Top</button>
+      <button class="view-tab" data-view="unroll">Unroll</button>
+      <button class="view-tab" data-view="tabmap">Tab Map</button>
+      <button class="view-tab" data-view="3d">3D</button>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="mainCanvas"></canvas>
+      <div id="threeContainer" style="display:none"></div>
+    </div>
+    <div class="bottom-section" id="bottomSection">
+      <div class="bottom-toggle" id="bottomToggle">&#9660; Summary &amp; Tab Positions</div>
+      <div class="summary-cards" id="summaryCards"></div>
+      <div class="results-area" id="resultsArea"></div>
+    </div>
+  </div>
+</div>
+
+<!-- API Settings Modal -->
+<div class="modal-overlay hidden" id="modalSettings">
+  <div class="modal-box">
+    <button class="close-btn" onclick="document.getElementById('modalSettings').classList.add('hidden')">&times;</button>
+    <h3>API Settings</h3>
+    <label style="font-size:10px;color:var(--fg2)">API URL</label>
+    <input type="text" id="settApiUrl" placeholder="http://localhost:8000">
+    <label style="font-size:10px;color:var(--fg2)">API Key</label>
+    <input type="password" id="settApiKey" placeholder="your-api-key">
+    <button class="btn-primary" onclick="saveApiSettings()" style="width:100%;margin-top:6px">Save</button>
+    <p style="font-size:9px;color:var(--fg2);margin-top:8px">Cloud features are disabled when API URL is empty. Use JSON file Save/Load to persist designs locally.</p>
+  </div>
+</div>
+
+<!-- Cloud Open Modal -->
+<div class="modal-overlay hidden" id="modalCloudOpen">
+  <div class="modal-box" style="min-width:500px">
+    <button class="close-btn" onclick="document.getElementById('modalCloudOpen').classList.add('hidden')">&times;</button>
+    <h3>Open Design from Cloud</h3>
+    <div id="cloudDesignList"><p style="color:var(--fg2);font-size:11px">Loading...</p></div>
+  </div>
+</div>
+
+<!-- Experimental Result Modal -->
+<div class="modal-overlay hidden" id="modalExperimental">
+  <div class="modal-box" style="min-width:500px;max-height:85vh;overflow-y:auto">
+    <button class="close-btn" onclick="document.getElementById('modalExperimental').classList.add('hidden')">&times;</button>
+    <h3>Add Experimental Result</h3>
+    <p style="font-size:10px;color:var(--fg2);margin-bottom:8px">Record measured data from a built cell. Link to formulations and layer stack to enable comparison with simulation.</p>
+
+    <label style="font-size:10px;color:var(--fg2)">Name</label>
+    <input type="text" id="expName" placeholder="e.g. Batch 2026-04 Cell #3" style="width:100%;margin-bottom:6px">
+
+    <label style="font-size:10px;color:var(--fg2)">Description / Notes</label>
+    <textarea id="expNotes" rows="2" placeholder="Winding tension, observations, etc." style="width:100%;margin-bottom:6px;font-size:11px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode formulation</label>
+        <select id="expCathMix" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode formulation</label>
+        <select id="expAnodMix" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Layer stack</label>
+        <select id="expLayerStack" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)" title="The theoretical design this cell was built from">Reference design</label>
+        <select id="expRefDesign" style="width:100%;padding:3px;font-size:10px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+          <option value="">-- None --</option>
+        </select>
+      </div>
+    </div>
+
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Cell Measurements</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Measured OD (mm)</label>
+        <input type="number" id="expMeasuredOD" step="0.01" placeholder="e.g. 83.5" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode length (mm)</label>
+        <input type="number" id="expCathLen" step="1" placeholder="e.g. 1920" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode length (mm)</label>
+        <input type="number" id="expAnodLen" step="1" placeholder="e.g. 1850" style="width:100%">
+      </div>
+    </div>
+
+    <h4 style="font-size:11px;margin:10px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px">Tab Positions (absolute from electrode start)</h4>
+    <div style="font-size:9px;color:var(--fg2);margin-bottom:4px">
+      Accepts: <code>1: 6", 2: 11 3/4", 3: 18 5/16"</code> &nbsp;•&nbsp; or bare list: <code>6, 11.75, 18.3125</code>
+      &nbsp;•&nbsp; unit toggle below &nbsp;•&nbsp; fractions OK &nbsp;•&nbsp; labels optional
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px">
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Cathode tab positions</label>
+        <textarea id="expCathTabPos" rows="3" placeholder='1: 6", 2: 11 3/4", 3: 18 5/16", 4: 25 3/4", 5: 34", 6: 43 1/8", 7: 53 1/8", 8: 64"' style="width:100%;font-size:10px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <div id="expCathTabPreview" style="font-size:9px;color:var(--fg2);margin-top:2px;min-height:12px"></div>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--fg2)">Anode tab positions</label>
+        <textarea id="expAnodTabPos" rows="3" placeholder='1: 6", 2: 11 3/4", 3: 18 5/16", 4: 25 3/4", 5: 34", 6: 43 1/8", 7: 53 1/8", 8: 64"' style="width:100%;font-size:10px;font-family:monospace;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:4px"></textarea>
+        <div id="expAnodTabPreview" style="font-size:9px;color:var(--fg2);margin-top:2px;min-height:12px"></div>
+      </div>
+    </div>
+    <div style="margin-bottom:8px">
+      <label style="font-size:10px;color:var(--fg2)">Input unit</label>
+      <select id="expTabUnit" style="font-size:10px;padding:2px;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px">
+        <option value="in" selected>inches (fractions OK)</option>
+        <option value="mm">millimeters</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" id="btnSaveExperimental" style="width:100%;background:#d97706;margin-top:6px">Save Experimental Result</button>
+    <div id="expStatus" style="font-size:10px;margin-top:4px"></div>
+  </div>
+</div>
+
+<!-- Inventory Management Modal -->
+<div class="modal-overlay hidden" id="modalInventory">
+  <div class="modal-box" style="min-width:680px;max-width:900px;max-height:90vh;overflow-y:auto">
+    <button class="close-btn" onclick="closeInventoryModal()">&times;</button>
+    <h3>&#128230; Inventory Management</h3>
+    <div style="margin-bottom:10px">
+      <label style="font-size:10px;color:var(--fg2)">Choose action</label>
+      <select id="invActionPicker" onchange="showInvAction(this.value)" style="width:100%">
+        <option value="">-- Select an action --</option>
+        <option value="add_item">1. Add new inventory item</option>
+        <option value="update_item">2. Update inventory item</option>
+        <option value="receive">3. Receive shipment</option>
+        <option value="count">4. Update physical count</option>
+        <option value="recipe">5. Enter product recipe</option>
+        <option value="production">6. Log production</option>
+      </select>
+    </div>
+    <div id="invFormAddItem" style="display:none"></div>
+    <div id="invFormUpdateItem" style="display:none"></div>
+    <div id="invFormReceive" style="display:none"></div>
+    <div id="invFormCount" style="display:none"></div>
+    <div id="invFormRecipe" style="display:none"></div>
+    <div id="invFormProduction" style="display:none"></div>
+    <div id="invStatus" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+  </div>
+</div>
+
+<script src="js/api.js?v=20260501b"></script>
+<script src="js/auth.js?v=20260501b"></script>
+<script src="js/formulation.js?v=20260501b"></script>
+<script src="js/presets.js?v=20260501b"></script>
+<script src="js/state.js?v=20260501b"></script>
+<script src="js/sim-engine.js?v=20260501b"></script>
+<script src="js/capacity.js?v=20260501b"></script>
+<script src="js/ui.js?v=20260501b"></script>
+<script src="js/views.js?v=20260501b"></script>
+<script src="js/three-view.js?v=20260501b"></script>
+<script src="js/events.js?v=20260501b"></script>
+<script src="js/inventory-check.js?v=20260501b"></script>
+<script src="js/inventory-ui.js?v=20260501b"></script>
+</body>
+</html>
