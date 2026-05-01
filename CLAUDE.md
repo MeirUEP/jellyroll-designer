@@ -23,16 +23,17 @@ js/
   state.js              → Global state (layers, params, elecProps, simResult)
   sim-engine.js          → Phase-based winding simulation + constraint solver
   capacity.js           → Cell capacity calculation
-  ui.js                 → Info bar, summary, layer editor, results tables
+  ui.js                 → Info bar, summary, layer editor, results tables (3 results tabs: Summary / Inventory Check / BOM)
   views.js              → Side, Top, Unroll, Tab Map renderers
   three-view.js         → Three.js 3D view
   events.js             → Button handlers, CSV/PDF export, cloud save/open
   inventory-check.js    → Inventory feasibility analysis (can we build N cells?)
   inventory-ui.js       → Inventory modal forms (Add, Update, Receive, Count, Recipe, Production)
   inventory-dashboard.js → Dashboard table/sort/filter logic (inventory.html only)
+  bom.js                → BOM tab logic + Cell Assembly overhead dropdowns (designer.html only)
 backend/
   app/main.py           → FastAPI app, CORS, routes for /, /designer.html, /inventory.html
-  app/models.py         → 12 SQLAlchemy models (Design, Mix, LayerStack, InventoryItem, InventoryLot, etc.)
+  app/models.py         → 13 SQLAlchemy models (Chemical, Material, Mix, LayerStack, CellParamsPreset, Design, SimulationResult, CapacityResult, InventoryItem, InventoryLot, InventoryTransaction, DesignBOM, ProductRecipe)
   app/schemas.py        → Pydantic request/response models
   app/routers/          → 8 routers (designs, inventory, mixes, layer_stacks, chemicals, materials, cell_param_presets, simulations)
   alembic/versions/     → Database migrations
